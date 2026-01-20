@@ -64,13 +64,29 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if race is full
-    const { count } = await supabase
+    // Check if race has room (either empty slots or house NFTs to replace)
+    const { count: totalEntries } = await supabase
       .from('race_entries')
       .select('*', { count: 'exact', head: true })
       .eq('race_id', raceId);
 
-    if (count && count >= race.max_entries) {
+    const { count: houseEntries } = await supabase
+      .from('race_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('race_id', raceId)
+      .eq('is_house_nft', true);
+
+    // Race is truly full only if all slots are taken by real players (no house NFTs to replace)
+    const realEntries = (totalEntries || 0) - (houseEntries || 0);
+    if (realEntries >= race.max_entries) {
+      return NextResponse.json({
+        canEnter: false,
+        error: 'Race is full (all slots taken by real players)',
+      });
+    }
+
+    // Also check if total is at max AND no house NFTs (shouldn't happen, but safety check)
+    if (totalEntries && totalEntries >= race.max_entries && (!houseEntries || houseEntries === 0)) {
       return NextResponse.json({
         canEnter: false,
         error: 'Race is full',
@@ -79,6 +95,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       canEnter: true,
+      spotsAvailable: race.max_entries - realEntries,
+      houseNftsToReplace: houseEntries || 0,
     });
   } catch (err: any) {
     return NextResponse.json(

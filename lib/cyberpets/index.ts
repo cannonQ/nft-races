@@ -214,3 +214,42 @@ export function getRarityColor(rarity: string): string {
   };
   return colors[rarity] || '#808080';
 }
+
+/**
+ * Get all CyberPets data (for house NFT selection)
+ */
+export function getAllCyberPets(): CyberPetInfo[] {
+  const pets: CyberPetInfo[] = [];
+  for (const token of cyberPetData.tokens) {
+    const info = getCyberPetInfo(token.token_id);
+    if (info) {
+      pets.push(info);
+    }
+  }
+  return pets;
+}
+
+/**
+ * Get total count of CyberPets
+ */
+export function getCyberPetCount(): number {
+  return cyberPetData.tokens.length;
+}
+
+/**
+ * Get a CyberPet by index (for seeded random selection)
+ */
+export function getCyberPetByIndex(index: number): CyberPetInfo | null {
+  const safeIndex = index % cyberPetData.tokens.length;
+  const token = cyberPetData.tokens[safeIndex];
+  if (!token) return null;
+  return getCyberPetInfo(token.token_id);
+}
+
+/**
+ * House wallet address for house NFT entries
+ */
+export const HOUSE_WALLET_ADDRESS = '9gbgJTNXUcdqRp2Tq8hjwnw8B5qvFSWFgDbuDKRRsNjUPjgC3vm';
+
+// Re-export RARITY_MULTIPLIERS for use in race resolution
+export { RARITY_MULTIPLIERS };

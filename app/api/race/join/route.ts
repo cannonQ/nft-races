@@ -292,9 +292,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
     const consistency = traits ? (0.5 + traits.bodyParts.length * 0.04) : 0.5;
     console.log('10. Traits calculated:', { speedMultiplier, consistency, rarity: traits?.rarity });
 
-    // 11. Record the entry in database
-    console.log('11. Inserting race entry...');
-    const insertData = {
+    // 11. Replace a house NFT entry (or insert if no house NFTs)
+    console.log('11. Looking for house NFT to replace...');
+
+    // Find a house NFT entry to replace
+    const { data: houseEntry } = await supabase
+      .from('race_entries')
+      .select('id')
+      .eq('race_id', raceId)
+      .eq('is_house_nft', true)
+      .limit(1)
+      .single();
+
+    const entryData = {
       race_id: raceId,
       owner_address: address,
       nft_token_id: nftTokenId,
@@ -303,38 +313,57 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
       traits: traits,
       speed_multiplier: speedMultiplier,
       consistency: consistency,
-      signature: `TX:${txId}`,  // For browser wallet, use txId as signature proof
+      signature: `TX:${txId}`,
       tx_id: txId,
       entry_fee_paid: race.entry_fee,
       verified_at: new Date().toISOString(),
       is_house_nft: false,
     };
-    console.log('11. Insert data:', JSON.stringify(insertData, null, 2));
 
-    const { data: entry, error: insertError } = await supabase
-      .from('race_entries')
-      .insert(insertData)
-      .select('id')
-      .single();
+    let entry;
+    let entryError;
 
-    if (insertError) {
-      console.error('11. INSERT ERROR:', JSON.stringify(insertError, null, 2));
-      console.error('11. Error code:', insertError.code);
-      console.error('11. Error message:', insertError.message);
-      console.error('11. Error details:', insertError.details);
+    if (houseEntry) {
+      // Replace the house NFT entry with the real player's entry
+      console.log('11. Replacing house NFT entry:', houseEntry.id);
+      const result = await supabase
+        .from('race_entries')
+        .update(entryData)
+        .eq('id', houseEntry.id)
+        .select('id')
+        .single();
+
+      entry = result.data;
+      entryError = result.error;
+    } else {
+      // No house NFT to replace - insert new entry (race might not be pre-populated)
+      console.log('11. No house NFT found, inserting new entry...');
+      const result = await supabase
+        .from('race_entries')
+        .insert(entryData)
+        .select('id')
+        .single();
+
+      entry = result.data;
+      entryError = result.error;
+    }
+
+    if (entryError) {
+      console.error('11. ENTRY ERROR:', JSON.stringify(entryError, null, 2));
       return NextResponse.json(
-        { success: false, error: `Failed to record race entry: ${insertError.message}` },
+        { success: false, error: `Failed to record race entry: ${entryError.message}` },
         { status: 500 }
       );
     }
 
-    console.log('11. Entry inserted successfully:', entry.id);
+    console.log('11. Entry recorded successfully:', entry.id);
     console.log('=== Race Join Request Complete ===');
 
     // 12. Return success response
     return NextResponse.json({
       success: true,
       entryId: entry.id,
+      replacedHouseNft: !!houseEntry,
     });
 
   } catch (error) {
