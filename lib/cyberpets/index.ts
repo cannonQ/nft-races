@@ -140,17 +140,15 @@ export function calculateRacingScore(traits: CyberPetTraits): number {
   return score;
 }
 
+// CyberPets IPFS base CID for images
+const CYBERPETS_IPFS_CID = 'QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw';
+
 /**
  * Get image URL for a CyberPet
  * Format: https://api.ergexplorer.com/nftcache/{ipfs_cid}_{number}.png.png
- *
- * Since we don't have the IPFS CID stored, we'll use a placeholder approach
- * or fetch from ergexplorer token API
  */
 export function getImageUrl(tokenId: string, petNumber: number): string {
-  // Use ergexplorer's token image endpoint
-  // This works for most Ergo NFTs
-  return `https://api.ergexplorer.com/api/v1/tokens/${tokenId}/icon`;
+  return `https://api.ergexplorer.com/nftcache/${CYBERPETS_IPFS_CID}_${petNumber}.png.png`;
 }
 
 /**
