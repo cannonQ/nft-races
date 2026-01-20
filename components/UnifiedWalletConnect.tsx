@@ -19,18 +19,22 @@ import type { CyberPetInfo } from '@/lib/cyberpets';
 
 interface UnifiedWalletConnectProps {
   raceId?: string;
+  raceName?: string;
+  entryFeeNanoErg?: bigint;
   availableNFTs?: Array<{
     tokenId: string;
     name: string;
     imageUrl?: string;
   }>;
-  onEntrySuccess?: (entryId: string) => void;
+  onEntrySuccess?: (entryId: string, txId?: string) => void;
 }
 
 type ConnectionMethod = 'auto' | 'nautilus' | 'mobile';
 
 export function UnifiedWalletConnect({
   raceId,
+  raceName = 'Race',
+  entryFeeNanoErg = 50000000n, // Default 0.05 ERG
   availableNFTs = [],
   onEntrySuccess,
 }: UnifiedWalletConnectProps) {
@@ -90,19 +94,24 @@ export function UnifiedWalletConnect({
     fetchNFTs();
   }, [wallet.state.address, manualAddress]);
 
-  // Handle Nautilus join
+  // Handle Nautilus join with transaction payment
   const handleNautilusJoin = async () => {
     if (!raceId || !selectedNFT) return;
 
     setJoinResult(null);
-    const result = await wallet.signAndJoinRace(raceId, selectedNFT);
+    const result = await wallet.signAndJoinRace(
+      raceId,
+      raceName,
+      selectedNFT,
+      entryFeeNanoErg
+    );
 
     if (result.success) {
       setJoinResult({
         success: true,
-        message: `Successfully entered race! Entry ID: ${result.entryId}`,
+        message: `Successfully entered race! TX: ${result.txId?.slice(0, 8)}...`,
       });
-      onEntrySuccess?.(result.entryId!);
+      onEntrySuccess?.(result.entryId!, result.txId);
     } else {
       setJoinResult({
         success: false,

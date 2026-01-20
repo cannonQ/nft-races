@@ -15,8 +15,7 @@ import {
   getWalletAddress,
   getAllAddresses,
   getBalance,
-  signRaceEntry,
-  submitRaceEntry,
+  submitRaceEntryWithPayment,
 } from '@/lib/ergo/client';
 
 // ============================================
@@ -33,10 +32,16 @@ interface UseErgoWalletReturn {
   disconnect: () => Promise<void>;
   refreshBalance: () => Promise<void>;
 
-  // Race Entry
-  signAndJoinRace: (raceId: string, nftTokenId: string) => Promise<{
+  // Race Entry (with transaction payment)
+  signAndJoinRace: (
+    raceId: string,
+    raceName: string,
+    nftTokenId: string,
+    entryFeeNanoErg: bigint
+  ) => Promise<{
     success: boolean;
     entryId?: string;
+    txId?: string;
     error?: string;
   }>;
 }
@@ -178,9 +183,14 @@ export function useErgoWallet(): UseErgoWalletReturn {
     }
   }, [state.connected, state.address]);
 
-  // Sign and join race
+  // Sign and join race with transaction payment
   const signAndJoinRace = useCallback(
-    async (raceId: string, nftTokenId: string) => {
+    async (
+      raceId: string,
+      raceName: string,
+      nftTokenId: string,
+      entryFeeNanoErg: bigint
+    ) => {
       if (!state.connected || !state.address) {
         return {
           success: false,
@@ -191,9 +201,20 @@ export function useErgoWallet(): UseErgoWalletReturn {
       try {
         setState(prev => ({ ...prev, loading: true, error: null }));
 
-        const result = await submitRaceEntry(raceId, nftTokenId);
+        // Build, sign, and submit transaction with entry fee payment
+        const result = await submitRaceEntryWithPayment(
+          raceId,
+          raceName,
+          nftTokenId,
+          entryFeeNanoErg
+        );
 
         setState(prev => ({ ...prev, loading: false }));
+
+        // Refresh balance after transaction
+        if (result.success) {
+          setTimeout(() => refreshBalance(), 2000); // Wait for tx to propagate
+        }
 
         return result;
       } catch (error) {
@@ -209,7 +230,7 @@ export function useErgoWallet(): UseErgoWalletReturn {
         };
       }
     },
-    [state.connected, state.address]
+    [state.connected, state.address, refreshBalance]
   );
 
   return {

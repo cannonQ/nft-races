@@ -10,6 +10,8 @@ import { useErgoWallet, formatErg, truncateAddress } from '@/hooks/useErgoWallet
 
 interface WalletConnectProps {
   raceId?: string;
+  raceName?: string;
+  entryFeeNanoErg?: bigint;
   availableNFTs?: Array<{
     tokenId: string;
     name: string;
@@ -17,7 +19,12 @@ interface WalletConnectProps {
   }>;
 }
 
-export function WalletConnect({ raceId, availableNFTs = [] }: WalletConnectProps) {
+export function WalletConnect({
+  raceId,
+  raceName = 'Race',
+  entryFeeNanoErg = 50000000n,
+  availableNFTs = []
+}: WalletConnectProps) {
   const { state, isInstalled, connect, disconnect, signAndJoinRace } = useErgoWallet();
   const [selectedNFT, setSelectedNFT] = useState<string>('');
   const [joinResult, setJoinResult] = useState<{
@@ -25,17 +32,17 @@ export function WalletConnect({ raceId, availableNFTs = [] }: WalletConnectProps
     message: string;
   } | null>(null);
 
-  // Handle join race
+  // Handle join race with transaction payment
   const handleJoinRace = async () => {
     if (!raceId || !selectedNFT) return;
 
     setJoinResult(null);
-    const result = await signAndJoinRace(raceId, selectedNFT);
+    const result = await signAndJoinRace(raceId, raceName, selectedNFT, entryFeeNanoErg);
 
     if (result.success) {
       setJoinResult({
         success: true,
-        message: `Successfully entered race! Entry ID: ${result.entryId}`,
+        message: `Successfully entered race! TX: ${result.txId?.slice(0, 8)}...`,
       });
     } else {
       setJoinResult({

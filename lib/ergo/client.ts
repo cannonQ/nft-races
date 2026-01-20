@@ -15,6 +15,9 @@ import type {
 // ============================================
 
 const MESSAGE_PREFIX = 'CYBERPETS-RACE';
+const HOUSE_WALLET = '9gbgJTNXUcdqRp2Tq8hjwnw8B5qvFSWFgDbuDKRRsNjUPjgC3vm';
+const MIN_BOX_VALUE = 1000000n; // 0.001 ERG minimum box value
+const TX_FEE = 1100000n; // 0.0011 ERG recommended tx fee
 
 // ============================================
 // Wallet Connection
@@ -312,4 +315,256 @@ export async function getWalletState(): Promise<WalletState> {
   }
 
   return state;
+}
+
+// ============================================
+// Transaction-Based Race Entry
+// ============================================
+
+export interface RaceEntryTxParams {
+  raceId: string;
+  raceName: string;
+  nftTokenId: string;
+  entryFeeNanoErg: bigint;
+}
+
+export interface RaceEntryTxResult {
+  success: boolean;
+  txId?: string;
+  error?: string;
+}
+
+/**
+ * Get UTXOs from connected wallet
+ */
+async function getWalletUtxos(): Promise<any[]> {
+  if (!window.ergo) {
+    throw new Error('Wallet not connected');
+  }
+
+  // Nautilus provides get_utxos method
+  const utxos = await (window.ergo as any).get_utxos();
+  return utxos || [];
+}
+
+/**
+ * Get current blockchain height from explorer
+ */
+async function getCurrentHeight(): Promise<number> {
+  try {
+    const response = await fetch('https://api.ergoplatform.com/api/v1/blocks?limit=1');
+    const data = await response.json();
+    return data.items?.[0]?.height || 1200000;
+  } catch {
+    // Fallback to a reasonable recent height
+    return 1200000;
+  }
+}
+
+/**
+ * Encode a string to Ergo constant format (for register values)
+ * Uses Coll[Byte] encoding
+ */
+function encodeStringConstant(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  // Format: 0e (Coll[Byte] type) + length as VLQ + bytes as hex
+  let lengthHex = '';
+  let len = bytes.length;
+
+  // Variable-length quantity encoding for length
+  while (len >= 128) {
+    lengthHex += ((len & 0x7f) | 0x80).toString(16).padStart(2, '0');
+    len >>= 7;
+  }
+  lengthHex += len.toString(16).padStart(2, '0');
+
+  const bytesHex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return '0e' + lengthHex + bytesHex;
+}
+
+/**
+ * Build and sign a transaction to pay race entry fee
+ * Sends entry fee to house wallet with race info in registers
+ */
+export async function buildAndSignRaceEntryTx(
+  params: RaceEntryTxParams
+): Promise<RaceEntryTxResult> {
+  if (!window.ergo) {
+    return { success: false, error: 'Wallet not connected' };
+  }
+
+  try {
+    const { raceId, raceName, nftTokenId, entryFeeNanoErg } = params;
+
+    // Get wallet UTXOs and address
+    const utxos = await getWalletUtxos();
+    const changeAddress = await getWalletAddress();
+    const currentHeight = await getCurrentHeight();
+
+    if (utxos.length === 0) {
+      return { success: false, error: 'No UTXOs available in wallet' };
+    }
+
+    // Calculate total needed
+    const totalNeeded = entryFeeNanoErg + TX_FEE;
+
+    // Select UTXOs to cover the amount
+    let inputValue = 0n;
+    const selectedUtxos: any[] = [];
+
+    for (const utxo of utxos) {
+      selectedUtxos.push(utxo);
+      inputValue += BigInt(utxo.value);
+      if (inputValue >= totalNeeded + MIN_BOX_VALUE) {
+        break;
+      }
+    }
+
+    if (inputValue < totalNeeded) {
+      return {
+        success: false,
+        error: `Insufficient funds. Need ${Number(totalNeeded) / 1e9} ERG, have ${Number(inputValue) / 1e9} ERG`
+      };
+    }
+
+    // Build output box for house wallet with registers
+    const timestamp = Date.now().toString();
+    const entryBox = {
+      value: entryFeeNanoErg.toString(),
+      ergoTree: await addressToErgoTree(HOUSE_WALLET),
+      assets: [],
+      additionalRegisters: {
+        R4: encodeStringConstant(raceName),       // Race name
+        R5: encodeStringConstant(nftTokenId),     // NFT token ID
+        R6: encodeStringConstant(timestamp),      // Entry timestamp
+        R7: encodeStringConstant(raceId),         // Race ID
+        R8: encodeStringConstant(changeAddress),  // Entrant address
+      },
+      creationHeight: currentHeight,
+    };
+
+    // Build change output
+    const changeValue = inputValue - entryFeeNanoErg - TX_FEE;
+    const outputs: any[] = [entryBox];
+
+    if (changeValue >= MIN_BOX_VALUE) {
+      // Collect all tokens from inputs for change box
+      const inputTokens: Map<string, bigint> = new Map();
+      for (const utxo of selectedUtxos) {
+        for (const asset of (utxo.assets || [])) {
+          const current = inputTokens.get(asset.tokenId) || 0n;
+          inputTokens.set(asset.tokenId, current + BigInt(asset.amount));
+        }
+      }
+
+      const changeAssets = Array.from(inputTokens.entries()).map(([tokenId, amount]) => ({
+        tokenId,
+        amount: amount.toString(),
+      }));
+
+      outputs.push({
+        value: changeValue.toString(),
+        ergoTree: await addressToErgoTree(changeAddress),
+        assets: changeAssets,
+        additionalRegisters: {},
+        creationHeight: currentHeight,
+      });
+    }
+
+    // Build unsigned transaction
+    const unsignedTx = {
+      inputs: selectedUtxos.map(utxo => ({
+        boxId: utxo.boxId,
+        extension: {},
+      })),
+      dataInputs: [],
+      outputs,
+    };
+
+    console.log('Unsigned TX:', JSON.stringify(unsignedTx, null, 2));
+
+    // Sign transaction with Nautilus
+    const signedTx = await window.ergo.sign_tx(unsignedTx);
+    console.log('Signed TX:', signedTx);
+
+    // Submit transaction
+    const txId = await window.ergo.submit_tx(signedTx);
+    console.log('Submitted TX ID:', txId);
+
+    return { success: true, txId };
+  } catch (error) {
+    console.error('Transaction error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Transaction failed'
+    };
+  }
+}
+
+/**
+ * Convert Ergo address to ErgoTree (hex)
+ */
+async function addressToErgoTree(address: string): Promise<string> {
+  // Use explorer API to get ErgoTree for address
+  try {
+    const response = await fetch(
+      `https://api.ergoplatform.com/api/v1/addresses/${address}`
+    );
+    const data = await response.json();
+    return data.ergoTree;
+  } catch {
+    throw new Error(`Failed to get ErgoTree for address: ${address}`);
+  }
+}
+
+/**
+ * Submit race entry with transaction payment
+ */
+export async function submitRaceEntryWithPayment(
+  raceId: string,
+  raceName: string,
+  nftTokenId: string,
+  entryFeeNanoErg: bigint,
+  apiEndpoint: string = '/api/race/join'
+): Promise<{ success: boolean; entryId?: string; txId?: string; error?: string }> {
+  // First build and sign the transaction
+  const txResult = await buildAndSignRaceEntryTx({
+    raceId,
+    raceName,
+    nftTokenId,
+    entryFeeNanoErg,
+  });
+
+  if (!txResult.success || !txResult.txId) {
+    return { success: false, error: txResult.error || 'Transaction failed' };
+  }
+
+  // Get wallet address for API call
+  const address = await getWalletAddress();
+
+  // Submit to backend API with transaction ID
+  const response = await fetch(apiEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      raceId,
+      address,
+      nftTokenId,
+      txId: txResult.txId,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (result.success) {
+    return {
+      success: true,
+      entryId: result.entryId,
+      txId: txResult.txId
+    };
+  }
+
+  return { success: false, error: result.error };
 }
