@@ -431,7 +431,7 @@ export async function buildAndSignRaceEntryTx(
     const timestamp = Date.now().toString();
     const entryBox = {
       value: entryFeeNanoErg.toString(),
-      ergoTree: await addressToErgoTree(HOUSE_WALLET),
+      ergoTree: addressToErgoTree(HOUSE_WALLET),
       assets: [],
       additionalRegisters: {
         R4: encodeStringConstant(raceName),       // Race name
@@ -464,7 +464,7 @@ export async function buildAndSignRaceEntryTx(
 
       outputs.push({
         value: changeValue.toString(),
-        ergoTree: await addressToErgoTree(changeAddress),
+        ergoTree: addressToErgoTree(changeAddress),
         assets: changeAssets,
         additionalRegisters: {},
         creationHeight: currentHeight,
@@ -501,19 +501,84 @@ export async function buildAndSignRaceEntryTx(
   }
 }
 
+// Base58 alphabet used by Ergo
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+/**
+ * Decode base58 string to bytes
+ */
+function base58Decode(str: string): Uint8Array {
+  const bytes: number[] = [];
+
+  for (const char of str) {
+    const value = BASE58_ALPHABET.indexOf(char);
+    if (value === -1) {
+      throw new Error(`Invalid base58 character: ${char}`);
+    }
+
+    let carry = value;
+    for (let i = 0; i < bytes.length; i++) {
+      carry += bytes[i] * 58;
+      bytes[i] = carry & 0xff;
+      carry >>= 8;
+    }
+
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+
+  // Handle leading zeros
+  for (const char of str) {
+    if (char !== '1') break;
+    bytes.push(0);
+  }
+
+  return new Uint8Array(bytes.reverse());
+}
+
+/**
+ * Convert bytes to hex string
+ */
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 /**
  * Convert Ergo address to ErgoTree (hex)
+ * For P2PK addresses (starting with '9'), decodes the public key and builds ErgoTree
  */
-async function addressToErgoTree(address: string): Promise<string> {
-  // Use explorer API to get ErgoTree for address
+function addressToErgoTree(address: string): string {
   try {
-    const response = await fetch(
-      `https://api.ergoplatform.com/api/v1/addresses/${address}`
-    );
-    const data = await response.json();
-    return data.ergoTree;
-  } catch {
-    throw new Error(`Failed to get ErgoTree for address: ${address}`);
+    const decoded = base58Decode(address);
+
+    // First byte is network type + address type
+    // For mainnet P2PK: 0x01
+    // Bytes 1-33 are the public key (33 bytes compressed)
+    // Last 4 bytes are checksum
+
+    if (decoded.length < 38) {
+      throw new Error('Address too short');
+    }
+
+    const addressType = decoded[0];
+
+    // P2PK address type is 0x01 (mainnet) or 0x11 (testnet)
+    if (addressType === 0x01 || addressType === 0x11) {
+      // Extract public key (bytes 1-33)
+      const publicKey = decoded.slice(1, 34);
+      // P2PK ErgoTree: 0008cd + public key hex
+      return '0008cd' + bytesToHex(publicKey);
+    }
+
+    // For P2SH or other types, we'd need different handling
+    // For now, fall back to API for non-P2PK addresses
+    throw new Error(`Unsupported address type: ${addressType}`);
+  } catch (error) {
+    throw new Error(`Failed to convert address to ErgoTree: ${address} - ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
