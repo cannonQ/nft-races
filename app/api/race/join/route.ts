@@ -151,13 +151,17 @@ async function verifyTransaction(
 // ============================================
 
 export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceResponse>> {
+  console.log('=== Race Join Request Started ===');
+
   try {
     // 1. Parse request body
     const body = await request.json();
+    console.log('1. Request body:', JSON.stringify(body, null, 2));
 
     // 2. Validate request structure
     const validation = validateRequest(body);
     if (!validation.valid || !validation.data) {
+      console.log('2. Validation failed:', validation.error);
       return NextResponse.json(
         { success: false, error: validation.error },
         { status: 400 }
@@ -165,29 +169,38 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
     }
 
     const { raceId, address, nftTokenId, txId } = validation.data;
+    console.log('2. Validated:', { raceId, address: address.slice(0, 15) + '...', nftTokenId: nftTokenId.slice(0, 15) + '...', txId: txId.slice(0, 15) + '...' });
 
     // 3. Validate Ergo address format
+    console.log('3. Validating address...');
     const isValidAddress = await isValidErgoAddress(address);
     if (!isValidAddress) {
+      console.log('3. Address validation failed');
       return NextResponse.json(
         { success: false, error: 'Invalid Ergo address format' },
         { status: 400 }
       );
     }
+    console.log('3. Address valid');
 
     // 4. Validate NFT is a CyberPet
+    console.log('4. Checking if CyberPet...');
     if (!isCyberPet(nftTokenId)) {
+      console.log('4. Not a CyberPet');
       return NextResponse.json(
         { success: false, error: 'Only CyberPets NFTs can enter races' },
         { status: 400 }
       );
     }
+    console.log('4. Is CyberPet');
 
     // 5. Get CyberPet info for recording
     const petInfo = getCyberPetInfo(nftTokenId);
     const nftName = petInfo?.name || `CyberPet ${nftTokenId.slice(0, 8)}`;
+    console.log('5. Pet info:', { nftName, number: petInfo?.number });
 
     // 6. Check if race exists and is accepting entries
+    console.log('6. Checking race...');
     const supabase = getSupabaseClient();
 
     const { data: race, error: raceError } = await supabase
@@ -196,22 +209,34 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
       .eq('id', raceId)
       .single();
 
-    if (raceError || !race) {
+    if (raceError) {
+      console.log('6. Race query error:', raceError);
+      return NextResponse.json(
+        { success: false, error: `Race query failed: ${raceError.message}` },
+        { status: 404 }
+      );
+    }
+
+    if (!race) {
+      console.log('6. Race not found');
       return NextResponse.json(
         { success: false, error: 'Race not found' },
         { status: 404 }
       );
     }
+    console.log('6. Race found:', { id: race.id, status: race.status, entry_fee: race.entry_fee });
 
     if (race.status !== 'open') {
+      console.log('6. Race not open, status:', race.status);
       return NextResponse.json(
-        { success: false, error: 'Race is not accepting entries' },
+        { success: false, error: `Race is not accepting entries (status: ${race.status})` },
         { status: 400 }
       );
     }
 
     // 7. Check for duplicate entries (same NFT in same race)
-    const { data: existingEntry } = await supabase
+    console.log('7. Checking for duplicate NFT entry...');
+    const { data: existingEntry, error: existingEntryError } = await supabase
       .from('race_entries')
       .select('id')
       .eq('race_id', raceId)
@@ -219,34 +244,42 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
       .single();
 
     if (existingEntry) {
+      console.log('7. Duplicate NFT entry found:', existingEntry.id);
       return NextResponse.json(
         { success: false, error: 'This NFT is already entered in this race' },
         { status: 409 }
       );
     }
+    console.log('7. No duplicate NFT entry');
 
     // 8. Check for duplicate transaction ID
-    const { data: existingTx } = await supabase
+    console.log('8. Checking for duplicate txId...');
+    const { data: existingTx, error: existingTxError } = await supabase
       .from('race_entries')
       .select('id')
       .eq('tx_id', txId)
       .single();
 
     if (existingTx) {
+      console.log('8. Duplicate txId found:', existingTx.id);
       return NextResponse.json(
         { success: false, error: 'This transaction has already been used' },
         { status: 409 }
       );
     }
+    console.log('8. No duplicate txId');
 
     // 9. Verify transaction (optional for MVP)
+    console.log('9. Verifying transaction...');
     const txVerification = await verifyTransaction(
       txId,
       address,
       BigInt(race.entry_fee)
     );
+    console.log('9. TX verification result:', txVerification);
 
     if (!txVerification.valid) {
+      console.log('9. TX verification failed:', txVerification.error);
       return NextResponse.json(
         { success: false, error: txVerification.error || 'Transaction verification failed' },
         { status: 400 }
@@ -257,45 +290,59 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
     const traits = petInfo?.traits || null;
     const speedMultiplier = traits ? (RARITY_MULTIPLIERS[traits.rarity] || 1.0) : 1.0;
     const consistency = traits ? (0.5 + traits.bodyParts.length * 0.04) : 0.5;
+    console.log('10. Traits calculated:', { speedMultiplier, consistency, rarity: traits?.rarity });
 
     // 11. Record the entry in database
+    console.log('11. Inserting race entry...');
+    const insertData = {
+      race_id: raceId,
+      owner_address: address,
+      nft_token_id: nftTokenId,
+      nft_name: nftName,
+      nft_number: petInfo?.number || null,
+      traits: traits,
+      speed_multiplier: speedMultiplier,
+      consistency: consistency,
+      signature: `TX:${txId}`,  // For browser wallet, use txId as signature proof
+      tx_id: txId,
+      entry_fee_paid: race.entry_fee,
+      verified_at: new Date().toISOString(),
+      is_house_nft: false,
+    };
+    console.log('11. Insert data:', JSON.stringify(insertData, null, 2));
+
     const { data: entry, error: insertError } = await supabase
       .from('race_entries')
-      .insert({
-        race_id: raceId,
-        owner_address: address,
-        nft_token_id: nftTokenId,
-        nft_name: nftName,
-        nft_number: petInfo?.number || null,
-        traits: traits,
-        speed_multiplier: speedMultiplier,
-        consistency: consistency,
-        tx_id: txId,
-        entry_fee_paid: race.entry_fee,
-        verified_at: new Date().toISOString(),
-        is_house_nft: false,
-      })
+      .insert(insertData)
       .select('id')
       .single();
 
     if (insertError) {
-      console.error('Failed to insert race entry:', insertError);
+      console.error('11. INSERT ERROR:', JSON.stringify(insertError, null, 2));
+      console.error('11. Error code:', insertError.code);
+      console.error('11. Error message:', insertError.message);
+      console.error('11. Error details:', insertError.details);
       return NextResponse.json(
-        { success: false, error: 'Failed to record race entry' },
+        { success: false, error: `Failed to record race entry: ${insertError.message}` },
         { status: 500 }
       );
     }
 
-    // 11. Return success response
+    console.log('11. Entry inserted successfully:', entry.id);
+    console.log('=== Race Join Request Complete ===');
+
+    // 12. Return success response
     return NextResponse.json({
       success: true,
       entryId: entry.id,
     });
 
   } catch (error) {
-    console.error('Race join error:', error);
+    console.error('=== Race Join EXCEPTION ===');
+    console.error('Error:', error);
+    console.error('Stack:', error instanceof Error ? error.stack : 'N/A');
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: `Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
   }

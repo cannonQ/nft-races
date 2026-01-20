@@ -11,8 +11,25 @@ import {
 } from '@/lib/ergo/ergoauth';
 
 function getBaseUrl(request: NextRequest): string {
-  const host = request.headers.get('host') || 'localhost:3000';
-  const protocol = host.includes('localhost') ? 'http' : 'https';
+  // For Vercel deployments, use the public URL
+  // This ensures the replyTo URL matches the host Terminus sees
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  // For custom domain, use NEXT_PUBLIC_APP_URL if set
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL;
+  }
+
+  // Fallback: Priority: x-forwarded-host > host header
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = forwardedHost || request.headers.get('host') || 'localhost:3000';
+
+  // Determine protocol - use x-forwarded-proto if available
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const protocol = forwardedProto || (host.includes('localhost') ? 'http' : 'https');
+
   return `${protocol}://${host}`;
 }
 

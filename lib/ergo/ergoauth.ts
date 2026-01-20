@@ -117,11 +117,39 @@ function createSigningMessage(raceId: string, nftTokenId: string): string {
  * Convert P2PK address to SigmaBoolean for ErgoAuth
  *
  * Based on ergo-appkit: SigmaProp.createFromAddress(address).toBytes()
- * For P2PK addresses, the SigmaProp is ProveDlog serialization:
- * 0xCD (ProveDlog opcode) + 33-byte compressed public key = 34 bytes
  *
- * This is NOT the full ErgoTree (which would be 0x0008cd + pubkey),
- * but just the serialized SigmaProp/ProveDlog.
+ * Uses ergo-lib-wasm-nodejs to properly serialize. Falls back to manual
+ * construction if wasm not available.
+ */
+export async function addressToSigmaBooleanAsync(address: string): Promise<string> {
+  try {
+    // Try using ergo-lib-wasm-nodejs for proper serialization
+    const ergoWasm = await import('ergo-lib-wasm-nodejs');
+    const addr = ergoWasm.Address.from_base58(address);
+
+    // Get the ErgoTree and its bytes
+    const ergoTree = addr.to_ergo_tree();
+    const ergoTreeBytes = ergoTree.sigma_serialize_bytes();
+
+    // For P2PK, ErgoTree is: 0x00 0x08 0xcd <33-byte-pubkey>
+    // The SigmaBoolean is: 0x08 0xcd <33-byte-pubkey> (skip first header byte)
+    // Or maybe just: 0xcd <33-byte-pubkey>
+    // Let's try the ErgoTree bytes directly since that's what contains the proposition
+    return Buffer.from(ergoTreeBytes).toString('base64');
+  } catch (error) {
+    console.log('WASM SigmaProp serialization failed, using manual:', error);
+    // Fallback to manual construction
+    return addressToSigmaBoolean(address);
+  }
+}
+
+/**
+ * Synchronous version - manual byte construction
+ *
+ * Trying different formats to find what Terminus expects:
+ * Option 1: Just the 33-byte compressed public key (group element)
+ * Option 2: 0xCD + 33-byte public key (ProveDlog with opcode)
+ * Option 3: Full ErgoTree bytes
  */
 export function addressToSigmaBoolean(address: string): string {
   // Decode the base58 address
@@ -135,14 +163,9 @@ export function addressToSigmaBoolean(address: string): string {
   // Extract the 33-byte compressed public key (bytes 1-33)
   const publicKey = decoded.slice(1, 34);
 
-  // Build SigmaProp (ProveDlog) serialization: 0xCD + 33-byte public key = 34 bytes
-  // This matches what ergo-appkit's SigmaProp.createFromAddress().toBytes() returns
-  const sigmaProp = new Uint8Array(34);
-  sigmaProp[0] = 0xcd;  // ProveDlog operation code
-  sigmaProp.set(publicKey, 1);
-
-  // Return as base64 string (standard base64, not URL-safe)
-  return Buffer.from(sigmaProp).toString('base64');
+  // Try Option 1: Just the raw 33-byte group element (compressed EC point)
+  // This is what the actual SigmaProp "value" is - the public key itself
+  return Buffer.from(publicKey).toString('base64');
 }
 
 /**
