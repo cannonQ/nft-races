@@ -83,10 +83,14 @@ export default function RacePage() {
 
   async function fetchEntries() {
     try {
+      console.log('Fetching entries for race:', raceId);
       const res = await fetch(`/api/races/${raceId}/entries`);
+      const data = await res.json();
+      console.log('Entries response:', data);
       if (res.ok) {
-        const data = await res.json();
         setEntries(data.entries || []);
+      } else {
+        console.error('Entries fetch failed:', data.error);
       }
     } catch (err) {
       console.error('Failed to fetch entries:', err);

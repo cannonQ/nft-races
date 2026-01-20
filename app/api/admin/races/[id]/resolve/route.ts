@@ -18,14 +18,16 @@ const PAYOUTS = [
 // POST /api/admin/races/[id]/resolve - Resolve race and determine results
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: raceId } = await context.params;
+
     // Get race
     const { data: race, error: raceError } = await supabase
       .from('races')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', raceId)
       .single();
 
     if (raceError || !race) {
@@ -40,7 +42,7 @@ export async function POST(
     const { data: entries, error: entriesError } = await supabase
       .from('race_entries')
       .select('*')
-      .eq('race_id', params.id)
+      .eq('race_id', raceId)
       .order('created_at', { ascending: true });
 
     if (entriesError) throw entriesError;
@@ -85,7 +87,7 @@ export async function POST(
         combined_seed: combinedSeed,
         resolved_at: new Date().toISOString(),
       })
-      .eq('id', params.id);
+      .eq('id', raceId);
 
     return NextResponse.json({ 
       success: true, 

@@ -16,10 +16,10 @@ function getSupabaseClient() {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  context: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const { sessionId } = params;
+    const { sessionId } = await context.params;
     const session = getErgoAuthSession(sessionId);
 
     if (!session) {
