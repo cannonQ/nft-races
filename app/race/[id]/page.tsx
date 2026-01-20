@@ -211,8 +211,11 @@ export default function RacePage() {
         {/* Entries / Results */}
         <div className="bg-gray-800 rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-4">
-            {race.status === 'resolved' ? 'Results' : 'Entries'}
+            {race.status === 'resolved' ? 'Results' : 'Entries'} ({entries.length}/{race.max_entries})
           </h2>
+
+          {/* Debug info - remove after testing */}
+          <p className="text-xs text-gray-500 mb-2">Race ID: {raceId}</p>
 
           {/* Simple grid gallery */}
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
