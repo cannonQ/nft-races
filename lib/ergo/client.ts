@@ -384,7 +384,7 @@ function encodeStringConstant(str: string): string {
 
 /**
  * Build and sign a transaction to pay race entry fee
- * Sends entry fee to house wallet with race info in registers
+ * Uses Fleet SDK for proper transaction construction
  */
 export async function buildAndSignRaceEntryTx(
   params: RaceEntryTxParams
@@ -394,6 +394,9 @@ export async function buildAndSignRaceEntryTx(
   }
 
   try {
+    // Dynamic import of Fleet SDK (it's a client-side only library)
+    const { TransactionBuilder, OutputBuilder, RECOMMENDED_MIN_FEE_VALUE, SAFE_MIN_BOX_VALUE } = await import('@fleet-sdk/core');
+
     const { raceId, raceName, nftTokenId, entryFeeNanoErg } = params;
 
     // Get wallet UTXOs and address
@@ -405,98 +408,32 @@ export async function buildAndSignRaceEntryTx(
       return { success: false, error: 'No UTXOs available in wallet' };
     }
 
-    // Calculate total needed (entry fee + tx fee + minimum for change box)
-    const totalNeeded = entryFeeNanoErg + TX_FEE + MIN_BOX_VALUE;
+    console.log('Building transaction with Fleet SDK');
+    console.log('Entry fee:', entryFeeNanoErg.toString(), 'nanoErg');
+    console.log('UTXOs available:', utxos.length);
+    console.log('Change address:', changeAddress);
 
-    // Select UTXOs to cover the amount
-    let inputValue = 0n;
-    const selectedUtxos: any[] = [];
+    // Build transaction using Fleet SDK
+    const unsignedTx = new TransactionBuilder(currentHeight)
+      .from(utxos)
+      .to(
+        new OutputBuilder(entryFeeNanoErg.toString(), HOUSE_WALLET)
+          .setAdditionalRegisters({
+            R4: encodeStringConstant(raceName),
+            R5: encodeStringConstant(nftTokenId),
+            R6: encodeStringConstant(Date.now().toString()),
+            R7: encodeStringConstant(raceId),
+            R8: encodeStringConstant(changeAddress),
+          })
+      )
+      .sendChangeTo(changeAddress)
+      .payFee(RECOMMENDED_MIN_FEE_VALUE)
+      .build()
+      .toEIP12Object();
 
-    for (const utxo of utxos) {
-      selectedUtxos.push(utxo);
-      inputValue += BigInt(utxo.value);
-      if (inputValue >= totalNeeded) {
-        break;
-      }
-    }
-
-    if (inputValue < totalNeeded) {
-      return {
-        success: false,
-        error: `Insufficient funds. Need ${Number(totalNeeded) / 1e9} ERG, have ${Number(inputValue) / 1e9} ERG`
-      };
-    }
-
-    // Build output box for house wallet with registers
-    const timestamp = Date.now().toString();
-    const entryBox = {
-      value: entryFeeNanoErg.toString(),
-      ergoTree: addressToErgoTree(HOUSE_WALLET),
-      assets: [],
-      additionalRegisters: {
-        R4: encodeStringConstant(raceName),       // Race name
-        R5: encodeStringConstant(nftTokenId),     // NFT token ID
-        R6: encodeStringConstant(timestamp),      // Entry timestamp
-        R7: encodeStringConstant(raceId),         // Race ID
-        R8: encodeStringConstant(changeAddress),  // Entrant address
-      },
-      creationHeight: currentHeight,
-    };
-
-    // Build change output (subtract entry fee and tx fee from inputs)
-    const changeValue = inputValue - entryFeeNanoErg - TX_FEE;
-    const outputs: any[] = [entryBox];
-
-    if (changeValue >= MIN_BOX_VALUE) {
-      // Collect all tokens from inputs for change box
-      const inputTokens: Map<string, bigint> = new Map();
-      for (const utxo of selectedUtxos) {
-        for (const asset of (utxo.assets || [])) {
-          const current = inputTokens.get(asset.tokenId) || 0n;
-          inputTokens.set(asset.tokenId, current + BigInt(asset.amount));
-        }
-      }
-
-      const changeAssets = Array.from(inputTokens.entries()).map(([tokenId, amount]) => ({
-        tokenId,
-        amount: amount.toString(),
-      }));
-
-      outputs.push({
-        value: changeValue.toString(),
-        ergoTree: addressToErgoTree(changeAddress),
-        assets: changeAssets,
-        additionalRegisters: {},
-        creationHeight: currentHeight,
-      });
-    }
-
-    // Build unsigned transaction
-    // EIP-12 format: inputs need boxId, value, ergoTree, assets, creationHeight, additionalRegisters
-    const unsignedTx = {
-      inputs: selectedUtxos.map(utxo => ({
-        boxId: utxo.boxId,
-        transactionId: utxo.transactionId,
-        index: utxo.index,
-        ergoTree: utxo.ergoTree,
-        creationHeight: utxo.creationHeight,
-        value: utxo.value.toString(),
-        assets: utxo.assets || [],
-        additionalRegisters: utxo.additionalRegisters || {},
-        extension: {},
-      })),
-      dataInputs: [],
-      outputs,
-    };
-
-    console.log('Unsigned TX:', JSON.stringify(unsignedTx, null, 2));
-    const outputTotal = entryFeeNanoErg + (changeValue >= MIN_BOX_VALUE ? changeValue : 0n);
-    console.log('Input total:', inputValue.toString(), 'nanoErg');
-    console.log('Output total:', outputTotal.toString(), 'nanoErg');
-    console.log('Fee (inputs - outputs):', (inputValue - outputTotal).toString(), 'nanoErg (should be', TX_FEE.toString(), ')');
+    console.log('Unsigned TX (EIP-12):', JSON.stringify(unsignedTx, null, 2));
 
     // Sign transaction with Nautilus
-    // Nautilus sign_tx expects the unsigned transaction object
     const signedTx = await window.ergo.sign_tx(unsignedTx);
     console.log('Signed TX:', signedTx);
 
