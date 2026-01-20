@@ -21,9 +21,14 @@
     "seedrandom": "^3.0.5"
   },
   "devDependencies": {
+    "@nautilus-js/eip12-types": "^0.0.1",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@types/seedrandom": "^3.0.8",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.3.0"
   }
