@@ -9,13 +9,15 @@ const supabase = createClient(
 // GET /api/races/[id] - Get race details
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: raceId } = await context.params;
+
     const { data: race, error } = await supabase
       .from('races')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', raceId)
       .single();
 
     if (error) throw error;
