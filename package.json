@@ -21,7 +21,6 @@
     "seedrandom": "^3.0.5"
   },
   "devDependencies": {
-    "@nautilus-js/eip12-types": "^0.0.1",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
