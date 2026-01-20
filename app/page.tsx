@@ -125,7 +125,7 @@ export default function HomePage() {
           <ol className="list-decimal list-inside space-y-2 text-gray-300">
             <li>Connect your Nautilus wallet (or use mobile with ErgoAuth)</li>
             <li>Select a CyberPet NFT you own</li>
-            <li>Sign a message to prove ownership (no ERG sent)</li>
+            <li>Sign a message to prove ownership (0.05 ERG sent, reduces spam during testing)</li>
             <li>Wait for race to start</li>
             <li>Results determined by provably fair algorithm</li>
           </ol>
