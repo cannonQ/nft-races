@@ -270,7 +270,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
         traits: traits ? JSON.stringify(traits) : null,
         speed_multiplier: speedMultiplier,
         consistency: consistency,
-        signature: txId, // Store txId in signature field
+        tx_id: txId,
+        entry_fee_paid: race.entry_fee,
+        verified_at: new Date().toISOString(),
         is_house_nft: false,
       })
       .select('id')
