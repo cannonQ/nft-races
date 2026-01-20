@@ -62,6 +62,13 @@ export default function RacePage() {
     if (raceId) {
       fetchRace();
       fetchEntries();
+
+      // Auto-refresh entries every 10 seconds
+      const interval = setInterval(() => {
+        fetchEntries();
+      }, 10000);
+
+      return () => clearInterval(interval);
     }
   }, [raceId]);
 
@@ -83,14 +90,10 @@ export default function RacePage() {
 
   async function fetchEntries() {
     try {
-      console.log('Fetching entries for race:', raceId);
       const res = await fetch(`/api/races/${raceId}/entries`);
       const data = await res.json();
-      console.log('Entries response:', data);
       if (res.ok) {
         setEntries(data.entries || []);
-      } else {
-        console.error('Entries fetch failed:', data.error);
       }
     } catch (err) {
       console.error('Failed to fetch entries:', err);
@@ -213,9 +216,6 @@ export default function RacePage() {
           <h2 className="text-xl font-semibold mb-4">
             {race.status === 'resolved' ? 'Results' : 'Entries'} ({entries.length}/{race.max_entries})
           </h2>
-
-          {/* Debug info - remove after testing */}
-          <p className="text-xs text-gray-500 mb-2">Race ID: {raceId}</p>
 
           {/* Simple grid gallery */}
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
