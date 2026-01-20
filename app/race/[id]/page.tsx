@@ -23,10 +23,23 @@ interface RaceEntry {
   id: string;
   nft_token_id: string;
   nft_name: string;
+  nft_number: number;
   owner_address: string;
   final_position?: number;
   final_distance?: number;
   payout_amount?: number;
+}
+
+const CYBERPETS_IPFS_CID = 'QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw';
+
+function getPetImageUrl(petNumber: number): string {
+  return `https://api.ergexplorer.com/nftcache/${CYBERPETS_IPFS_CID}_${petNumber}.png.png`;
+}
+
+function getPetName(nftName: string): string {
+  // Extract pet type from name like "CyberPet #1906" or return the trait pet type
+  const match = nftName?.match(/CyberPet\s*#?\d*/i);
+  return match ? nftName : (nftName || 'Unknown Pet');
 }
 
 interface NFT {
@@ -197,53 +210,75 @@ export default function RacePage() {
             {race.status === 'resolved' ? 'Results' : 'Entries'}
           </h2>
 
-          {entries.length === 0 ? (
-            <p className="text-gray-400">No entries yet</p>
-          ) : (
-            <div className="space-y-2">
-              {entries
-                .sort((a, b) => (a.final_position || 999) - (b.final_position || 999))
-                .map((entry, index) => (
-                  <div 
-                    key={entry.id}
-                    className={`flex justify-between items-center p-3 rounded ${
-                      race.status === 'resolved' && entry.final_position === 1 
-                        ? 'bg-yellow-600/20 border border-yellow-600' 
-                        : 'bg-gray-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {race.status === 'resolved' && (
-                        <span className={`w-8 h-8 flex items-center justify-center rounded-full ${
-                          entry.final_position === 1 ? 'bg-yellow-500 text-black' :
-                          entry.final_position === 2 ? 'bg-gray-300 text-black' :
-                          entry.final_position === 3 ? 'bg-orange-600 text-white' :
-                          'bg-gray-600'
-                        }`}>
-                          {entry.final_position || '-'}
-                        </span>
-                      )}
-                      <div>
-                        <p className="font-semibold">{entry.nft_name || 'Unknown Pet'}</p>
-                        <p className="text-xs text-gray-400">
-                          {entry.owner_address.slice(0, 8)}...{entry.owner_address.slice(-6)}
-                        </p>
+          {/* Simple grid gallery */}
+          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+            {/* Show entered pets */}
+            {entries
+              .sort((a, b) => (a.final_position || 999) - (b.final_position || 999))
+              .map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`relative rounded-lg overflow-hidden bg-gray-700 ${
+                    race.status === 'resolved' && entry.final_position === 1
+                      ? 'ring-2 ring-yellow-500'
+                      : race.status === 'resolved' && entry.final_position === 2
+                      ? 'ring-2 ring-gray-300'
+                      : race.status === 'resolved' && entry.final_position === 3
+                      ? 'ring-2 ring-orange-500'
+                      : ''
+                  }`}
+                >
+                  {/* Position badge for resolved races */}
+                  {race.status === 'resolved' && entry.final_position && (
+                    <div className={`absolute top-1 left-1 z-10 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
+                      entry.final_position === 1 ? 'bg-yellow-500 text-black' :
+                      entry.final_position === 2 ? 'bg-gray-300 text-black' :
+                      entry.final_position === 3 ? 'bg-orange-500 text-white' :
+                      'bg-gray-600 text-white'
+                    }`}>
+                      {entry.final_position}
+                    </div>
+                  )}
+
+                  {/* Pet image */}
+                  <div className="aspect-square">
+                    {entry.nft_number ? (
+                      <img
+                        src={getPetImageUrl(entry.nft_number)}
+                        alt={entry.nft_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-600 flex items-center justify-center">
+                        <span className="text-2xl">🐾</span>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      {race.status === 'resolved' && entry.final_distance && (
-                        <p className="text-sm">{entry.final_distance.toFixed(2)} m</p>
-                      )}
-                      {entry.payout_amount && entry.payout_amount > 0 && (
-                        <p className="text-green-400 text-sm">
-                          +{entry.payout_amount / 1e9} ERG
-                        </p>
-                      )}
-                    </div>
+                    )}
                   </div>
-                ))}
-            </div>
-          )}
+
+                  {/* Pet name tag */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1 py-0.5">
+                    <p className="text-xs text-center text-white truncate">
+                      {entry.nft_name || 'Pet'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+            {/* Empty slots */}
+            {Array.from({ length: race.max_entries - entries.length }).map((_, index) => (
+              <div
+                key={`empty-${index}`}
+                className="relative rounded-lg overflow-hidden bg-gray-700/50 border-2 border-dashed border-gray-600"
+              >
+                <div className="aspect-square flex items-center justify-center">
+                  <span className="text-gray-500 text-2xl">?</span>
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5">
+                  <p className="text-xs text-center text-gray-500">Empty</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </main>
