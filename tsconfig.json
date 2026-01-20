@@ -20,10 +20,7 @@
     ],
     "paths": {
       "@/*": ["./*"]
-    },
-    "types": [
-      "@nautilus-js/eip12-types"
-    ]
+    }
   },
   "include": [
     "next-env.d.ts",
