@@ -348,10 +348,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
       entryError = result.error;
     }
 
-    if (entryError) {
+    if (entryError || !entry) {
       console.error('11. ENTRY ERROR:', JSON.stringify(entryError, null, 2));
       return NextResponse.json(
-        { success: false, error: `Failed to record race entry: ${entryError.message}` },
+        { success: false, error: `Failed to record race entry: ${entryError?.message || 'Unknown error'}` },
         { status: 500 }
       );
     }
