@@ -183,6 +183,8 @@ export default function RacePage() {
             <h2 className="text-xl font-semibold mb-4">Enter Race</h2>
             <UnifiedWalletConnect
               raceId={raceId}
+              raceName={race.name}
+              entryFeeNanoErg={BigInt(race.entry_fee)}
               availableNFTs={userNFTs}
               onEntrySuccess={handleEntrySuccess}
             />
