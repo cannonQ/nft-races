@@ -146,10 +146,10 @@ export async function addressToSigmaBooleanAsync(address: string): Promise<strin
 /**
  * Synchronous version - manual byte construction
  *
- * Trying different formats to find what Terminus expects:
- * Option 1: Just the 33-byte compressed public key (group element)
- * Option 2: 0xCD + 33-byte public key (ProveDlog with opcode)
- * Option 3: Full ErgoTree bytes
+ * SigmaBoolean for ProveDlog (P2PK) format:
+ * - 0xCD (ProveDlog opcode) + 33-byte compressed public key
+ *
+ * This is the serialized form of SigmaProp that Terminus expects.
  */
 export function addressToSigmaBoolean(address: string): string {
   // Decode the base58 address
@@ -163,9 +163,13 @@ export function addressToSigmaBoolean(address: string): string {
   // Extract the 33-byte compressed public key (bytes 1-33)
   const publicKey = decoded.slice(1, 34);
 
-  // Try Option 1: Just the raw 33-byte group element (compressed EC point)
-  // This is what the actual SigmaProp "value" is - the public key itself
-  return Buffer.from(publicKey).toString('base64');
+  // ProveDlog format: 0xCD (opcode 205) + 33-byte group element
+  // This is how SigmaProp serializes a ProveDlog (discrete log proof)
+  const sigmaBooleanBytes = new Uint8Array(34);
+  sigmaBooleanBytes[0] = 0xCD; // ProveDlog opcode
+  sigmaBooleanBytes.set(publicKey, 1);
+
+  return Buffer.from(sigmaBooleanBytes).toString('base64');
 }
 
 /**
