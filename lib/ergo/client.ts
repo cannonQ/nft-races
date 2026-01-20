@@ -472,9 +472,10 @@ export async function buildAndSignRaceEntryTx(
     }
 
     // Build unsigned transaction
+    // Nautilus expects full input boxes with extension field for signing
     const unsignedTx = {
       inputs: selectedUtxos.map(utxo => ({
-        boxId: utxo.boxId,
+        ...utxo,
         extension: {},
       })),
       dataInputs: [],
@@ -484,6 +485,7 @@ export async function buildAndSignRaceEntryTx(
     console.log('Unsigned TX:', JSON.stringify(unsignedTx, null, 2));
 
     // Sign transaction with Nautilus
+    // Nautilus sign_tx expects the unsigned transaction object
     const signedTx = await window.ergo.sign_tx(unsignedTx);
     console.log('Signed TX:', signedTx);
 
