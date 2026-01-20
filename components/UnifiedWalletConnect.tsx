@@ -444,6 +444,7 @@ export function UnifiedWalletConnect({
 
         .result.error {
           background: #ef4444;
+          color: white;
         }
 
         .error {
