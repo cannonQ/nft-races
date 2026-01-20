@@ -114,10 +114,12 @@ function createSigningMessage(raceId: string, nftTokenId: string): string {
 }
 
 /**
- * Convert P2PK address to SigmaBoolean (hex-encoded serialized ProveDlog)
+ * Convert P2PK address to SigmaBoolean (base64-encoded serialized ProveDlog)
  *
  * For P2PK addresses starting with '9', the address encodes a compressed public key.
- * The SigmaProp format is: 'cd' (ProveDlog type) + 33-byte compressed public key
+ * The SigmaProp format for ProveDlog is: 0xcd (GroupElement type) + 33-byte compressed public key
+ *
+ * Terminus expects base64-encoded binary data.
  */
 export function addressToSigmaBoolean(address: string): string {
   // Decode the base58 address
@@ -132,15 +134,13 @@ export function addressToSigmaBoolean(address: string): string {
   const publicKey = decoded.slice(1, 34);
 
   // Build ProveDlog SigmaProp: type code 'cd' + public key bytes
-  // 'cd' = 0xcd = 205 = ProveDlog constant type in sigma serialization
+  // 0xcd = ProveDlog/SGroupElement constant type in sigma serialization
   const sigmaProp = new Uint8Array(34);
   sigmaProp[0] = 0xcd;
   sigmaProp.set(publicKey, 1);
 
-  // Return as hex string (ErgoAuth uses hex, not base64 for sigmaBoolean)
-  return Array.from(sigmaProp)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  // Return as base64 string (Terminus expects base64-encoded binary)
+  return Buffer.from(sigmaProp).toString('base64');
 }
 
 /**
