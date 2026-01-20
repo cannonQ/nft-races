@@ -11,19 +11,29 @@ export async function GET() {
   );
 
   try {
+    // Get races
     const { data: races, error } = await supabase
       .from('races')
-      .select('*, race_entries(count)')
+      .select('*')
       .in('status', ['open', 'pending'])
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Add entry count
-    const racesWithCount = races?.map(race => ({
-      ...race,
-      entry_count: race.race_entries?.[0]?.count || 0,
-    }));
+    // Get entry counts for each race
+    const racesWithCount = await Promise.all(
+      (races || []).map(async (race) => {
+        const { count } = await supabase
+          .from('race_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('race_id', race.id);
+
+        return {
+          ...race,
+          entry_count: count || 0,
+        };
+      })
+    );
 
     return NextResponse.json({ races: racesWithCount });
   } catch (err: any) {
