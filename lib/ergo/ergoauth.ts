@@ -1,9 +1,9 @@
 /**
  * ErgoAuth Integration for Mobile Wallets (Terminus)
- * 
+ *
  * ErgoAuth (EIP-28) enables QR code-based message signing
  * for mobile wallets like Terminus without requiring a browser extension.
- * 
+ *
  * Flow:
  * 1. dApp generates ErgoAuthRequest with unique session + message
  * 2. User scans QR code with mobile wallet (ergoauth:// URI)
@@ -20,7 +20,7 @@ import crypto from 'crypto';
 
 export interface ErgoAuthRequest {
   signingMessage: string;        // Message to sign (your race entry message)
-  sigmaBoolean: string;          // Base64 serialized SigmaBoolean (P2PK address)
+  sigmaBoolean: string;          // Hex-encoded serialized SigmaProp (ProveDlog for P2PK)
   userMessage?: string;          // Human-readable message shown to user
   messageSeverity?: 'INFORMATION' | 'WARNING';
   replyToUrl: string;            // URL where wallet POSTs the response
@@ -50,8 +50,49 @@ export interface ErgoAuthSession {
 const SESSION_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 const MESSAGE_PREFIX = 'CYBERPETS-RACE';
 
+// Base58 alphabet used by Ergo
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
 // In-memory session store (use Redis/Supabase in production)
 const sessions = new Map<string, ErgoAuthSession>();
+
+// ============================================
+// Base58 Decoding
+// ============================================
+
+/**
+ * Decode base58 string to bytes
+ */
+function base58Decode(str: string): Uint8Array {
+  const bytes: number[] = [];
+
+  for (const char of str) {
+    const value = BASE58_ALPHABET.indexOf(char);
+    if (value === -1) {
+      throw new Error(`Invalid base58 character: ${char}`);
+    }
+
+    let carry = value;
+    for (let i = 0; i < bytes.length; i++) {
+      carry += bytes[i] * 58;
+      bytes[i] = carry & 0xff;
+      carry >>= 8;
+    }
+
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+
+  // Handle leading zeros
+  for (const char of str) {
+    if (char !== '1') break;
+    bytes.push(0);
+  }
+
+  return new Uint8Array(bytes.reverse());
+}
 
 // ============================================
 // Session Management
@@ -73,19 +114,33 @@ function createSigningMessage(raceId: string, nftTokenId: string): string {
 }
 
 /**
- * Convert P2PK address to SigmaBoolean (base64)
- * 
- * For P2PK addresses, the SigmaBoolean is just the address itself
- * wrapped in the proper format. The wallet needs this to know
- * which key to use for signing.
+ * Convert P2PK address to SigmaBoolean (hex-encoded serialized ProveDlog)
+ *
+ * For P2PK addresses starting with '9', the address encodes a compressed public key.
+ * The SigmaProp format is: 'cd' (ProveDlog type) + 33-byte compressed public key
  */
-export async function addressToSigmaBoolean(address: string): Promise<string> {
-  // For simple P2PK authentication, we can use the address directly
-  // The mobile wallet will interpret this and sign with the matching key
-  // 
-  // In a production implementation, you'd use ergo-lib-wasm to properly
-  // serialize the SigmaBoolean, but for P2PK this simplified approach works
-  return Buffer.from(address).toString('base64');
+export function addressToSigmaBoolean(address: string): string {
+  // Decode the base58 address
+  const decoded = base58Decode(address);
+
+  // Address format: 1 byte type + 33 bytes public key + 4 bytes checksum = 38 bytes
+  if (decoded.length < 38) {
+    throw new Error('Invalid address length');
+  }
+
+  // Extract the 33-byte compressed public key (bytes 1-33)
+  const publicKey = decoded.slice(1, 34);
+
+  // Build ProveDlog SigmaProp: type code 'cd' + public key bytes
+  // 'cd' = 0xcd = 205 = ProveDlog constant type in sigma serialization
+  const sigmaProp = new Uint8Array(34);
+  sigmaProp[0] = 0xcd;
+  sigmaProp.set(publicKey, 1);
+
+  // Return as hex string (ErgoAuth uses hex, not base64 for sigmaBoolean)
+  return Array.from(sigmaProp)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /**
@@ -104,7 +159,7 @@ export async function createErgoAuthSession(
 }> {
   const sessionId = generateSessionId();
   const signingMessage = createSigningMessage(raceId, nftTokenId);
-  const sigmaBoolean = await addressToSigmaBoolean(address);
+  const sigmaBoolean = addressToSigmaBoolean(address);
   
   // Create session
   const session: ErgoAuthSession = {
