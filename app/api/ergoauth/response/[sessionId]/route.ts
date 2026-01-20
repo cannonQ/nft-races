@@ -12,6 +12,20 @@ import {
   type ErgoAuthResponse,
 } from '@/lib/ergo/ergoauth';
 import { verifyNFTOwnership } from '@/lib/ergo/server';
+import { getCyberPetInfo } from '@/lib/cyberpets';
+
+// Rarity multipliers for speed calculation
+const RARITY_MULTIPLIERS: Record<string, number> = {
+  'Common': 1.00,
+  'Uncommon': 1.01,
+  'Rare': 1.02,
+  'Epic': 1.04,
+  'Legendary': 1.05,
+  'Mythic': 1.06,
+  'Relic': 1.07,
+  'Masterwork': 1.08,
+  'Cyberium': 1.10,
+};
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY!;
@@ -81,16 +95,28 @@ export async function POST(
 
     // All verification passed - create the race entry
     const supabase = getSupabaseClient();
-    
+
+    // Get CyberPet info for recording
+    const petInfo = getCyberPetInfo(session.nftTokenId);
+    const nftName = petInfo?.name || `CyberPet ${session.nftTokenId.slice(0, 8)}`;
+    const traits = petInfo?.traits || null;
+    const speedMultiplier = traits ? (RARITY_MULTIPLIERS[traits.rarity] || 1.0) : 1.0;
+    const consistency = traits ? (0.5 + traits.bodyParts.length * 0.04) : 0.5;
+
     const { data: entry, error: insertError } = await supabase
       .from('race_entries')
       .insert({
         race_id: session.raceId,
-        address: session.address,
+        owner_address: session.address,
         nft_token_id: session.nftTokenId,
-        message: body.signedMessage,
+        nft_name: nftName,
+        nft_number: petInfo?.number || null,
+        traits: traits,
+        speed_multiplier: speedMultiplier,
+        consistency: consistency,
         signature: body.proof,
         verified_at: new Date().toISOString(),
+        is_house_nft: false,
       })
       .select('id')
       .single();
