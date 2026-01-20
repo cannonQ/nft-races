@@ -226,8 +226,9 @@ export async function verifyErgoAuthResponse(
     const messageBytes = new TextEncoder().encode(response.signedMessage);
     const proofBytes = Buffer.from(response.proof, 'base64');
     
+    const address = ergoWasm.Address.from_base58(session.address);
     const isValid = ergoWasm.verify_signature(
-      session.address,
+      address,
       messageBytes,
       proofBytes
     );
