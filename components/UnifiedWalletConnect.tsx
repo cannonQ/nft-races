@@ -99,6 +99,26 @@ export function UnifiedWalletConnect({
     if (!raceId || !selectedNFT) return;
 
     setJoinResult(null);
+
+    // PRE-CHECK: Verify NFT can enter BEFORE signing transaction
+    try {
+      const checkRes = await fetch(
+        `/api/race/check-entry?raceId=${raceId}&nftTokenId=${selectedNFT}`
+      );
+      const checkData = await checkRes.json();
+
+      if (!checkData.canEnter) {
+        setJoinResult({
+          success: false,
+          message: checkData.error || 'Cannot enter this race',
+        });
+        return; // Stop - don't sign transaction
+      }
+    } catch (err) {
+      console.error('Pre-check failed:', err);
+      // Continue anyway if check fails - backend will catch it
+    }
+
     const result = await wallet.signAndJoinRace(
       raceId,
       raceName,
@@ -247,7 +267,27 @@ export function UnifiedWalletConnect({
               )}
 
               <button
-                onClick={() => setShowQR(true)}
+                onClick={async () => {
+                  // PRE-CHECK before showing QR
+                  if (raceId && selectedNFT) {
+                    try {
+                      const checkRes = await fetch(
+                        `/api/race/check-entry?raceId=${raceId}&nftTokenId=${selectedNFT}`
+                      );
+                      const checkData = await checkRes.json();
+                      if (!checkData.canEnter) {
+                        setJoinResult({
+                          success: false,
+                          message: checkData.error || 'Cannot enter this race',
+                        });
+                        return;
+                      }
+                    } catch (err) {
+                      console.error('Pre-check failed:', err);
+                    }
+                  }
+                  setShowQR(true);
+                }}
                 disabled={!mobileAddress || !selectedNFT}
                 className="primary-button"
               >
