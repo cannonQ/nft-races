@@ -14,6 +14,8 @@ import { useState, useEffect } from 'react';
 import { useErgoWallet, formatErg, truncateAddress } from '@/hooks/useErgoWallet';
 import { isNautilusInstalled } from '@/lib/ergo/client';
 import { ErgoAuthQR } from './ErgoAuthQR';
+import { CyberPetSelector } from './CyberPetSelector';
+import type { CyberPetInfo } from '@/lib/cyberpets';
 
 interface UnifiedWalletConnectProps {
   raceId?: string;
@@ -41,11 +43,7 @@ export function UnifiedWalletConnect({
     success: boolean;
     message: string;
   } | null>(null);
-  const [fetchedNFTs, setFetchedNFTs] = useState<Array<{
-    tokenId: string;
-    name: string;
-    imageUrl?: string;
-  }>>([]);
+  const [fetchedNFTs, setFetchedNFTs] = useState<CyberPetInfo[]>([]);
   const [nftsLoading, setNftsLoading] = useState(false);
 
   // Detect available connection methods
@@ -91,9 +89,6 @@ export function UnifiedWalletConnect({
 
     fetchNFTs();
   }, [wallet.state.address, manualAddress]);
-
-  // Combine prop NFTs with fetched NFTs (prefer fetched if available)
-  const displayNFTs = fetchedNFTs.length > 0 ? fetchedNFTs : availableNFTs;
 
   // Handle Nautilus join
   const handleNautilusJoin = async () => {
@@ -185,33 +180,21 @@ export function UnifiedWalletConnect({
 
               {raceId && (
                 <div className="race-entry">
-                  <label>Select your CyberPet:</label>
-                  {nftsLoading ? (
-                    <p className="loading-text">Loading your NFTs...</p>
-                  ) : displayNFTs.length > 0 ? (
-                    <>
-                      <select
-                        value={selectedNFT}
-                        onChange={(e) => setSelectedNFT(e.target.value)}
-                      >
-                        <option value="">Choose a CyberPet...</option>
-                        {displayNFTs.map((nft) => (
-                          <option key={nft.tokenId} value={nft.tokenId}>
-                            {nft.name}
-                          </option>
-                        ))}
-                      </select>
+                  <CyberPetSelector
+                    pets={fetchedNFTs}
+                    selectedTokenId={selectedNFT}
+                    onSelect={setSelectedNFT}
+                    loading={nftsLoading}
+                  />
 
-                      <button
-                        onClick={handleNautilusJoin}
-                        disabled={!selectedNFT || wallet.state.loading}
-                        className="primary-button"
-                      >
-                        {wallet.state.loading ? 'Signing...' : 'Sign & Join Race'}
-                      </button>
-                    </>
-                  ) : (
-                    <p className="no-nfts">No CyberPets found in your wallet</p>
+                  {fetchedNFTs.length > 0 && (
+                    <button
+                      onClick={handleNautilusJoin}
+                      disabled={!selectedNFT || wallet.state.loading}
+                      className="primary-button"
+                    >
+                      {wallet.state.loading ? 'Signing...' : 'Sign & Join Race'}
+                    </button>
                   )}
                 </div>
               )}
@@ -243,26 +226,14 @@ export function UnifiedWalletConnect({
               )}
 
               {/* NFT Selection */}
-              {raceId && (
+              {raceId && mobileAddress && (
                 <div className="nft-select">
-                  <label>Select your CyberPet:</label>
-                  {nftsLoading ? (
-                    <p className="loading-text">Loading your NFTs...</p>
-                  ) : displayNFTs.length > 0 ? (
-                    <select
-                      value={selectedNFT}
-                      onChange={(e) => setSelectedNFT(e.target.value)}
-                    >
-                      <option value="">Choose a CyberPet...</option>
-                      {displayNFTs.map((nft) => (
-                        <option key={nft.tokenId} value={nft.tokenId}>
-                          {nft.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : mobileAddress ? (
-                    <p className="no-nfts">No CyberPets found in your wallet</p>
-                  ) : null}
+                  <CyberPetSelector
+                    pets={fetchedNFTs}
+                    selectedTokenId={selectedNFT}
+                    onSelect={setSelectedNFT}
+                    loading={nftsLoading}
+                  />
                 </div>
               )}
 
