@@ -13,8 +13,20 @@ export async function GET(
 ) {
   try {
     const { id: raceId } = await context.params;
-    console.log('Fetching entries for race:', raceId);
+    console.log('=== Entries API Debug ===');
+    console.log('Race ID:', raceId);
+    console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 30) + '...');
+    console.log('Service key exists:', !!process.env.SUPABASE_SERVICE_KEY);
 
+    // First try to count all entries to verify table access
+    const { count, error: countError } = await supabase
+      .from('race_entries')
+      .select('*', { count: 'exact', head: true });
+
+    console.log('Total entries in table:', count);
+    if (countError) console.error('Count error:', countError);
+
+    // Now query for this race
     const { data: entries, error } = await supabase
       .from('race_entries')
       .select('*')
@@ -27,6 +39,10 @@ export async function GET(
     }
 
     console.log(`Found ${entries?.length || 0} entries for race ${raceId}`);
+    if (entries && entries.length > 0) {
+      console.log('First entry:', JSON.stringify(entries[0], null, 2));
+    }
+
     return NextResponse.json({ entries: entries || [] });
   } catch (err: any) {
     console.error('Entries API error:', err);
