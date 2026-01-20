@@ -405,8 +405,9 @@ export async function buildAndSignRaceEntryTx(
       return { success: false, error: 'No UTXOs available in wallet' };
     }
 
-    // Calculate total needed
-    const totalNeeded = entryFeeNanoErg + TX_FEE;
+    // Calculate total needed (entry fee + minimum for change box)
+    // Note: We don't include TX_FEE here - Nautilus will deduct it automatically
+    const totalNeeded = entryFeeNanoErg + MIN_BOX_VALUE;
 
     // Select UTXOs to cover the amount
     let inputValue = 0n;
@@ -415,15 +416,15 @@ export async function buildAndSignRaceEntryTx(
     for (const utxo of utxos) {
       selectedUtxos.push(utxo);
       inputValue += BigInt(utxo.value);
-      if (inputValue >= totalNeeded + MIN_BOX_VALUE) {
+      if (inputValue >= totalNeeded + TX_FEE) {
         break;
       }
     }
 
-    if (inputValue < totalNeeded) {
+    if (inputValue < totalNeeded + TX_FEE) {
       return {
         success: false,
-        error: `Insufficient funds. Need ${Number(totalNeeded) / 1e9} ERG, have ${Number(inputValue) / 1e9} ERG`
+        error: `Insufficient funds. Need ${Number(totalNeeded + TX_FEE) / 1e9} ERG, have ${Number(inputValue) / 1e9} ERG`
       };
     }
 
@@ -444,7 +445,8 @@ export async function buildAndSignRaceEntryTx(
     };
 
     // Build change output
-    const changeValue = inputValue - entryFeeNanoErg - TX_FEE;
+    // Don't subtract TX_FEE - Nautilus handles fee deduction automatically
+    const changeValue = inputValue - entryFeeNanoErg;
     const outputs: any[] = [entryBox];
 
     if (changeValue >= MIN_BOX_VALUE) {
@@ -472,10 +474,17 @@ export async function buildAndSignRaceEntryTx(
     }
 
     // Build unsigned transaction
-    // Nautilus expects full input boxes with extension field for signing
+    // EIP-12 format: inputs need boxId, value, ergoTree, assets, creationHeight, additionalRegisters
     const unsignedTx = {
       inputs: selectedUtxos.map(utxo => ({
-        ...utxo,
+        boxId: utxo.boxId,
+        transactionId: utxo.transactionId,
+        index: utxo.index,
+        ergoTree: utxo.ergoTree,
+        creationHeight: utxo.creationHeight,
+        value: utxo.value.toString(),
+        assets: utxo.assets || [],
+        additionalRegisters: utxo.additionalRegisters || {},
         extension: {},
       })),
       dataInputs: [],
@@ -483,6 +492,10 @@ export async function buildAndSignRaceEntryTx(
     };
 
     console.log('Unsigned TX:', JSON.stringify(unsignedTx, null, 2));
+    const outputTotal = entryFeeNanoErg + (changeValue >= MIN_BOX_VALUE ? changeValue : 0n);
+    console.log('Input total:', inputValue.toString(), 'nanoErg');
+    console.log('Output total:', outputTotal.toString(), 'nanoErg');
+    console.log('Difference (should be 0, Nautilus adds fee):', (inputValue - outputTotal).toString());
 
     // Sign transaction with Nautilus
     // Nautilus sign_tx expects the unsigned transaction object
