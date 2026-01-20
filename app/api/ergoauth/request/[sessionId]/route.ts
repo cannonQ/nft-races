@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getErgoAuthSession,
+  addressToSigmaBoolean,
   type ErgoAuthRequest,
 } from '@/lib/ergo/ergoauth';
 
@@ -48,7 +49,7 @@ export async function GET(
     const baseUrl = getBaseUrl(request);
     const ergoAuthRequest: ErgoAuthRequest = {
       signingMessage: session.signingMessage,
-      sigmaBoolean: Buffer.from(session.address).toString('base64'),
+      sigmaBoolean: addressToSigmaBoolean(session.address),
       userMessage: `Join CyberPets Race\n\nRace ID: ${session.raceId}\nYour NFT: ${session.nftTokenId.slice(0, 12)}...`,
       messageSeverity: 'INFORMATION',
       replyToUrl: `${baseUrl}/api/ergoauth/response/${sessionId}`,
