@@ -472,10 +472,17 @@ export async function buildAndSignRaceEntryTx(
     }
 
     // Build unsigned transaction
-    // Nautilus expects full input boxes with extension field for signing
+    // EIP-12 format: inputs need boxId, value, ergoTree, assets, creationHeight, additionalRegisters
     const unsignedTx = {
       inputs: selectedUtxos.map(utxo => ({
-        ...utxo,
+        boxId: utxo.boxId,
+        transactionId: utxo.transactionId,
+        index: utxo.index,
+        ergoTree: utxo.ergoTree,
+        creationHeight: utxo.creationHeight,
+        value: utxo.value.toString(),
+        assets: utxo.assets || [],
+        additionalRegisters: utxo.additionalRegisters || {},
         extension: {},
       })),
       dataInputs: [],
@@ -483,6 +490,11 @@ export async function buildAndSignRaceEntryTx(
     };
 
     console.log('Unsigned TX:', JSON.stringify(unsignedTx, null, 2));
+    console.log('Input total:', inputValue.toString());
+    console.log('Entry fee:', entryFeeNanoErg.toString());
+    console.log('TX fee:', TX_FEE.toString());
+    console.log('Change:', changeValue.toString());
+    console.log('Output total:', (entryFeeNanoErg + (changeValue >= MIN_BOX_VALUE ? changeValue : 0n)).toString());
 
     // Sign transaction with Nautilus
     // Nautilus sign_tx expects the unsigned transaction object
