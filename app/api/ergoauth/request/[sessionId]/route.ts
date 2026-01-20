@@ -11,9 +11,22 @@ import {
 } from '@/lib/ergo/ergoauth';
 
 function getBaseUrl(request: NextRequest): string {
-  const host = request.headers.get('host') || 'localhost:3000';
-  const protocol = host.includes('localhost') ? 'http' : 'https';
-  return `${protocol}://${host}`;
+  // CRITICAL: For ErgoAuth, the replyTo URL MUST be on the same host
+  // that Terminus used to fetch this request. Use the request URL's origin.
+  const url = new URL(request.url);
+
+  // On Vercel, the internal URL might be different, so check headers
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+
+  if (forwardedHost) {
+    // Behind a proxy - use forwarded values
+    const protocol = forwardedProto || 'https';
+    return `${protocol}://${forwardedHost}`;
+  }
+
+  // Use the request URL's origin directly
+  return url.origin;
 }
 
 export async function GET(
@@ -47,12 +60,24 @@ export async function GET(
 
     // Build the ErgoAuthRequest response
     const baseUrl = getBaseUrl(request);
+    const replyToUrl = `${baseUrl}/api/ergoauth/response/${sessionId}`;
+
+    // Debug logging
+    console.log('ErgoAuth request debug:', {
+      requestUrl: request.url,
+      forwardedHost: request.headers.get('x-forwarded-host'),
+      forwardedProto: request.headers.get('x-forwarded-proto'),
+      host: request.headers.get('host'),
+      computedBaseUrl: baseUrl,
+      replyToUrl,
+    });
+
     const ergoAuthRequest: ErgoAuthRequest = {
       signingMessage: session.signingMessage,
       sigmaBoolean: addressToSigmaBoolean(session.address),
       userMessage: `Join CyberPets Race\n\nRace ID: ${session.raceId}\nYour NFT: ${session.nftTokenId.slice(0, 12)}...`,
       messageSeverity: 'INFORMATION',
-      replyToUrl: `${baseUrl}/api/ergoauth/response/${sessionId}`,
+      replyToUrl,
     };
 
     return NextResponse.json(ergoAuthRequest);
