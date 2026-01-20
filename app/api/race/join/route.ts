@@ -272,6 +272,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
         speed_multiplier: speedMultiplier,
         consistency: consistency,
         signature: txId,  // Store txId in signature field for browser wallets
+        entry_fee_paid: race.entry_fee,
+        verified_at: new Date().toISOString(),
         is_house_nft: false,
       })
       .select('id')
