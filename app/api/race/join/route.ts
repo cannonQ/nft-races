@@ -23,6 +23,19 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY!;
 // House wallet that receives entry fees
 const HOUSE_WALLET = '9gbgJTNXUcdqRp2Tq8hjwnw8B5qvFSWFgDbuDKRRsNjUPjgC3vm';
 
+// Rarity multipliers for speed calculation
+const RARITY_MULTIPLIERS: Record<string, number> = {
+  'Common': 1.00,
+  'Uncommon': 1.01,
+  'Rare': 1.02,
+  'Epic': 1.04,
+  'Legendary': 1.05,
+  'Mythic': 1.06,
+  'Relic': 1.07,
+  'Masterwork': 1.08,
+  'Cyberium': 1.10,
+};
+
 // ============================================
 // Supabase Client
 // ============================================
@@ -240,7 +253,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
       );
     }
 
-    // 10. Record the entry in database
+    // 10. Get CyberPet traits for recording
+    const traits = petInfo?.traits || null;
+    const speedMultiplier = traits ? (RARITY_MULTIPLIERS[traits.rarity] || 1.0) : 1.0;
+    const consistency = traits ? (0.5 + traits.bodyParts.length * 0.04) : 0.5;
+
+    // 11. Record the entry in database
     const { data: entry, error: insertError } = await supabase
       .from('race_entries')
       .insert({
@@ -248,9 +266,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
         owner_address: address,
         nft_token_id: nftTokenId,
         nft_name: nftName,
-        tx_id: txId,
-        entry_fee_paid: race.entry_fee,
-        verified_at: new Date().toISOString(),
+        nft_number: petInfo?.number || null,
+        traits: traits ? JSON.stringify(traits) : null,
+        speed_multiplier: speedMultiplier,
+        consistency: consistency,
+        signature: txId, // Store txId in signature field
+        is_house_nft: false,
       })
       .select('id')
       .single();
