@@ -185,3 +185,11 @@ cyberpets-racing/
 ## License
 
 MIT
+
+## CyberPets Trait Box
+Box ID:    a9af56f8cae018dc69c36eeb3a89f7a17d306cf5f86203d60cc77a25444d90fe
+TX ID:     c988253964cba60b9eea9110c400d545ea3bcb49ce8ad8e5842f1070da3da744
+Root Hash: 25a513e4f2869fda20300c1e619d611f33e3d82eab53f05fc4f1b81b91c2a32b
+Pets:      460
+Size:      3,410 bytes
+Block:     [1703589](https://ergexplorer.com/blocks#cd3ffb11a509686094af514dc53da5a7773221ac0a2d25e6081fe197338864f1)
