@@ -1,0 +1,9 @@
+{
+  "boxId": "a9af56f8cae018dc69c36eeb3a89f7a17d306cf5f86203d60cc77a25444d90fe",
+  "txId": "c988253964cba60b9eea9110c400d545ea3bcb49ce8ad8e5842f1070da3da744",
+  "rootHash": "25a513e4f2869fda20300c1e619d611f33e3d82eab53f05fc4f1b81b91c2a32b",
+  "petCount": 460,
+  "sizeBytes": 2760,
+  "creationHeight": 1703588,
+  "explorer": "https://explorer.ergoplatform.com/en/transactions/c988253964cba60b9eea9110c400d545ea3bcb49ce8ad8e5842f1070da3da744"
+}
