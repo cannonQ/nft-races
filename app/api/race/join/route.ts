@@ -225,11 +225,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
       );
     }
 
-    // 8. Check for duplicate transaction ID
+    // 8. Check for duplicate transaction ID (stored in signature field)
     const { data: existingTx } = await supabase
       .from('race_entries')
       .select('id')
-      .eq('tx_id', txId)
+      .eq('signature', txId)
       .single();
 
     if (existingTx) {
@@ -259,6 +259,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
     const consistency = traits ? (0.5 + traits.bodyParts.length * 0.04) : 0.5;
 
     // 11. Record the entry in database
+    // Note: Using 'signature' column to store txId for browser wallet entries
     const { data: entry, error: insertError } = await supabase
       .from('race_entries')
       .insert({
@@ -267,12 +268,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<JoinRaceR
         nft_token_id: nftTokenId,
         nft_name: nftName,
         nft_number: petInfo?.number || null,
-        traits: traits ? JSON.stringify(traits) : null,
+        traits: traits,
         speed_multiplier: speedMultiplier,
         consistency: consistency,
-        tx_id: txId,
-        entry_fee_paid: race.entry_fee,
-        verified_at: new Date().toISOString(),
+        signature: txId,  // Store txId in signature field for browser wallets
         is_house_nft: false,
       })
       .select('id')
@@ -321,7 +320,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const { data: entries, error } = await supabase
     .from('race_entries')
-    .select('id, nft_token_id, nft_name, tx_id, created_at')
+    .select('id, nft_token_id, nft_name, signature, created_at')
     .eq('race_id', raceId)
     .eq('owner_address', address);
 
