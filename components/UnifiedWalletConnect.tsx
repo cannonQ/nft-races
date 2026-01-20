@@ -277,7 +277,14 @@ export function UnifiedWalletConnect({
       {/* Result Message */}
       {joinResult && (
         <div className={`result ${joinResult.success ? 'success' : 'error'}`}>
-          {joinResult.message}
+          <span>{joinResult.message}</span>
+          <button
+            className="dismiss-btn"
+            onClick={() => setJoinResult(null)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -435,16 +442,41 @@ export function UnifiedWalletConnect({
           margin-top: 1rem;
           padding: 1rem;
           border-radius: 6px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .result span {
+          flex: 1;
           text-align: center;
         }
 
         .result.success {
           background: #10b981;
+          color: white;
         }
 
         .result.error {
           background: #ef4444;
           color: white;
+        }
+
+        .dismiss-btn {
+          background: transparent;
+          border: none;
+          color: white;
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0 0.25rem;
+          line-height: 1;
+          opacity: 0.8;
+          transition: opacity 0.2s;
+        }
+
+        .dismiss-btn:hover {
+          opacity: 1;
         }
 
         .error {

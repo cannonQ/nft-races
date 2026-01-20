@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (race.status !== 'pending') {
+    if (race.status !== 'open') {
       return NextResponse.json(
         { error: 'Race is not accepting entries' },
         { status: 400 }
