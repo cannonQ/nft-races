@@ -13,8 +13,8 @@ import {
 } from '@/lib/ergo/ergoauth';
 import { verifyNFTOwnership } from '@/lib/ergo/server';
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY!;
 
 function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseServiceKey);
