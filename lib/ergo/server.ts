@@ -128,8 +128,9 @@ export async function verifySignature(
 
     // Use ergo-lib-wasm-nodejs verify_signature
     // verify_signature(address: string, message: Uint8Array, signature: Uint8Array) => boolean
+    const addressObj = wasm.Address.from_base58(address);
     const isValid = wasm.verify_signature(
-      address,
+      addressObj,
       messageBytes,
       signatureBytes
     );
