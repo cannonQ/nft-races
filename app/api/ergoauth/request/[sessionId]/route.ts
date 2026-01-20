@@ -11,26 +11,22 @@ import {
 } from '@/lib/ergo/ergoauth';
 
 function getBaseUrl(request: NextRequest): string {
-  // For Vercel deployments, use the public URL
-  // This ensures the replyTo URL matches the host Terminus sees
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
+  // CRITICAL: For ErgoAuth, the replyTo URL MUST be on the same host
+  // that Terminus used to fetch this request. Use the request URL's origin.
+  const url = new URL(request.url);
 
-  // For custom domain, use NEXT_PUBLIC_APP_URL if set
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL;
-  }
-
-  // Fallback: Priority: x-forwarded-host > host header
+  // On Vercel, the internal URL might be different, so check headers
   const forwardedHost = request.headers.get('x-forwarded-host');
-  const host = forwardedHost || request.headers.get('host') || 'localhost:3000';
-
-  // Determine protocol - use x-forwarded-proto if available
   const forwardedProto = request.headers.get('x-forwarded-proto');
-  const protocol = forwardedProto || (host.includes('localhost') ? 'http' : 'https');
 
-  return `${protocol}://${host}`;
+  if (forwardedHost) {
+    // Behind a proxy - use forwarded values
+    const protocol = forwardedProto || 'https';
+    return `${protocol}://${forwardedHost}`;
+  }
+
+  // Use the request URL's origin directly
+  return url.origin;
 }
 
 export async function GET(
@@ -64,12 +60,24 @@ export async function GET(
 
     // Build the ErgoAuthRequest response
     const baseUrl = getBaseUrl(request);
+    const replyToUrl = `${baseUrl}/api/ergoauth/response/${sessionId}`;
+
+    // Debug logging
+    console.log('ErgoAuth request debug:', {
+      requestUrl: request.url,
+      forwardedHost: request.headers.get('x-forwarded-host'),
+      forwardedProto: request.headers.get('x-forwarded-proto'),
+      host: request.headers.get('host'),
+      computedBaseUrl: baseUrl,
+      replyToUrl,
+    });
+
     const ergoAuthRequest: ErgoAuthRequest = {
       signingMessage: session.signingMessage,
       sigmaBoolean: addressToSigmaBoolean(session.address),
       userMessage: `Join CyberPets Race\n\nRace ID: ${session.raceId}\nYour NFT: ${session.nftTokenId.slice(0, 12)}...`,
       messageSeverity: 'INFORMATION',
-      replyToUrl: `${baseUrl}/api/ergoauth/response/${sessionId}`,
+      replyToUrl,
     };
 
     return NextResponse.json(ergoAuthRequest);
