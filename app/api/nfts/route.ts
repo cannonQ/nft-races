@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { filterAndEnrichCyberPets, isCyberPet } from '@/lib/cyberpets';
 
 const EXPLORER_API = 'https://api.ergoplatform.com/api/v1';
 
-// CyberPets policy ID prefix (first 4 bytes that identify the collection)
-// You may need to adjust this based on actual CyberPets token IDs
-const CYBERPETS_PREFIXES = [
-  '0030e827', '0083431a', '009e95dd', // From packed data
-  // Add more known prefixes or use a different identification method
-];
-
 // GET /api/nfts?address=xxx - Get user's CyberPets NFTs
+// Optional: ?all=true to include non-CyberPet NFTs
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get('address');
+  const includeAll = request.nextUrl.searchParams.get('all') === 'true';
 
   if (!address) {
     return NextResponse.json({ error: 'Address required' }, { status: 400 });
@@ -31,26 +27,38 @@ export async function GET(request: NextRequest) {
     const boxes = data.items || [];
 
     // Extract tokens (NFTs)
-    const nfts: { tokenId: string; name: string; amount: number }[] = [];
+    const rawNfts: { tokenId: string; name: string }[] = [];
 
     for (const box of boxes) {
       for (const asset of box.assets || []) {
-        // Check if this is a CyberPet
-        // For now, include all NFTs with amount 1
+        // Only include NFTs (amount = 1)
         if (asset.amount === 1) {
-          nfts.push({
+          rawNfts.push({
             tokenId: asset.tokenId,
             name: asset.name || `Token ${asset.tokenId.slice(0, 8)}...`,
-            amount: asset.amount,
           });
         }
       }
     }
 
-    // TODO: Filter to only CyberPets by checking against packed-data.json
-    // For now, return all NFTs and let frontend filter
+    // Filter and enrich CyberPets
+    const cyberPets = filterAndEnrichCyberPets(rawNfts);
 
-    return NextResponse.json({ nfts });
+    // If includeAll, also return other NFTs separately
+    if (includeAll) {
+      const otherNfts = rawNfts.filter(nft => !isCyberPet(nft.tokenId));
+      return NextResponse.json({
+        cyberPets,
+        otherNfts,
+        total: rawNfts.length,
+      });
+    }
+
+    // Return only CyberPets (default)
+    return NextResponse.json({
+      nfts: cyberPets,
+      count: cyberPets.length,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
