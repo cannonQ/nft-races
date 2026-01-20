@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
+import {
+  getCyberPetCount,
+  getCyberPetByIndex,
+  HOUSE_WALLET_ADDRESS,
+  RARITY_MULTIPLIERS,
+} from '@/lib/cyberpets';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,17 +27,10 @@ function seededRandom(seed: string, index: number): number {
   return parseInt(hash.slice(0, 8), 16) / 0xffffffff;
 }
 
-// Shuffle array using seeded random (Fisher-Yates)
-function seededShuffle<T>(array: T[], seed: string): T[] {
-  const result = [...array];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(seededRandom(seed, i) * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
-// Fill race with house NFTs using provably fair selection
+/**
+ * Fill race with house NFTs using provably fair selection from JSON data
+ * Uses seeded random to select from 4000+ CyberPets
+ */
 async function fillWithHouseNfts(
   raceId: string,
   serverSeed: string,
@@ -49,56 +48,58 @@ async function fillWithHouseNfts(
 
   const enteredTokenIds = new Set((existingEntries || []).map(e => e.nft_token_id));
 
-  // Fetch ALL available house NFTs
-  const { data: houseNfts, error } = await supabase
-    .from('house_nfts')
-    .select('*')
-    .eq('active', true);
-
-  if (error || !houseNfts || houseNfts.length === 0) {
-    console.log('No house NFTs available:', error?.message);
-    return { filled: 0, houseNfts: [] };
-  }
-
-  // Filter out NFTs already in this race
-  const available = houseNfts.filter(h => !enteredTokenIds.has(h.nft_token_id));
-
-  if (available.length === 0) {
-    console.log('All house NFTs already entered');
-    return { filled: 0, houseNfts: [] };
-  }
-
-  // PROVABLY FAIR: Shuffle using server_seed + "HOUSE_FILL" salt
-  // Anyone can verify this selection by using the revealed seed
-  const shuffleSeed = createHash('sha256')
+  // PROVABLY FAIR: Generate selection seed
+  // Anyone can verify by: SHA256(server_seed + "HOUSE_FILL_" + raceId)
+  const selectionSeed = createHash('sha256')
     .update(serverSeed + 'HOUSE_FILL_' + raceId)
     .digest('hex');
 
-  const shuffled = seededShuffle(available, shuffleSeed);
-  const selected = shuffled.slice(0, Math.min(needed, shuffled.length));
+  const totalPets = getCyberPetCount();
+  console.log(`Selecting ${needed} house NFTs from ${totalPets} CyberPets using seed: ${selectionSeed.slice(0, 16)}...`);
 
-  // Insert house NFT entries
+  // Select random CyberPets using seeded indices
   const insertedNfts = [];
-  for (const house of selected) {
-    // House signature is deterministic based on race + NFT
-    const signature = `HOUSE:${raceId}:${house.nft_token_id}`;
+  let attempts = 0;
+  const maxAttempts = needed * 10; // Prevent infinite loop
+
+  while (insertedNfts.length < needed && attempts < maxAttempts) {
+    // Generate random index using seed + attempt number
+    const randomValue = seededRandom(selectionSeed, attempts);
+    const petIndex = Math.floor(randomValue * totalPets);
+
+    const pet = getCyberPetByIndex(petIndex);
+    attempts++;
+
+    if (!pet) continue;
+
+    // Skip if already entered
+    if (enteredTokenIds.has(pet.tokenId)) continue;
+
+    // Calculate racing stats
+    const speedMultiplier = RARITY_MULTIPLIERS[pet.traits.rarity] || 1.0;
+    const consistency = 0.5 + pet.traits.bodyParts.length * 0.04;
+
+    // House signature is deterministic
+    const signature = `HOUSE:${raceId}:${pet.tokenId}`;
 
     const { error: insertError } = await supabase.from('race_entries').insert({
       race_id: raceId,
-      nft_token_id: house.nft_token_id,
-      nft_name: house.nft_name,
-      nft_number: house.nft_number,
-      owner_address: house.owner_address,
+      nft_token_id: pet.tokenId,
+      nft_name: pet.name,
+      nft_number: pet.number,
+      owner_address: HOUSE_WALLET_ADDRESS,
       signature,
-      traits: house.traits,
-      speed_multiplier: house.speed_multiplier || 1.0,
-      consistency: house.consistency || 0.5,
+      traits: pet.traits,
+      speed_multiplier: speedMultiplier,
+      consistency: consistency,
       is_house_nft: true,
-      entry_fee_paid: 0, // House NFTs don't pay entry fee
+      entry_fee_paid: 0,
     });
 
     if (!insertError) {
-      insertedNfts.push(house);
+      enteredTokenIds.add(pet.tokenId); // Track to avoid duplicates
+      insertedNfts.push(pet);
+      console.log(`  Added house NFT: ${pet.name} (index ${petIndex}, rarity: ${pet.traits.rarity})`);
     } else {
       console.error('Failed to insert house NFT:', insertError);
     }
