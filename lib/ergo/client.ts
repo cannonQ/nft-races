@@ -405,9 +405,8 @@ export async function buildAndSignRaceEntryTx(
       return { success: false, error: 'No UTXOs available in wallet' };
     }
 
-    // Calculate total needed (entry fee + minimum for change box)
-    // Note: We don't include TX_FEE here - Nautilus will deduct it automatically
-    const totalNeeded = entryFeeNanoErg + MIN_BOX_VALUE;
+    // Calculate total needed (entry fee + tx fee + minimum for change box)
+    const totalNeeded = entryFeeNanoErg + TX_FEE + MIN_BOX_VALUE;
 
     // Select UTXOs to cover the amount
     let inputValue = 0n;
@@ -416,15 +415,15 @@ export async function buildAndSignRaceEntryTx(
     for (const utxo of utxos) {
       selectedUtxos.push(utxo);
       inputValue += BigInt(utxo.value);
-      if (inputValue >= totalNeeded + TX_FEE) {
+      if (inputValue >= totalNeeded) {
         break;
       }
     }
 
-    if (inputValue < totalNeeded + TX_FEE) {
+    if (inputValue < totalNeeded) {
       return {
         success: false,
-        error: `Insufficient funds. Need ${Number(totalNeeded + TX_FEE) / 1e9} ERG, have ${Number(inputValue) / 1e9} ERG`
+        error: `Insufficient funds. Need ${Number(totalNeeded) / 1e9} ERG, have ${Number(inputValue) / 1e9} ERG`
       };
     }
 
@@ -444,9 +443,8 @@ export async function buildAndSignRaceEntryTx(
       creationHeight: currentHeight,
     };
 
-    // Build change output
-    // Don't subtract TX_FEE - Nautilus handles fee deduction automatically
-    const changeValue = inputValue - entryFeeNanoErg;
+    // Build change output (subtract entry fee and tx fee from inputs)
+    const changeValue = inputValue - entryFeeNanoErg - TX_FEE;
     const outputs: any[] = [entryBox];
 
     if (changeValue >= MIN_BOX_VALUE) {
@@ -495,7 +493,7 @@ export async function buildAndSignRaceEntryTx(
     const outputTotal = entryFeeNanoErg + (changeValue >= MIN_BOX_VALUE ? changeValue : 0n);
     console.log('Input total:', inputValue.toString(), 'nanoErg');
     console.log('Output total:', outputTotal.toString(), 'nanoErg');
-    console.log('Difference (should be 0, Nautilus adds fee):', (inputValue - outputTotal).toString());
+    console.log('Fee (inputs - outputs):', (inputValue - outputTotal).toString(), 'nanoErg (should be', TX_FEE.toString(), ')');
 
     // Sign transaction with Nautilus
     // Nautilus sign_tx expects the unsigned transaction object
