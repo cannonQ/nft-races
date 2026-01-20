@@ -18,6 +18,11 @@ export function CyberPetSelector({
   loading = false,
 }: CyberPetSelectorProps) {
   const [expandedPet, setExpandedPet] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  const handleImageError = (tokenId: string) => {
+    setFailedImages(prev => new Set(prev).add(tokenId));
+  };
 
   if (loading) {
     return (
@@ -56,15 +61,20 @@ export function CyberPetSelector({
             onMouseLeave={() => setExpandedPet(null)}
           >
             <div className="pet-image-container">
-              <img
-                src={pet.imageUrl}
-                alt={pet.name}
-                className="pet-image"
-                onError={(e) => {
-                  // Fallback to placeholder on error
-                  (e.target as HTMLImageElement).src = '/placeholder-pet.png';
-                }}
-              />
+              {failedImages.has(pet.tokenId) ? (
+                <div className="pet-image-fallback">
+                  <span className="fallback-icon">🐾</span>
+                  <span className="fallback-text">#{pet.number}</span>
+                </div>
+              ) : (
+                <img
+                  src={pet.imageUrl}
+                  alt={pet.name}
+                  className="pet-image"
+                  loading="lazy"
+                  onError={() => handleImageError(pet.tokenId)}
+                />
+              )}
               <div
                 className="rarity-badge"
                 style={{ backgroundColor: getRarityColor(pet.traits.rarity) }}
@@ -197,6 +207,27 @@ const styles = `
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .pet-image-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #2a2a4e 0%, #1a1a2e 100%);
+  }
+
+  .fallback-icon {
+    font-size: 2.5rem;
+    opacity: 0.6;
+  }
+
+  .fallback-text {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 0.25rem;
   }
 
   .rarity-badge {
