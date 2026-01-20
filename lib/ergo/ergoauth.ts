@@ -114,12 +114,10 @@ function createSigningMessage(raceId: string, nftTokenId: string): string {
 }
 
 /**
- * Convert P2PK address to SigmaBoolean (base64-encoded serialized ProveDlog)
+ * Convert P2PK address to SigmaBoolean for ErgoAuth
  *
- * For P2PK addresses starting with '9', the address encodes a compressed public key.
- * The SigmaProp format for ProveDlog is: 0xcd (GroupElement type) + 33-byte compressed public key
- *
- * Terminus expects base64-encoded binary data.
+ * Trying different format: P2PK ErgoTree = 0x0008cd + 33-byte public key
+ * This is what the address decodes to and might be what Terminus expects.
  */
 export function addressToSigmaBoolean(address: string): string {
   // Decode the base58 address
@@ -133,14 +131,16 @@ export function addressToSigmaBoolean(address: string): string {
   // Extract the 33-byte compressed public key (bytes 1-33)
   const publicKey = decoded.slice(1, 34);
 
-  // Build ProveDlog SigmaProp: type code 'cd' + public key bytes
-  // 0xcd = ProveDlog/SGroupElement constant type in sigma serialization
-  const sigmaProp = new Uint8Array(34);
-  sigmaProp[0] = 0xcd;
-  sigmaProp.set(publicKey, 1);
+  // Build P2PK ErgoTree: 0x00 0x08 0xcd + 33-byte public key = 36 bytes
+  // This is the standard P2PK ErgoTree format
+  const ergoTree = new Uint8Array(36);
+  ergoTree[0] = 0x00;  // ErgoTree header (no segregated constants)
+  ergoTree[1] = 0x08;  // SigmaProp type
+  ergoTree[2] = 0xcd;  // ProveDlog operation code
+  ergoTree.set(publicKey, 3);
 
-  // Return as base64 string (Terminus expects base64-encoded binary)
-  return Buffer.from(sigmaProp).toString('base64');
+  // Return as base64 string
+  return Buffer.from(ergoTree).toString('base64');
 }
 
 /**
