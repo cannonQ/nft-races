@@ -537,16 +537,6 @@ function base58Decode(str: string): Uint8Array {
 
   return new Uint8Array(bytes.reverse());
 }
-
-/**
- * Convert bytes to hex string
- */
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 /**
  * Convert Ergo address to ErgoTree (hex)
  * For P2PK addresses (starting with '9'), decodes the public key and builds ErgoTree
