@@ -28,7 +28,15 @@ interface RaceEntry {
   final_position?: number;
   final_distance?: number;
   payout_amount?: number;
+  is_house_nft?: boolean;
 }
+
+// Payout percentages for top 3
+const PAYOUT_PERCENTAGES = [
+  { position: 1, percentage: 0.50, label: '50%' },
+  { position: 2, percentage: 0.30, label: '30%' },
+  { position: 3, percentage: 0.15, label: '15%' },
+];
 
 const CYBERPETS_IPFS_CID = 'QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw';
 
@@ -196,6 +204,97 @@ export default function RacePage() {
             )}
           </div>
         </div>
+
+        {/* Results Summary (only if race is resolved) */}
+        {race.status === 'resolved' && entries.length > 0 && (
+          <div className="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Race Results</h2>
+
+            {/* Podium */}
+            <div className="flex justify-center items-end gap-4 mb-6">
+              {/* 2nd place */}
+              {entries.find(e => e.final_position === 2) && (
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-700 mx-auto mb-2 ring-2 ring-gray-300">
+                    {entries.find(e => e.final_position === 2)?.nft_number && (
+                      <img
+                        src={getPetImageUrl(entries.find(e => e.final_position === 2)!.nft_number)}
+                        alt="2nd place"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="bg-gray-300 text-black px-3 py-1 rounded font-bold text-sm">2nd</div>
+                  <p className="text-xs text-gray-400 mt-1 truncate max-w-[80px]">
+                    {entries.find(e => e.final_position === 2)?.nft_name}
+                  </p>
+                  <p className="text-xs text-green-400">30%</p>
+                </div>
+              )}
+
+              {/* 1st place */}
+              {entries.find(e => e.final_position === 1) && (
+                <div className="text-center -mt-4">
+                  <div className="w-24 h-24 rounded-lg overflow-hidden bg-gray-700 mx-auto mb-2 ring-4 ring-yellow-500">
+                    {entries.find(e => e.final_position === 1)?.nft_number && (
+                      <img
+                        src={getPetImageUrl(entries.find(e => e.final_position === 1)!.nft_number)}
+                        alt="1st place"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="bg-yellow-500 text-black px-4 py-1 rounded font-bold">1st</div>
+                  <p className="text-sm text-white mt-1 truncate max-w-[96px]">
+                    {entries.find(e => e.final_position === 1)?.nft_name}
+                  </p>
+                  <p className="text-sm text-green-400 font-semibold">50%</p>
+                </div>
+              )}
+
+              {/* 3rd place */}
+              {entries.find(e => e.final_position === 3) && (
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-700 mx-auto mb-2 ring-2 ring-orange-500">
+                    {entries.find(e => e.final_position === 3)?.nft_number && (
+                      <img
+                        src={getPetImageUrl(entries.find(e => e.final_position === 3)!.nft_number)}
+                        alt="3rd place"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="bg-orange-500 text-white px-3 py-1 rounded font-bold text-sm">3rd</div>
+                  <p className="text-xs text-gray-400 mt-1 truncate max-w-[64px]">
+                    {entries.find(e => e.final_position === 3)?.nft_name}
+                  </p>
+                  <p className="text-xs text-green-400">15%</p>
+                </div>
+              )}
+            </div>
+
+            {/* Prize pool info */}
+            <div className="bg-gray-700 rounded-lg p-4 text-center">
+              <p className="text-gray-400 text-sm">Prize Pool</p>
+              <p className="text-2xl font-bold text-green-400">
+                {((entries.filter(e => !e.is_house_nft).length * race.entry_fee) / 1e9 * 0.95).toFixed(3)} ERG
+              </p>
+              <p className="text-xs text-gray-500">
+                ({entries.filter(e => !e.is_house_nft).length} paid entries × {race.entry_fee / 1e9} ERG - 5% house)
+              </p>
+            </div>
+
+            {/* Verification info */}
+            {race.combined_seed && (
+              <div className="mt-4 p-3 bg-gray-700/50 rounded text-xs">
+                <p className="text-gray-400 mb-1">Provably Fair Verification</p>
+                <p className="font-mono text-gray-500 break-all">
+                  Combined Seed: {race.combined_seed}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Entry Form (only if race is open) */}
         {race.status === 'open' && (
