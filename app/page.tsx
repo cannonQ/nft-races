@@ -12,10 +12,26 @@ interface Race {
   max_entries: number;
   entry_count: number;
   entry_deadline: string;
+  resolved_at?: string;
+}
+
+interface ResolvedRace extends Race {
+  winner?: {
+    nft_name: string;
+    nft_number: number;
+    owner_address: string;
+  };
+}
+
+const CYBERPETS_IPFS_CID = 'QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw';
+
+function getPetImageUrl(petNumber: number): string {
+  return `https://api.ergexplorer.com/nftcache/${CYBERPETS_IPFS_CID}_${petNumber}.png.png`;
 }
 
 export default function HomePage() {
   const [races, setRaces] = useState<Race[]>([]);
+  const [resolvedRaces, setResolvedRaces] = useState<ResolvedRace[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,6 +44,7 @@ export default function HomePage() {
       if (res.ok) {
         const data = await res.json();
         setRaces(data.races || []);
+        setResolvedRaces(data.resolvedRaces || []);
       }
     } catch (err) {
       console.error('Failed to fetch races:', err);
@@ -104,12 +121,12 @@ export default function HomePage() {
                         Enter
                       </Link>
                     )}
-                    {race.status === 'resolved' && (
+                    {race.status === 'closed' && (
                       <Link
                         href={`/race/${race.id}`}
-                        className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded"
+                        className="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 rounded"
                       >
-                        Results
+                        View
                       </Link>
                     )}
                   </div>
@@ -119,13 +136,61 @@ export default function HomePage() {
           )}
         </section>
 
+        {/* Past Races */}
+        {resolvedRaces.length > 0 && (
+          <section className="mb-12">
+            <h2 className="text-2xl font-semibold mb-4">Past Races</h2>
+            <div className="space-y-3">
+              {resolvedRaces.map((race) => (
+                <div
+                  key={race.id}
+                  className="bg-gray-800 rounded-lg p-4 flex justify-between items-center"
+                >
+                  <div className="flex items-center gap-4">
+                    {/* Winner thumbnail */}
+                    {race.winner?.nft_number && (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
+                        <img
+                          src={getPetImageUrl(race.winner.nft_number)}
+                          alt={race.winner.nft_name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-semibold">{race.name}</h3>
+                      <p className="text-sm text-gray-400">
+                        {race.entry_count} entries · {race.entry_fee / 1e9} ERG
+                        {race.winner && (
+                          <span className="text-yellow-400 ml-2">
+                            🏆 {race.winner.nft_name}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {race.resolved_at && new Date(race.resolved_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    href={`/race/${race.id}`}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded"
+                  >
+                    Results
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Info */}
         <section className="bg-gray-800 rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-4">How It Works</h2>
           <ol className="list-decimal list-inside space-y-2 text-gray-300">
             <li>Connect your Nautilus wallet (or use mobile with ErgoAuth)</li>
             <li>Select a CyberPet NFT you own</li>
-            <li>Sign a message to prove ownership (no ERG sent)</li>
+            <li>Sign a message to prove ownership (0.05 ERG sent, reduces spam during testing)</li>
             <li>Wait for race to start</li>
             <li>Results determined by provably fair algorithm</li>
           </ol>
