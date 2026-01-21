@@ -204,7 +204,8 @@ export async function POST(
     }
 
     // Update race status and reveal seed
-    await supabase
+    console.log('Updating race status to resolved with combined_seed:', combinedSeed.slice(0, 16) + '...');
+    const { error: updateError } = await supabase
       .from('races')
       .update({
         status: 'resolved',
@@ -213,11 +214,86 @@ export async function POST(
       })
       .eq('id', raceId);
 
+    if (updateError) {
+      console.error('Failed to update race status:', updateError);
+      return NextResponse.json({
+        error: `Failed to update race status: ${updateError.message}`
+      }, { status: 500 });
+    }
+    console.log('Race status updated to resolved');
+
+    // Insert into race_results table for leaderboards
+    console.log('Inserting race results...');
+    const raceResultInserts = results.map(r => {
+      const entry = entries.find(e => e.id === r.entryId);
+      return {
+        race_id: raceId,
+        nft_token_id: r.nftTokenId,
+        nft_name: r.nftName,
+        nft_number: r.nftNumber || null,
+        owner_address: entry?.owner_address || HOUSE_WALLET_ADDRESS,
+        position: r.position,
+        distance: r.distance,
+        payout_amount: results.find(res => res.entryId === r.entryId)?.position &&
+                       results.find(res => res.entryId === r.entryId)!.position <= 3
+                       ? Math.floor(prizePool * (PAYOUTS.find(p => p.position === r.position)?.percentage || 0))
+                       : 0,
+        is_house_nft: r.isHouseNft,
+        traits: entry?.traits || null,
+      };
+    });
+
+    const { error: resultsError } = await supabase
+      .from('race_results')
+      .insert(raceResultInserts);
+
+    if (resultsError) {
+      console.error('Failed to insert race_results:', resultsError);
+      // Don't fail the whole request - race is already resolved
+    } else {
+      console.log(`Inserted ${raceResultInserts.length} race results`);
+    }
+
+    // Insert payouts for top 3 (only for non-house NFT winners)
+    console.log('Creating payout records...');
+    const payoutInserts = results
+      .filter(r => r.position <= 3)
+      .map(r => {
+        const entry = entries.find(e => e.id === r.entryId);
+        const payout = PAYOUTS.find(p => p.position === r.position);
+        const payoutAmount = payout ? Math.floor(prizePool * payout.percentage) : 0;
+        return {
+          race_id: raceId,
+          recipient_address: entry?.owner_address || HOUSE_WALLET_ADDRESS,
+          nft_token_id: r.nftTokenId,
+          nft_name: r.nftName,
+          amount: payoutAmount,
+          position: r.position,
+          is_house_nft: r.isHouseNft,
+          status: r.isHouseNft ? 'not_applicable' : 'pending',
+        };
+      });
+
+    if (payoutInserts.length > 0) {
+      const { error: payoutsError } = await supabase
+        .from('payouts')
+        .insert(payoutInserts);
+
+      if (payoutsError) {
+        console.error('Failed to insert payouts:', payoutsError);
+        // Don't fail the whole request - race is already resolved
+      } else {
+        console.log(`Created ${payoutInserts.length} payout records`);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       results,
       combinedSeed,
       houseFilled: houseFillResult.filled,
+      prizePool,
+      paidEntries: paidEntries.length,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
