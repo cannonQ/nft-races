@@ -42,6 +42,14 @@ export interface ValidationResult {
   reason?: string;
   stats?: Stats;
   seasonId?: string;
+  /** Raw creature_stats row for boost fields */
+  statsRow?: Record<string, any>;
+}
+
+/** Reward boost values set after a race finish */
+export interface RaceRewardBoost {
+  bonus_actions: number;
+  boost_multiplier: number;
 }
 
 /** Condition after decay */
@@ -163,7 +171,9 @@ export function computeTrainingGains(
 
 /**
  * Validate that a creature can perform a training action right now.
- * Checks: season active, cooldown elapsed (12 h).
+ * Checks: season active, daily action limit (2 + bonus_actions), dynamic cooldown.
+ *
+ * Cooldown = 24 / maxActions hours (12h normal, 8h with bonus action).
  */
 export async function validateTrainingAction(
   creatureId: string,
@@ -196,16 +206,37 @@ export async function validateTrainingAction(
     return { valid: false, reason: 'Creature stats not found for this season' };
   }
 
-  // 3. Check cooldown (12 hours)
+  // 3. Count actions today
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const { count: actionsToday } = await supabase
+    .from('training_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('creature_id', creatureId)
+    .eq('season_id', seasonId)
+    .gte('created_at', todayStart.toISOString());
+
+  const maxActions = 2 + (stats.bonus_actions ?? 0);
+  const todayCount = actionsToday ?? 0;
+
+  if (todayCount >= maxActions) {
+    return { valid: false, reason: 'No actions remaining today' };
+  }
+
+  // 4. Dynamic cooldown: 24 / maxActions hours
   if (stats.last_action_at) {
-    const lastAction = new Date(stats.last_action_at);
-    const cooldownMs = 12 * 60 * 60 * 1000;
+    const cooldownHours = 24 / maxActions;
+    const cooldownMs = cooldownHours * 60 * 60 * 1000;
+    const lastAction = new Date(stats.last_action_at).getTime();
     const now = Date.now();
-    if (now - lastAction.getTime() < cooldownMs) {
-      const readyAt = new Date(lastAction.getTime() + cooldownMs);
+
+    if (lastAction + cooldownMs > now) {
+      const remainingMin = Math.ceil((lastAction + cooldownMs - now) / (60 * 1000));
+      const readyAt = new Date(lastAction + cooldownMs);
       return {
         valid: false,
-        reason: `Cooldown active. Next action available at ${readyAt.toISOString()}`,
+        reason: `Cooldown: ${remainingMin} minutes remaining. Next action at ${readyAt.toISOString()}`,
       };
     }
   }
@@ -219,7 +250,7 @@ export async function validateTrainingAction(
     focus: stats.focus ?? 0,
   };
 
-  return { valid: true, stats: currentStats, seasonId };
+  return { valid: true, stats: currentStats, seasonId, statsRow: stats };
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +380,48 @@ export function computeRaceResult(
   }));
 
   return { results, totalPool };
+}
+
+// ---------------------------------------------------------------------------
+// Race reward boosts
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine the reward boost values for a given race finish position.
+ * 1st: bonus action, 2nd: +50% boost, 3rd: +25% boost, 4th+: +10% boost.
+ */
+export function getRaceRewardBoost(position: number): RaceRewardBoost {
+  if (position === 1) {
+    return { bonus_actions: 1, boost_multiplier: 0 };
+  } else if (position === 2) {
+    return { bonus_actions: 0, boost_multiplier: 0.50 };
+  } else if (position === 3) {
+    return { bonus_actions: 0, boost_multiplier: 0.25 };
+  } else {
+    // 4th and beyond — participation reward
+    return { bonus_actions: 0, boost_multiplier: 0.10 };
+  }
+}
+
+/**
+ * Apply race reward boosts to all entrants' creature_stats after resolution.
+ */
+export async function applyRaceRewards(
+  results: RaceResultEntry[],
+  seasonId: string,
+  supabase: SupabaseClient,
+): Promise<void> {
+  for (const entry of results) {
+    const boost = getRaceRewardBoost(entry.position);
+    await supabase
+      .from('creature_stats')
+      .update({
+        bonus_actions: boost.bonus_actions,
+        boost_multiplier: boost.boost_multiplier,
+      })
+      .eq('creature_id', entry.creatureId)
+      .eq('season_id', seasonId);
+  }
 }
 
 // ---------------------------------------------------------------------------
