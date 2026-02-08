@@ -413,11 +413,20 @@ export async function applyRaceRewards(
 ): Promise<void> {
   for (const entry of results) {
     const boost = getRaceRewardBoost(entry.position);
+
+    // Fetch current values so we increment rather than overwrite
+    const { data: current } = await supabase
+      .from('creature_stats')
+      .select('bonus_actions, boost_multiplier')
+      .eq('creature_id', entry.creatureId)
+      .eq('season_id', seasonId)
+      .single();
+
     await supabase
       .from('creature_stats')
       .update({
-        bonus_actions: boost.bonus_actions,
-        boost_multiplier: boost.boost_multiplier,
+        bonus_actions: (current?.bonus_actions ?? 0) + boost.bonus_actions,
+        boost_multiplier: (current?.boost_multiplier ?? 0) + boost.boost_multiplier,
       })
       .eq('creature_id', entry.creatureId)
       .eq('season_id', seasonId);
