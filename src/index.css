@@ -1,0 +1,310 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* NFT Racing Training System - Cyberpunk Design System
+   All colors MUST be HSL.
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    /* Dark cyberpunk base - Deep navy */
+    --background: 240 50% 4%;
+    --foreground: 180 100% 95%;
+
+    /* Cards with subtle transparency */
+    --card: 240 40% 8%;
+    --card-foreground: 180 100% 95%;
+
+    --popover: 240 40% 10%;
+    --popover-foreground: 180 100% 95%;
+
+    /* Primary - Neon Cyan */
+    --primary: 186 100% 50%;
+    --primary-foreground: 240 50% 4%;
+
+    /* Secondary - Magenta/Pink */
+    --secondary: 300 100% 50%;
+    --secondary-foreground: 240 50% 4%;
+
+    /* Muted */
+    --muted: 240 30% 15%;
+    --muted-foreground: 220 20% 55%;
+
+    /* Accent - Electric Green */
+    --accent: 156 100% 50%;
+    --accent-foreground: 240 50% 4%;
+
+    /* Destructive - Hazard Red/Orange */
+    --destructive: 0 85% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 30% 20%;
+    --input: 240 30% 15%;
+    --ring: 186 100% 50%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar - Darker variant */
+    --sidebar-background: 240 50% 6%;
+    --sidebar-foreground: 180 100% 90%;
+    --sidebar-primary: 186 100% 50%;
+    --sidebar-primary-foreground: 240 50% 4%;
+    --sidebar-accent: 240 30% 12%;
+    --sidebar-accent-foreground: 180 100% 90%;
+    --sidebar-border: 240 30% 18%;
+    --sidebar-ring: 186 100% 50%;
+
+    /* Extended Neon Palette */
+    --neon-cyan: 186 100% 50%;
+    --neon-magenta: 300 100% 50%;
+    --neon-green: 156 100% 50%;
+    --neon-yellow: 50 100% 50%;
+    --neon-purple: 270 100% 60%;
+    --neon-pink: 330 100% 60%;
+    --neon-orange: 25 100% 55%;
+
+    /* Stat Colors */
+    --stat-speed: 186 100% 50%;
+    --stat-stamina: 156 100% 50%;
+    --stat-acceleration: 50 100% 50%;
+    --stat-agility: 300 100% 50%;
+    --stat-heart: 350 100% 60%;
+    --stat-focus: 270 100% 60%;
+
+    /* Rarity Colors */
+    --rarity-common: 220 10% 50%;
+    --rarity-uncommon: 156 60% 45%;
+    --rarity-rare: 210 100% 55%;
+    --rarity-epic: 270 100% 60%;
+    --rarity-legendary: 45 100% 55%;
+    --rarity-mythic: 300 100% 55%;
+
+    /* Race Type Colors */
+    --race-sprint: 50 100% 50%;
+    --race-distance: 210 100% 55%;
+    --race-technical: 156 100% 50%;
+    --race-mixed: 270 100% 60%;
+    --race-hazard: 15 100% 55%;
+
+    /* Glows */
+    --glow-cyan: 186 100% 50%;
+    --glow-magenta: 300 100% 50%;
+    --glow-green: 156 100% 50%;
+  }
+
+  .dark {
+    /* Same as root - we're always dark */
+    --background: 240 50% 4%;
+    --foreground: 180 100% 95%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image: 
+      radial-gradient(ellipse at 50% 0%, hsl(240 50% 8%) 0%, transparent 50%),
+      radial-gradient(ellipse at 0% 50%, hsl(186 100% 50% / 0.03) 0%, transparent 40%),
+      radial-gradient(ellipse at 100% 50%, hsl(300 100% 50% / 0.03) 0%, transparent 40%);
+  }
+
+  /* Tech/Mono font for stats and numbers */
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .font-display {
+    font-family: 'Orbitron', sans-serif;
+  }
+}
+
+@layer components {
+  /* Neon glow effects */
+  .glow-cyan {
+    box-shadow: 
+      0 0 5px hsl(var(--neon-cyan) / 0.5),
+      0 0 20px hsl(var(--neon-cyan) / 0.3),
+      0 0 40px hsl(var(--neon-cyan) / 0.1);
+  }
+
+  .glow-magenta {
+    box-shadow: 
+      0 0 5px hsl(var(--neon-magenta) / 0.5),
+      0 0 20px hsl(var(--neon-magenta) / 0.3),
+      0 0 40px hsl(var(--neon-magenta) / 0.1);
+  }
+
+  .glow-green {
+    box-shadow: 
+      0 0 5px hsl(var(--neon-green) / 0.5),
+      0 0 20px hsl(var(--neon-green) / 0.3),
+      0 0 40px hsl(var(--neon-green) / 0.1);
+  }
+
+  .text-glow-cyan {
+    text-shadow: 
+      0 0 10px hsl(var(--neon-cyan) / 0.8),
+      0 0 20px hsl(var(--neon-cyan) / 0.5),
+      0 0 30px hsl(var(--neon-cyan) / 0.3);
+  }
+
+  .text-glow-magenta {
+    text-shadow: 
+      0 0 10px hsl(var(--neon-magenta) / 0.8),
+      0 0 20px hsl(var(--neon-magenta) / 0.5),
+      0 0 30px hsl(var(--neon-magenta) / 0.3);
+  }
+
+  /* Cyberpunk card hover effect */
+  .cyber-card {
+    @apply relative overflow-hidden;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--card)) 0%,
+      hsl(240 40% 6%) 100%
+    );
+    border: 1px solid hsl(var(--border));
+    transition: all 0.3s ease;
+  }
+
+  .cyber-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--neon-cyan) / 0.5),
+      transparent
+    );
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .cyber-card:hover {
+    border-color: hsl(var(--neon-cyan) / 0.5);
+    box-shadow: 
+      0 0 20px hsl(var(--neon-cyan) / 0.1),
+      inset 0 0 20px hsl(var(--neon-cyan) / 0.03);
+  }
+
+  .cyber-card:hover::before {
+    opacity: 1;
+  }
+
+  /* Animated stat bar */
+  .stat-bar {
+    @apply relative h-2 rounded-full overflow-hidden;
+    background: hsl(var(--muted));
+  }
+
+  .stat-bar-fill {
+    @apply h-full rounded-full transition-all duration-500 ease-out;
+  }
+
+  /* Nav active glow */
+  .nav-active {
+    @apply relative;
+  }
+
+  .nav-active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 2px;
+    background: hsl(var(--neon-cyan));
+    box-shadow: 0 0 10px hsl(var(--neon-cyan) / 0.8);
+  }
+
+  /* Holographic/rainbow effect for Cyberium rarity */
+  .holographic {
+    background: linear-gradient(
+      135deg,
+      hsl(0 100% 60%),
+      hsl(60 100% 60%),
+      hsl(120 100% 60%),
+      hsl(180 100% 60%),
+      hsl(240 100% 60%),
+      hsl(300 100% 60%),
+      hsl(360 100% 60%)
+    );
+    background-size: 400% 400%;
+    animation: holographic-shift 3s ease infinite;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  @keyframes holographic-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  /* Pulse animation for Ready state */
+  .pulse-ready {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 5px hsl(var(--neon-green) / 0.5);
+    }
+    50% {
+      box-shadow: 
+        0 0 10px hsl(var(--neon-green) / 0.8),
+        0 0 20px hsl(var(--neon-green) / 0.5),
+        0 0 30px hsl(var(--neon-green) / 0.3);
+    }
+  }
+
+  /* Scanline effect overlay */
+  .scanlines::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      hsl(0 0% 0% / 0.03) 2px,
+      hsl(0 0% 0% / 0.03) 4px
+    );
+  }
+}
+
+@layer utilities {
+  /* Gradient text utilities */
+  .gradient-text-cyber {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--neon-cyan)),
+      hsl(var(--neon-magenta))
+    );
+  }
+
+  /* Border gradient */
+  .border-gradient-cyber {
+    border: 1px solid transparent;
+    background: linear-gradient(hsl(var(--card)), hsl(var(--card))) padding-box,
+                linear-gradient(135deg, hsl(var(--neon-cyan)), hsl(var(--neon-magenta))) border-box;
+  }
+}
