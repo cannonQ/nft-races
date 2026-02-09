@@ -32,14 +32,17 @@ const typeLabels: Record<RaceType, string> = {
   hazard: 'Hazard',
 };
 
-function formatDate(dateString: string): string {
+function formatDate(dateString: string | null | undefined): string {
+  if (!dateString) return 'N/A';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return 'N/A';
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  }).format(new Date(dateString));
+  }).format(d);
 }
 
 export function RaceHeader({ race }: RaceHeaderProps) {

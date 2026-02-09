@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TrainingLogEntry, TrainResponse, Activity, ApiResponse, MutationResponse } from '@/types/game';
 import { API_BASE } from './config';
+import { createAuthHeaders } from '@/lib/ergo/auth';
 
 /**
  * Fetch training log for a creature
@@ -60,9 +61,10 @@ export function useTrain(): MutationResponse<TrainResponse> {
     setError(null);
 
     try {
+      const authHeaders = await createAuthHeaders(walletAddress, 'train');
       const response = await fetch(`${API_BASE}/train`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ creatureId, activity, walletAddress }),
       });
       if (!response.ok) {

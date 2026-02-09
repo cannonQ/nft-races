@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CreatureWithStats, ApiResponse, RegisterCreatureResponse, MutationResponse } from '@/types/game';
 import { API_BASE } from './config';
+import { createAuthHeaders } from '@/lib/ergo/auth';
 
 /**
  * Fetch all creatures owned by a wallet
@@ -97,9 +98,10 @@ export function useRegisterCreature(): MutationResponse<RegisterCreatureResponse
     setError(null);
 
     try {
+      const authHeaders = await createAuthHeaders(walletAddress, 'register');
       const response = await fetch(`${API_BASE}/creatures/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ tokenId, walletAddress }),
       });
       if (!response.ok) {

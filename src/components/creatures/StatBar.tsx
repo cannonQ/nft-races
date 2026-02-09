@@ -115,9 +115,11 @@ const rarityStyles: Record<Rarity, { bg: string; text: string; className?: strin
   cyberium: { bg: 'bg-gradient-to-r from-neon-cyan/20 via-neon-magenta/20 to-neon-green/20', text: '', className: 'holographic' },
 };
 
+const defaultRarityStyle: { bg: string; text: string; className?: string } = { bg: 'bg-muted/50', text: 'text-muted-foreground' };
+
 export function RarityBadge({ rarity, className }: RarityBadgeProps) {
-  const style = rarityStyles[rarity];
-  
+  const style = rarityStyles[rarity] ?? defaultRarityStyle;
+
   return (
     <span className={cn(
       'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider',

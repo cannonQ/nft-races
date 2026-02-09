@@ -28,9 +28,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from('season_races')
         .select('*, season_race_entries(count)')
         .eq('season_id', season.id)
-        .eq('status', 'resolved')
-        .gte('updated_at', sevenDaysAgo)
-        .order('updated_at', { ascending: false }),
+        .in('status', ['resolved', 'locked'])
+        .order('created_at', { ascending: false })
+        .limit(20),
     ]);
 
     function mapRace(race: any) {

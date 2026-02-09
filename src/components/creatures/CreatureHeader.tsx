@@ -20,10 +20,12 @@ const rarityStyles: Record<Rarity, { bg: string; text: string; border: string }>
   cyberium: { bg: 'bg-rarity-mythic/10', text: 'text-rarity-mythic', border: 'border-rarity-mythic/30' },
 };
 
+const defaultStyle = { bg: 'bg-muted/50', text: 'text-muted-foreground', border: 'border-muted' };
+
 export function CreatureHeader({ creature }: CreatureHeaderProps) {
-  const style = rarityStyles[creature.rarity];
-  const winRate = creature.totalRaces > 0 
-    ? Math.round((creature.prestige.lifetimeWins / creature.totalRaces) * 100) 
+  const style = rarityStyles[creature.rarity] ?? defaultStyle;
+  const winRate = creature.totalRaces > 0
+    ? Math.round((creature.prestige.lifetimeWins / creature.totalRaces) * 100)
     : 0;
 
   return (

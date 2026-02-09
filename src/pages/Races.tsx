@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Trophy, Calendar } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { RaceCard } from '@/components/races/RaceCard';
 import { RaceEntryModal } from '@/components/races/RaceEntryModal';
@@ -7,6 +9,8 @@ import { useRaces } from '@/api';
 import { Race } from '@/types/game';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 export default function Races() {
   const [selectedRace, setSelectedRace] = useState<Race | null>(null);
@@ -17,6 +21,7 @@ export default function Races() {
 
   const openRaces = races?.filter(r => r.status === 'open') || [];
   const runningRaces = races?.filter(r => r.status === 'running') || [];
+  const resolvedRaces = races?.filter(r => r.status === 'resolved' || r.status === 'locked') || [];
 
   const handleEnterRace = (race: Race) => {
     setSelectedRace(race);
@@ -103,6 +108,47 @@ export default function Races() {
               )}
             </section>
           </>
+        )}
+
+        {/* Recent Results */}
+        {resolvedRaces.length > 0 && (
+          <section>
+            <h2 className="font-display text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-race-sprint" />
+              Recent Results
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {resolvedRaces.map((race, index) => (
+                <div
+                  key={race.id}
+                  className="animate-slide-up"
+                  style={{ animationDelay: `${index * 30}ms` }}
+                >
+                  <Link to={`/races/${race.id}/results`}>
+                    <Card className="cyber-card group hover:border-primary/50 transition-all duration-200 overflow-hidden">
+                      <CardContent className="p-4">
+                        <h4 className="font-display text-sm font-semibold text-foreground group-hover:text-primary transition-colors text-center truncate">
+                          {race.name}
+                        </h4>
+                        <div className="flex items-center justify-center gap-2 mt-2">
+                          <span className={cn(
+                            'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider',
+                            'bg-muted text-muted-foreground'
+                          )}>
+                            {race.raceType}
+                          </span>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {race.entryCount} entries
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Details Modal */}

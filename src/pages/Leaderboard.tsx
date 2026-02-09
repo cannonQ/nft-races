@@ -1,14 +1,18 @@
+import { Link } from 'react-router-dom';
 import { Trophy, Medal, Award } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { PastRaceItem, mockPastRaces } from '@/components/races/PastRaceItem';
-import { useLeaderboard } from '@/api';
+import { useLeaderboard, useRaces } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function Leaderboard() {
   const { data: leaderboard, loading } = useLeaderboard();
+  const { data: races } = useRaces();
   const { address } = useWallet();
+
+  const resolvedRaces = races?.filter(r => r.status === 'resolved' || r.status === 'locked') || [];
 
   const isUserCreature = (ownerAddress: string) => ownerAddress === address;
 
@@ -38,7 +42,7 @@ export default function Leaderboard() {
               <div className="col-span-4 md:col-span-3">Creature</div>
               <div className="col-span-3 hidden md:block">Owner</div>
               <div className="col-span-2 text-center">W/P/S</div>
-              <div className="col-span-4 md:col-span-3 text-right">Earnings</div>
+              <div className="col-span-4 md:col-span-3 text-right">Races</div>
             </div>
 
             {/* Rows */}
@@ -72,13 +76,15 @@ export default function Leaderboard() {
 
                       {/* Creature */}
                       <div className="col-span-4 md:col-span-3">
-                        <p className={cn(
-                          'font-medium text-sm truncate',
-                          isUser ? 'text-primary' : 'text-foreground'
-                        )}>
-                          {entry.creatureName}
-                          {isUser && <span className="ml-1 text-[10px] text-primary/70">(You)</span>}
-                        </p>
+                        <Link to={`/creatures/${entry.creatureId}`} className="block">
+                          <p className={cn(
+                            'font-medium text-sm truncate hover:underline cursor-pointer',
+                            isUser ? 'text-primary' : 'text-foreground'
+                          )}>
+                            {entry.creatureName}
+                            {isUser && <span className="ml-1 text-[10px] text-primary/70">(You)</span>}
+                          </p>
+                        </Link>
                       </div>
 
                       {/* Owner */}
@@ -95,10 +101,10 @@ export default function Leaderboard() {
                         </span>
                       </div>
 
-                      {/* Earnings */}
+                      {/* Races */}
                       <div className="col-span-4 md:col-span-3 text-right">
-                        <span className="font-mono text-sm font-semibold text-secondary">
-                          +{entry.earnings.toLocaleString()}
+                        <span className="font-mono text-sm text-foreground">
+                          {entry.racesEntered}
                         </span>
                       </div>
                     </div>
@@ -110,22 +116,41 @@ export default function Leaderboard() {
         </section>
 
         {/* Past Race Results */}
-        <section>
-          <h2 className="font-display text-lg font-semibold text-foreground mb-4">
-            Recent Race Results
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {mockPastRaces.map((race, index) => (
-              <div
-                key={race.id}
-                className="animate-slide-up"
-                style={{ animationDelay: `${index * 30}ms` }}
-              >
-                <PastRaceItem race={race} />
-              </div>
-            ))}
-          </div>
-        </section>
+        {resolvedRaces.length > 0 && (
+          <section>
+            <h2 className="font-display text-lg font-semibold text-foreground mb-4">
+              Recent Race Results
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {resolvedRaces.map((race, index) => (
+                <div
+                  key={race.id}
+                  className="animate-slide-up"
+                  style={{ animationDelay: `${index * 30}ms` }}
+                >
+                  <Link to={`/races/${race.id}/results`}>
+                    <Card className="cyber-card group hover:border-primary/50 transition-all duration-200 overflow-hidden">
+                      <CardContent className="p-4">
+                        <h4 className="font-display text-sm font-semibold text-foreground group-hover:text-primary transition-colors text-center truncate">
+                          {race.name}
+                        </h4>
+                        <div className="flex items-center justify-center gap-2 mt-2">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-muted text-muted-foreground">
+                            {race.raceType}
+                          </span>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {race.entryCount} entries
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </MainLayout>
   );

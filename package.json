@@ -74,6 +74,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@nautilus-js/eip12-types": "^0.1.11",
     "@tailwindcss/typography": "^0.5.16",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",

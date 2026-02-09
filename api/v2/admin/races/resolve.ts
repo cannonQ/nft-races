@@ -132,12 +132,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // 7. Compute race results
-    const raceResult = computeRaceResult(raceEntries, race.race_type, blockHash, gameConfig);
+    const raceResult = computeRaceResult(raceEntries, race.race_type, blockHash, gameConfig.config);
 
     // 8. Compute prize payouts from entry fees
     const entryFee = race.entry_fee_nanoerg ?? 0;
     const totalPool = entryFee * entries.length;
-    const prizeDistribution: number[] = gameConfig.prize_distribution ?? [0.50, 0.30, 0.20];
+    const prizeDistribution: number[] = gameConfig.config?.prize_distribution ?? [0.50, 0.30, 0.20];
 
     // 9. Update each entry with results
     for (const result of raceResult.results) {
@@ -207,13 +207,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 12. Mark race as resolved
-    await supabase
+    const { error: resolveErr } = await supabase
       .from('season_races')
       .update({
         status: 'resolved',
         block_hash: blockHash,
       })
       .eq('id', raceId);
+
+    if (resolveErr) {
+      console.error('Failed to mark race as resolved:', resolveErr);
+    }
 
     // 13. Build response
     const resultsSummary = raceResult.results.map(r => {

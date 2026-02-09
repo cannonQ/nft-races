@@ -1,13 +1,28 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-07
+**Date:** 2026-02-08
 **Phase:** 1 (DB + API — Build & Playtest)
 
 ---
 
 ## Current State
 
-All backend API endpoints are built and all frontend hooks are wired to real API calls. Zero mock data remaining in the frontend.
+All backend API endpoints are built and all frontend hooks are wired to real API calls. Zero mock data remaining in the frontend. Nautilus wallet integration is complete — connection, signing, and transaction building all work.
+
+### What Works
+- Nautilus wallet connect/disconnect with auto-reconnect
+- Creature loading from real Ergo wallet address
+- Dashboard displays registered CyberPets for connected wallet
+- Training page loads creature stats and activity selection
+- Race results, leaderboard, creature profile pages functional
+- Auth headers (signed messages) wired into all mutation API hooks
+
+### Open Items
+- [ ] **Training not calling API** — `useTrain()` hook exists but frontend never calls it. Confirm button only shows animation. Counter doesn't decrement. Users can spam training.
+- [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Not yet implemented. Phase 1: client-side tx to treasury, txId logged in DB. Phase 2: on-chain to pet's box.
+- [ ] **Training cooldown enforcement** — Backend enforces 2 actions/day + cooldown, but frontend never hits the API so limits are bypassed.
+- [ ] **NFT images** — `getImageUrl()` exists in lib but API doesn't return `imageUrl`. Frontend shows placeholder icons instead of pet images on dashboard, training, and profile pages.
+- [ ] **Vercel deployment** — Not yet deployed to production.
 
 ### Infrastructure
 
@@ -17,7 +32,9 @@ All backend API endpoints are built and all frontend hooks are wired to real API
 | Backend | Vercel Serverless Functions (`api/`) | All 14 endpoints built |
 | Database | Supabase (PostgreSQL) | Schema live, Season 1 created |
 | Blockchain | Ergo (Explorer API for ownership verification) | Integrated |
-| Wallet | Nautilus browser + ErgoAuth mobile | Lib built, not yet integrated in hooks |
+| Wallet | Nautilus (EIP-12 dApp connector) | Integrated — connect, sign, tx build |
+| Auth | Ergo wallet signature (X-Ergo-* headers) | Wired into all mutations |
+| Verification | ergo-lib-wasm-nodejs (server-side) | Real signature verification |
 | Deployment | Vercel (framework: vite) | Local dev tested, not yet deployed |
 
 ---
@@ -271,7 +288,35 @@ PHASE 2 (Target — Smart Contracts)
 
 ---
 
-## Files Changed This Session
+## Wallet Integration (2026-02-08)
+
+### New Files
+- `src/lib/ergo/types.ts` — ErgoConnector, ErgoAPI, transaction types, Window augmentation
+- `src/lib/ergo/client.ts` — Nautilus connection, address, balance, signing (EIP-12)
+- `src/lib/ergo/transactions.ts` — TX building for entry fees (from Field patterns)
+- `src/lib/ergo/auth.ts` — Signed auth headers (CYBERPETS:{action}:{address}:{timestamp})
+- `src/lib/ergo/index.ts` — Barrel export
+
+### Rewritten Files
+- `src/context/WalletContext.tsx` — Real Nautilus integration (was mocked)
+- `src/components/layout/WalletConnect.tsx` — 4-state UI (install/connecting/connected/error)
+- `src/ergo-verify.ts` — Real signature verification via ergo-lib-wasm-nodejs
+
+### Modified Files
+- `src/api/useTraining.ts` — Auth headers added to useTrain mutation
+- `src/api/useRaces.ts` — Auth headers added to useEnterRace mutation
+- `src/api/useCreatures.ts` — Auth headers added to useRegisterCreature mutation
+- `package.json` — Added @nautilus-js/eip12-types
+
+### Bug Fixes (2026-02-08)
+- `src/components/races/RaceHeader.tsx` — Fixed crash on null completedAt date
+- `api/v2/races/[id]/results.ts` — Fallback when race.updated_at is null
+- `src/components/creatures/CreatureHeader.tsx` — Fallback for unknown rarity values
+- `src/components/creatures/StatBar.tsx` — Fallback for unknown rarity in RarityBadge
+
+---
+
+## Files Changed (Previous Session — 2026-02-07)
 
 ### New Files
 - `api/v2/train.ts` — Training action endpoint

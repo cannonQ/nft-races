@@ -60,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 5. Compute training gains
     const currentStats = validation.stats!;
-    const gains = computeTrainingGains(activity, currentStats, gameConfig);
+    const gains = computeTrainingGains(activity, currentStats, gameConfig.config);
 
     // 6. Determine if boost is used
     const boostMultiplier = validation.statsRow?.boost_multiplier ?? 0;
