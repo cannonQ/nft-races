@@ -226,8 +226,6 @@ async function fetchAddressBalance(
         headers: {
           'Accept': 'application/json',
         },
-        // Next.js fetch caching options
-        next: { revalidate: 30 }, // Cache for 30 seconds
       }
     );
 
@@ -245,7 +243,7 @@ async function fetchAddressBalance(
 /**
  * Fetch address balance with fallback to alternative explorers
  */
-async function fetchAddressBalanceWithFallback(
+export async function fetchAddressBalanceWithFallback(
   address: string
 ): Promise<ExplorerBalanceResponse | null> {
   for (const apiBase of EXPLORER_FALLBACKS) {

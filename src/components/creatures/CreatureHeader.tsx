@@ -45,13 +45,21 @@ export function CreatureHeader({ creature }: CreatureHeaderProps) {
         style.border
       )}>
         <div className="flex flex-col md:flex-row md:items-center gap-4">
-          {/* Avatar Placeholder */}
-          <div className={cn(
-            'w-20 h-20 rounded-xl flex items-center justify-center shrink-0',
-            style.bg
-          )}>
-            <Zap className={cn('w-10 h-10', style.text)} />
-          </div>
+          {/* NFT Image */}
+          {creature.imageUrl ? (
+            <img
+              src={creature.imageUrl}
+              alt={creature.name}
+              className="w-20 h-20 rounded-xl object-cover shrink-0"
+            />
+          ) : (
+            <div className={cn(
+              'w-20 h-20 rounded-xl flex items-center justify-center shrink-0',
+              style.bg
+            )}>
+              <Zap className={cn('w-10 h-10', style.text)} />
+            </div>
+          )}
 
           {/* Info */}
           <div className="flex-1 min-w-0">

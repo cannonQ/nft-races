@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CreatureWithStats, TrainingActivity, StatType } from '@/types/game';
+import { CreatureWithStats, TrainingActivity, TrainResponse, StatType } from '@/types/game';
 import { cn } from '@/lib/utils';
 
 interface TrainingResultModalProps {
@@ -16,6 +16,7 @@ interface TrainingResultModalProps {
   creature: CreatureWithStats;
   activity: TrainingActivity | null;
   boostMultiplier?: number;
+  trainResult?: TrainResponse | null;
 }
 
 const statLabels: Record<StatType, string> = {
@@ -74,6 +75,7 @@ export function TrainingResultModal({
   creature,
   activity,
   boostMultiplier = 0,
+  trainResult,
 }: TrainingResultModalProps) {
   const [showAnimation, setShowAnimation] = useState(false);
 
@@ -88,17 +90,28 @@ export function TrainingResultModal({
 
   if (!activity) return null;
 
-  const hasBoost = boostMultiplier > 0;
-  const boostedPrimaryGain = hasBoost ? Math.round(activity.primaryGain * (1 + boostMultiplier)) : activity.primaryGain;
-  const boostedSecondaryGain = hasBoost ? Math.round(activity.secondaryGain * (1 + boostMultiplier)) : activity.secondaryGain;
+  // Use real API data when available, fall back to estimated gains
+  const hasBoost = trainResult ? trainResult.boostUsed : boostMultiplier > 0;
+  const primaryGain = trainResult?.statChanges[activity.primaryStat] ?? (
+    hasBoost ? Math.round(activity.primaryGain * (1 + boostMultiplier)) : activity.primaryGain
+  );
+  const secondaryGain = activity.secondaryStat
+    ? (trainResult?.statChanges[activity.secondaryStat] ?? (
+        hasBoost ? Math.round(activity.secondaryGain * (1 + boostMultiplier)) : activity.secondaryGain
+      ))
+    : 0;
 
   const oldPrimary = creature.baseStats[activity.primaryStat] + creature.trainedStats[activity.primaryStat];
-  const newPrimary = oldPrimary + boostedPrimaryGain;
+  const newPrimary = trainResult
+    ? (trainResult.newStats[activity.primaryStat] + creature.baseStats[activity.primaryStat])
+    : oldPrimary + primaryGain;
 
-  const oldSecondary = activity.secondaryStat 
+  const oldSecondary = activity.secondaryStat
     ? creature.baseStats[activity.secondaryStat] + creature.trainedStats[activity.secondaryStat]
     : 0;
-  const newSecondary = oldSecondary + boostedSecondaryGain;
+  const newSecondary = activity.secondaryStat && trainResult
+    ? (trainResult.newStats[activity.secondaryStat] + creature.baseStats[activity.secondaryStat])
+    : oldSecondary + secondaryGain;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -157,7 +170,7 @@ export function TrainingResultModal({
                       oldPrimary
                     )}
                   </span>
-                    <span className="text-accent font-mono text-lg">+{boostedPrimaryGain}</span>
+                    <span className="text-accent font-mono text-lg">+{Math.round(primaryGain * 100) / 100}</span>
                   </div>
                 
                 {/* Animated bar */}
@@ -198,13 +211,19 @@ export function TrainingResultModal({
                         oldSecondary
                       )}
                     </span>
-                    <span className="text-accent font-mono text-sm">+{boostedSecondaryGain}</span>
+                    <span className="text-accent font-mono text-sm">+{Math.round(secondaryGain * 100) / 100}</span>
                   </div>
                 </div>
               )}
             </div>
           </div>
         </div>
+
+        {trainResult && (
+          <div className="text-center text-sm text-muted-foreground">
+            <span className="font-mono text-foreground">{trainResult.actionsRemaining}</span> actions remaining today
+          </div>
+        )}
 
         <div className="flex justify-center">
           <Button

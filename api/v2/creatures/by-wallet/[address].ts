@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase';
 import { getActiveSeason, getUtcMidnightToday, computeCreatureResponse } from '../../../_lib/helpers';
+import { isCyberPet } from '../../../_lib/cyberpets';
+import { fetchAddressBalanceWithFallback } from '../../../../lib/ergo/server';
+import { registerCreature } from '../../../_lib/register-creature';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -15,23 +18,114 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const season = await getActiveSeason();
 
-    // Fetch all creatures for this wallet
-    const { data: creatures, error: creaturesErr } = await supabase
-      .from('creatures')
-      .select('*')
-      .eq('owner_address', address);
-
-    if (creaturesErr) {
-      return res.status(500).json({ error: 'Failed to fetch creatures' });
-    }
-
-    if (!creatures || creatures.length === 0) {
+    // 1. Fetch ALL tokens in wallet from Explorer (single API call)
+    const balance = await fetchAddressBalanceWithFallback(address);
+    if (!balance) {
       return res.status(200).json([]);
     }
 
-    const creatureIds = creatures.map((c: any) => c.id);
+    // 2. Filter to CyberPets held on-chain
+    const onChainCyberPets = balance.tokens.filter(
+      t => t.amount > 0 && isCyberPet(t.tokenId)
+    );
+    const onChainTokenIds = onChainCyberPets.map(t => t.tokenId);
 
-    // Batch fetch creature_stats, prestige, and today's training logs
+    // 3. If wallet holds no CyberPets, clear stale DB entries and return empty
+    if (onChainTokenIds.length === 0) {
+      await supabase
+        .from('creatures')
+        .update({ owner_address: null })
+        .eq('owner_address', address);
+      return res.status(200).json([]);
+    }
+
+    // 4. Fetch DB creatures matching these token IDs (regardless of owner_address)
+    const { data: dbCreatures } = await supabase
+      .from('creatures')
+      .select('*')
+      .in('token_id', onChainTokenIds);
+
+    const dbByTokenId = new Map<string, any>(
+      (dbCreatures ?? []).map((c: any) => [c.token_id, c])
+    );
+
+    // 5. Auto-register missing creatures
+    if (season) {
+      const missingTokenIds = onChainTokenIds.filter(id => !dbByTokenId.has(id));
+
+      if (missingTokenIds.length > 0) {
+        const { data: collection } = await supabase
+          .from('collections')
+          .select('id, base_stat_template, trait_mapping')
+          .eq('name', 'CyberPets')
+          .single();
+
+        if (collection) {
+          for (const tokenId of missingTokenIds) {
+            const result = await registerCreature(
+              tokenId,
+              address,
+              collection.id,
+              collection.base_stat_template ?? {},
+              collection.trait_mapping ?? {},
+              season.id,
+            );
+            if (result.success && result.creatureId) {
+              const { data: newCreature } = await supabase
+                .from('creatures')
+                .select('*')
+                .eq('id', result.creatureId)
+                .single();
+              if (newCreature) {
+                dbByTokenId.set(tokenId, newCreature);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 6. Update ownership for creatures with wrong/null owner_address (re-claim)
+    const ownedCreatures: any[] = [];
+    for (const tokenId of onChainTokenIds) {
+      const creature = dbByTokenId.get(tokenId);
+      if (creature) {
+        if (creature.owner_address !== address) {
+          await supabase
+            .from('creatures')
+            .update({ owner_address: address })
+            .eq('id', creature.id);
+          creature.owner_address = address;
+        }
+        ownedCreatures.push(creature);
+      }
+    }
+
+    // 7. Clear stale ownership for creatures this wallet used to own but no longer holds
+    const ownedTokenIdSet = new Set(onChainTokenIds);
+    const { data: formerlyOwned } = await supabase
+      .from('creatures')
+      .select('id, token_id')
+      .eq('owner_address', address);
+
+    const staleIds = (formerlyOwned ?? [])
+      .filter((c: any) => !ownedTokenIdSet.has(c.token_id))
+      .map((c: any) => c.id);
+
+    if (staleIds.length > 0) {
+      await supabase
+        .from('creatures')
+        .update({ owner_address: null })
+        .in('id', staleIds);
+    }
+
+    if (ownedCreatures.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // 8. Batch fetch creature_stats, prestige, and today's training logs
+    const creatureIds = ownedCreatures.map((c: any) => c.id);
+
     const [statsResult, prestigeResult, logsResult] = await Promise.all([
       season
         ? supabase
@@ -54,7 +148,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         : { data: [] },
     ]);
 
-    // Build lookup maps
     const statsMap = new Map<string, any>();
     for (const s of (statsResult.data ?? [])) {
       statsMap.set(s.creature_id, s);
@@ -65,15 +158,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       prestigeMap.set(p.creature_id, p);
     }
 
-    // Count today's actions per creature
     const actionCountMap = new Map<string, number>();
     for (const log of (logsResult.data ?? [])) {
       const current = actionCountMap.get(log.creature_id) ?? 0;
       actionCountMap.set(log.creature_id, current + 1);
     }
 
-    // Assemble responses
-    const result = creatures.map((creature: any) => {
+    // 9. Assemble responses
+    const result = ownedCreatures.map((creature: any) => {
       const stats = statsMap.get(creature.id) ?? null;
       const prestige = prestigeMap.get(creature.id) ?? null;
       const actionsToday = actionCountMap.get(creature.id) ?? 0;

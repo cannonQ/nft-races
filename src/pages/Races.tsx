@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, Calendar } from 'lucide-react';
+import { Trophy, Calendar, AlertCircle } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { RaceCard } from '@/components/races/RaceCard';
 import { RaceEntryModal } from '@/components/races/RaceEntryModal';
 import { RaceDetailsModal } from '@/components/races/RaceDetailsModal';
-import { useRaces } from '@/api';
+import { useRaces, useEnterRace } from '@/api';
+import { useWallet } from '@/context/WalletContext';
 import { Race } from '@/types/game';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,8 +17,12 @@ export default function Races() {
   const [selectedRace, setSelectedRace] = useState<Race | null>(null);
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [entryError, setEntryError] = useState<string | null>(null);
+  const [isEntering, setIsEntering] = useState(false);
   const { toast } = useToast();
-  const { data: races, loading } = useRaces();
+  const { address } = useWallet();
+  const { data: races, loading, refetch: refetchRaces } = useRaces();
+  const enterRace = useEnterRace();
 
   const openRaces = races?.filter(r => r.status === 'open') || [];
   const runningRaces = races?.filter(r => r.status === 'running') || [];
@@ -33,13 +38,25 @@ export default function Races() {
     setShowDetailsModal(true);
   };
 
-  const handleConfirmEntry = (creatureId: string) => {
+  const handleConfirmEntry = async (creatureId: string) => {
+    if (!selectedRace || !address) return;
     setShowEntryModal(false);
-    toast({
-      title: "Entry Confirmed!",
-      description: `Your creature has been entered into ${selectedRace?.name}`,
-    });
-    setSelectedRace(null);
+    setEntryError(null);
+    setIsEntering(true);
+
+    try {
+      await enterRace.mutate(selectedRace.id, creatureId, address);
+      toast({
+        title: "Entry Confirmed!",
+        description: `Your creature has been entered into ${selectedRace.name}`,
+      });
+      refetchRaces();
+    } catch (err) {
+      setEntryError(err instanceof Error ? err.message : 'Failed to enter race');
+    } finally {
+      setIsEntering(false);
+      setSelectedRace(null);
+    }
   };
 
   return (
@@ -54,6 +71,24 @@ export default function Races() {
             Enter races and compete for glory
           </p>
         </div>
+
+        {entryError && (
+          <div className="cyber-card rounded-lg p-4 border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+              <p className="text-sm text-destructive">{entryError}</p>
+            </div>
+          </div>
+        )}
+
+        {isEntering && (
+          <div className="cyber-card rounded-lg p-4 border-primary/30 bg-primary/5">
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-primary">Entering race...</p>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

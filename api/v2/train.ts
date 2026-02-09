@@ -7,6 +7,7 @@ import {
   applyConditionDecay,
   STAT_KEYS,
 } from '../../lib/training-engine';
+import { verifyNFTOwnership } from '../../lib/ergo/server';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -20,10 +21,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. Verify creature exists and ownership
+    // 1. Verify creature exists
     const { data: creature, error: creatureErr } = await supabase
       .from('creatures')
-      .select('id, owner_address')
+      .select('id, owner_address, token_id')
       .eq('id', creatureId)
       .single();
 
@@ -31,8 +32,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Creature not found' });
     }
 
+    // 2. Verify on-chain NFT ownership (prevents stale DB ownership)
+    const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
+    if (!ownership.ownsToken) {
+      // Update DB if ownership changed
+      if (creature.owner_address === walletAddress) {
+        await supabase
+          .from('creatures')
+          .update({ owner_address: null })
+          .eq('id', creatureId);
+      }
+      return res.status(403).json({ error: 'You no longer own this NFT on-chain' });
+    }
+
+    // Update DB owner if it changed (e.g. NFT was received from another wallet)
     if (creature.owner_address !== walletAddress) {
-      return res.status(400).json({ error: 'Wallet address does not match creature owner' });
+      await supabase
+        .from('creatures')
+        .update({ owner_address: walletAddress })
+        .eq('id', creatureId);
     }
 
     // 2. Get active season
@@ -117,13 +135,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       season_id: season.id,
       activity,
       stat_changes: gains.statChanges,
-      fatigue_delta: gains.fatigueDelta,
+      fatigue_change: gains.fatigueDelta,
+      sharpness_change: gains.sharpnessDelta,
       boosted: boostUsed,
     });
 
     if (logErr) {
       console.error('Training log insert error:', logErr);
-      // Non-fatal — training already applied
+      return res.status(500).json({ error: 'Failed to record training action' });
     }
 
     // 11. Compute actions remaining

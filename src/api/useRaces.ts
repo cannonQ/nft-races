@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Race, RaceResults, EnterRaceResponse, ApiResponse, MutationResponse } from '@/types/game';
 import { API_BASE } from './config';
-import { createAuthHeaders } from '@/lib/ergo/auth';
 
 /**
  * Fetch all available races
@@ -96,10 +95,11 @@ export function useEnterRace(): MutationResponse<EnterRaceResponse> {
     setError(null);
 
     try {
-      const authHeaders = await createAuthHeaders(walletAddress, 'enter-race');
+      // No wallet signing needed — server verifies on-chain NFT ownership directly.
+      // Signing will be reintroduced when race entry fee (ERG tx) is implemented.
       const response = await fetch(`${API_BASE}/races/${raceId}/enter`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ creatureId, walletAddress }),
       });
       if (!response.ok) {

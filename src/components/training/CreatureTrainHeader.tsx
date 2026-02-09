@@ -42,6 +42,13 @@ export function CreatureTrainHeader({ creature }: CreatureTrainHeaderProps) {
           </div>
           
           <div className="flex items-start gap-4">
+            {creature.imageUrl && (
+              <img
+                src={creature.imageUrl}
+                alt={creature.name}
+                className="w-16 h-16 rounded-xl object-cover shrink-0"
+              />
+            )}
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
                 <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">

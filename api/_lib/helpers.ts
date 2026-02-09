@@ -111,5 +111,8 @@ export function computeCreatureResponse(
       lifetimeRaces: prestigeRow?.lifetime_races ?? 0,
       badges: prestigeRow?.badges ?? [],
     },
+    imageUrl: creatureRow.metadata?.number
+      ? `https://api.ergexplorer.com/nftcache/QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw_${creatureRow.metadata.number}.png.png`
+      : undefined,
   };
 }

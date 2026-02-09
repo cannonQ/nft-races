@@ -1,41 +1,41 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-08
-**Phase:** 1 (DB + API — Build & Playtest)
+**Date:** 2026-02-09
+**Phase:** 1 (DB + API — Alpha Testing)
 
 ---
 
 ## Current State
 
-All backend API endpoints are built and all frontend hooks are wired to real API calls. Zero mock data remaining in the frontend. Nautilus wallet integration is complete — connection, signing, and transaction building all work.
+Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 14 API endpoints built, all frontend hooks wired, admin page for race management.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
-- Creature loading from real Ergo wallet address
-- Dashboard displays registered CyberPets for connected wallet
-- Training page loads creature stats and activity selection
+- **Auto-discovery**: CyberPets in wallet are detected on-chain and auto-registered to DB (no manual registration needed)
+- Dashboard displays owned CyberPets with NFT images, stale ownership auto-cleaned
+- Training calls real API: stat gains, diminishing returns, actions counter (2/day), cooldown enforcement
+- Race entry calls real API with on-chain ownership verification
 - Race results, leaderboard, creature profile pages functional
-- Auth headers (signed messages) wired into all mutation API hooks
+- Admin page (`/admin`) for creating and resolving races
+- On-chain NFT ownership verification on all mutation endpoints (train, race entry)
 
 ### Open Items
-- [ ] **Training not calling API** — `useTrain()` hook exists but frontend never calls it. Confirm button only shows animation. Counter doesn't decrement. Users can spam training.
-- [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Not yet implemented. Phase 1: client-side tx to treasury, txId logged in DB. Phase 2: on-chain to pet's box.
-- [ ] **Training cooldown enforcement** — Backend enforces 2 actions/day + cooldown, but frontend never hits the API so limits are bypassed.
-- [ ] **NFT images** — `getImageUrl()` exists in lib but API doesn't return `imageUrl`. Frontend shows placeholder icons instead of pet images on dashboard, training, and profile pages.
-- [ ] **Vercel deployment** — Not yet deployed to production.
+- [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Not yet implemented. Requires treasury address. When added, Nautilus `sign_tx()` will show ERG amount (better UX than current no-cost flow).
+- [ ] **Race entry fee** — Same pattern as training cost. Entry fee stored in `season_races.entry_fee_nanoerg`.
+- [ ] **Vercel deployment** — Push to deploy. Env vars should already be set.
 
 ### Infrastructure
 
 | Component | Stack | Status |
 |-----------|-------|--------|
-| Frontend | Vite + React SPA (Lovable-generated) | Built, hooks wired |
-| Backend | Vercel Serverless Functions (`api/`) | All 14 endpoints built |
+| Frontend | Vite + React SPA | All pages + admin page |
+| Backend | Vercel Serverless Functions (`api/`) | All 14 endpoints + admin |
 | Database | Supabase (PostgreSQL) | Schema live, Season 1 created |
-| Blockchain | Ergo (Explorer API for ownership verification) | Integrated |
-| Wallet | Nautilus (EIP-12 dApp connector) | Integrated — connect, sign, tx build |
-| Auth | Ergo wallet signature (X-Ergo-* headers) | Wired into all mutations |
-| Verification | ergo-lib-wasm-nodejs (server-side) | Real signature verification |
-| Deployment | Vercel (framework: vite) | Local dev tested, not yet deployed |
+| Blockchain | Ergo (Explorer API for ownership verification) | Integrated — single-call balance fetch |
+| Wallet | Nautilus (EIP-12 dApp connector) | Connect, address, balance |
+| Auth | On-chain NFT ownership via Explorer API | No wallet signing in Phase 1; native UTXO auth in Phase 2 |
+| Verification | ergo-lib-wasm-nodejs (server-side) | Available for future signing needs |
+| Deployment | Vercel (framework: vite) | Local dev tested |
 
 ---
 
@@ -86,6 +86,7 @@ All backend API endpoints are built and all frontend hooks are wired to real API
 | `api/_lib/helpers.ts` | `getActiveSeason()`, `computeCreatureResponse()`, `countActionsToday()` |
 | `api/_lib/constants.ts` | Activity display map, reward labels, nanoErg conversion |
 | `api/_lib/cyberpets.ts` | CyberPet JSON loader, trait parser, base stat computation |
+| `api/_lib/register-creature.ts` | Shared creature registration (used by register endpoint + auto-discovery) |
 
 ### Frontend Hooks (all wired to real API)
 
@@ -104,81 +105,52 @@ All backend API endpoints are built and all frontend hooks are wired to real API
 
 ---
 
-## Testing Plan
+## Alpha Testing Plan
 
 ### Prerequisites
 
 1. **Run migration** — Execute `migrations/003_add_boosted_column.sql` in Supabase SQL editor
 2. **Seed `game_config`** — Insert the game config row (activities, race_type_weights, prize_distribution) from `PRE-architecture-sketch.md`
-3. **Verify env vars** — Ensure `CRON_SECRET`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set in Vercel dashboard and pulled to `.env.local`
+3. **Verify env vars** — `CRON_SECRET`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` in Vercel dashboard / `.env.local`
 
-### Step 1: Register Creatures
+### Step 1: Connect Wallet & Discover Creatures
 
-```bash
-# Option A: Bulk register all 460 CyberPets via script
-npx ts-node scripts/register-cyberpets.ts
+Connect Nautilus wallet. The `by-wallet` endpoint auto-discovers CyberPets on-chain:
+- Fetches full wallet balance from Explorer API (single call)
+- Filters to CyberPets using `isCyberPet()` + `cyber_pet_traits.json`
+- Auto-registers any missing creatures (inserts creature + stats + prestige)
+- Re-claims creatures with stale/null ownership
+- Clears creatures transferred to other wallets
 
-# Option B: Register one at a time via API (verifies on-chain ownership)
-# POST /api/v2/creatures/register { tokenId, walletAddress }
-```
+No manual registration needed.
 
-### Step 2: Verify GET Endpoints
+### Step 2: Train a Creature
 
-```
-GET /api/v2/seasons/current         → Season 1 data
-GET /api/v2/creatures/by-wallet/9h... → Registered creatures for wallet
-GET /api/v2/creatures/:id           → Single creature with computed fields
-GET /api/v2/leaderboard             → [] (no races yet)
-GET /api/v2/races                   → [] (no races yet)
-```
+From Training page: select creature → pick activity → confirm → real API call.
+- 2 actions/day + cooldown enforced
+- Stat gains with diminishing returns
+- Actions counter decrements in real-time
 
 ### Step 3: Create a Race (Admin)
 
-```bash
-node -e "
-fetch('http://localhost:3000/api/v2/admin/races/create', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer <CRON_SECRET>'
-  },
-  body: JSON.stringify({
-    name: 'Test Sprint',
-    raceType: 'sprint',
-    entryDeadline: new Date(Date.now() + 3600000).toISOString(),
-    maxEntries: 8
-  })
-}).then(r => r.json()).then(console.log)
-"
-```
+Navigate to `/admin` → authenticate → Create Race form.
+Or via CLI: `npx ts-node scripts/create-race.ts --name "Sprint #1" --type sprint --deadline 60`
 
-### Step 4: Train a Creature
+### Step 4: Enter Race
 
-```
-POST /api/v2/train
-{ creatureId, activity: "sprint_drills", walletAddress }
-→ Returns stat changes, new fatigue/sharpness, actions remaining
-```
+From Races page: select open race → pick creature → confirm entry.
+On-chain ownership re-verified at entry time.
 
-### Step 5: Enter Race + Resolve
+### Step 5: Resolve Race (Admin)
 
-```
-POST /api/v2/races/:id/enter
-{ creatureId, walletAddress }
-→ Stats snapshotted at entry time
-
-POST /api/v2/admin/races/resolve    (Admin)
-{ raceId }
-→ Fetches Ergo block hash, computes deterministic results, updates leaderboard
-```
+From `/admin` → click "Resolve" on an open race.
+Or via CLI: `npx ts-node scripts/resolve-races.ts`
+Results computed deterministically from Ergo block hash.
 
 ### Step 6: Verify Results
 
-```
-GET /api/v2/races/:id/results  → Positions, scores, breakdowns
-GET /api/v2/leaderboard        → Updated standings
-GET /api/v2/creatures/:id      → Updated boost_multiplier / bonus_actions from rewards
-```
+Race results page, leaderboard, creature profile all update with race outcomes.
+Reward boosts (bonus actions, boost multiplier) applied to winners.
 
 ---
 
@@ -187,11 +159,40 @@ GET /api/v2/creatures/:id      → Updated boost_multiplier / bonus_actions from
 1. [ ] Verify all env vars are set in Vercel dashboard
 2. [ ] Run `migrations/003_add_boosted_column.sql` in Supabase
 3. [ ] Seed `game_config` table with activity/race config
-4. [ ] Run `npx ts-node scripts/register-cyberpets.ts` to bulk register creatures
-5. [ ] Push to git → triggers Vercel deploy
-6. [ ] Smoke test production endpoints
-7. [ ] Connect Nautilus wallet in frontend and verify creature loading
-8. [ ] Run a full loop: register → train → enter race → resolve → check results
+4. [ ] Push to git → triggers Vercel deploy
+5. [ ] Smoke test: connect wallet → creatures auto-discovered
+6. [ ] Full loop: train → create race (admin) → enter race → resolve → check results
+
+---
+
+## Chain Interaction Reference (Phase 1 → Phase 2 SC Scoping)
+
+### What Touches the Chain NOW (Phase 1)
+
+| Action | Chain Interaction | How |
+|--------|-------------------|-----|
+| **Wallet connect** | Read wallet address | `ergo.get_change_address()` via Nautilus EIP-12 |
+| **Creature discovery** | Read all tokens in wallet | `GET /addresses/{addr}/balance/confirmed` — Explorer API (1 call per wallet load) |
+| **Ownership verification** | Same balance endpoint | Checked on every train, race entry, and wallet load |
+| **Race resolution RNG** | Read latest block hash | `GET /blocks?limit=1` — Explorer API. Used as seed for deterministic scoring. |
+
+### What Is DB-Only NOW (Moves On-Chain in Phase 2)
+
+| Component | Phase 1 (DB) | Phase 2 (On-Chain) |
+|-----------|-------------|-------------------|
+| **Training state** (stats, fatigue, sharpness) | `creature_stats` table | AVL tree in state box register |
+| **Training action** | API validates + DB update | User TX: 0.01 ERG fee + AVL proof → Training Contract validates |
+| **Training log** | `training_log` table | On-chain TX history, indexed by scanner |
+| **Race entry** | API validates + DB insert | User TX: entry fee to race box + snapshot stats |
+| **Race resolution** | Admin calls API → DB update | Permissionless: anyone triggers → Contract reads `CONTEXT.headers(0).id` |
+| **Prize distribution** | DB ledger (manual payout) | Contract auto-creates payout output boxes |
+| **Leaderboard** | `season_leaderboard` table | AVL tree or extended creature tree |
+| **Cooldowns** | `last_action_at` timestamps | `HEIGHT >= lastHeight + N` blocks |
+| **Fee collection** | Not yet implemented | User TX includes fee output natively |
+
+### Phase 2 Vision: Everything On-Chain, DB = Read Cache
+
+In Phase 2, the Ergo blockchain is the **source of truth** for all game state. The DB becomes a read-only index (mirror) for fast frontend queries. The chain enforces all rules (cooldowns, stat caps, fee collection, prize distribution) via ErgoScript contracts. No admin needed for race resolution or season payouts.
 
 ---
 
@@ -285,6 +286,40 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Alpha-Ready Changes (2026-02-09)
+
+### Bug Fixes
+- `api/v2/train.ts` — Fixed training_log insert: `fatigue_delta` → `fatigue_change` (column name mismatch caused silent insert failure → actions counter stuck at 2/2). Made insert fatal.
+- `src/data/trainingActivities.ts` — Fixed activity ID mismatch (`train_sprint` → `sprint_drills`, etc.) that caused 500 errors
+- `api/v2/train.ts` — Added on-chain NFT ownership verification (prevents training stale creatures)
+
+### Race Entry Wiring
+- `src/pages/Races.tsx` — Wired `handleConfirmEntry` to real `useEnterRace()` API call (was a toast-only stub)
+- `src/api/useRaces.ts` — Removed unnecessary wallet signing from `useEnterRace`
+- `api/v2/races/[id]/enter.ts` — Added on-chain NFT ownership verification
+
+### Auto-Registration (Eliminates Manual Registration)
+- `api/v2/creatures/by-wallet/[address].ts` — Rewritten: single Explorer API call, auto-discovers CyberPets on-chain, auto-registers missing ones, re-claims creatures with stale ownership, clears transferred-away creatures
+- `api/_lib/register-creature.ts` — **NEW**: Shared registration helper extracted from register.ts
+- `api/v2/creatures/register.ts` — Refactored to use shared helper
+- `lib/ergo/server.ts` — Exported `fetchAddressBalanceWithFallback` for by-wallet auto-discovery
+- `src/pages/Dashboard.tsx` — Removed dead "Register Your NFT" button, updated empty state messaging
+
+### Admin Page
+- `src/pages/Admin.tsx` — **NEW**: Admin dashboard with auth gate, create race form, open races with resolve buttons, recent results
+- `src/App.tsx` — Added `/admin` route (hidden, not in nav)
+
+### Signing Removal (Phase 1)
+- `src/api/useTraining.ts` — Removed `createAuthHeaders`/`sign_data` call (server does on-chain verification, no wallet popup needed)
+- `src/api/useRaces.ts` — Same removal for race entry
+
+### NFT Images + Training
+- `api/_lib/helpers.ts` — Added `imageUrl` to `computeCreatureResponse()`
+- `src/components/creatures/CreatureHeader.tsx`, `CreatureTrainHeader.tsx`, `CreatureCard.tsx` — NFT image display
+- `src/pages/Train.tsx` — Wired `useTrain()` hook, real API calls, loading/error states, creature images in selection
 
 ---
 

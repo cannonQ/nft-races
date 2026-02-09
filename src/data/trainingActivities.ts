@@ -6,7 +6,7 @@ import { TrainingActivity } from '@/types/game';
  */
 export const trainingActivities: TrainingActivity[] = [
   {
-    id: 'train_sprint',
+    id: 'sprint_drills',
     name: 'Sprint Drills',
     icon: 'Zap',
     primaryStat: 'speed',
@@ -17,7 +17,7 @@ export const trainingActivities: TrainingActivity[] = [
     description: 'Intense bursts to maximize raw speed potential.',
   },
   {
-    id: 'train_distance',
+    id: 'distance_runs',
     name: 'Distance Runs',
     icon: 'Route',
     primaryStat: 'stamina',
@@ -28,7 +28,7 @@ export const trainingActivities: TrainingActivity[] = [
     description: 'Long-form cardio to build endurance and willpower.',
   },
   {
-    id: 'train_agility',
+    id: 'agility_course',
     name: 'Agility Course',
     icon: 'Wind',
     primaryStat: 'agility',
@@ -39,7 +39,7 @@ export const trainingActivities: TrainingActivity[] = [
     description: 'Obstacle navigation for quick reflexes and nimble movement.',
   },
   {
-    id: 'train_gate',
+    id: 'gate_work',
     name: 'Gate Work',
     icon: 'Timer',
     primaryStat: 'accel',
@@ -50,7 +50,7 @@ export const trainingActivities: TrainingActivity[] = [
     description: 'Start-line drills to perfect explosive launches.',
   },
   {
-    id: 'train_cross',
+    id: 'cross_training',
     name: 'Cross-Training',
     icon: 'Dumbbell',
     primaryStat: 'stamina',
@@ -61,7 +61,7 @@ export const trainingActivities: TrainingActivity[] = [
     description: 'Varied exercises for balanced overall conditioning.',
   },
   {
-    id: 'train_mental',
+    id: 'mental_prep',
     name: 'Mental Prep',
     icon: 'Brain',
     primaryStat: 'focus',

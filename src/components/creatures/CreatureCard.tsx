@@ -29,27 +29,37 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
       style={style}
     >
       {/* Header - Clickable to profile */}
-      <Link 
+      <Link
         to={`/creatures/${creature.id}`}
-        className="flex items-start justify-between group"
+        className="flex items-start gap-3 group"
       >
-        <div className="flex flex-col gap-1">
-          <h3 className="font-display text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
-            {creature.name}
-          </h3>
-          <RarityBadge rarity={creature.rarity} />
-          {/* Reward Badges */}
-          <RewardBadges 
-            bonusActions={creature.bonusActions} 
-            boostMultiplier={creature.boostMultiplier}
-            compact
+        {creature.imageUrl && (
+          <img
+            src={creature.imageUrl}
+            alt={creature.name}
+            className="w-14 h-14 rounded-lg object-cover shrink-0"
           />
-        </div>
-        {creature.prestige.tier > 0 && (
-          <div className="flex items-center gap-1 px-2 py-1 rounded bg-secondary/20">
-            <span className="text-secondary text-xs font-mono">P{creature.prestige.tier}</span>
-          </div>
         )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-1">
+              <h3 className="font-display text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
+                {creature.name}
+              </h3>
+              <RarityBadge rarity={creature.rarity} />
+              <RewardBadges
+                bonusActions={creature.bonusActions}
+                boostMultiplier={creature.boostMultiplier}
+                compact
+              />
+            </div>
+            {creature.prestige.tier > 0 && (
+              <div className="flex items-center gap-1 px-2 py-1 rounded bg-secondary/20">
+                <span className="text-secondary text-xs font-mono">P{creature.prestige.tier}</span>
+              </div>
+            )}
+          </div>
+        </div>
       </Link>
 
       {/* Stats */}

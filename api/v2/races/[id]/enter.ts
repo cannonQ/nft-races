@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase';
 import { getUtcMidnightToday } from '../../../_lib/helpers';
 import { applyConditionDecay } from '../../../../lib/training-engine';
+import { verifyNFTOwnership } from '../../../../lib/ergo/server';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -16,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. Verify creature exists and ownership matches
+    // 1. Verify creature exists
     const { data: creature, error: creatureErr } = await supabase
       .from('creatures')
       .select('id, token_id, owner_address, base_stats')
@@ -27,8 +28,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Creature not found' });
     }
 
+    // 1b. Verify on-chain NFT ownership (prevents stale DB ownership)
+    const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
+    if (!ownership.ownsToken) {
+      if (creature.owner_address === walletAddress) {
+        await supabase
+          .from('creatures')
+          .update({ owner_address: null })
+          .eq('id', creatureId);
+      }
+      return res.status(403).json({ error: 'You no longer own this NFT on-chain' });
+    }
+
+    // Update DB owner if it changed (e.g. NFT was received from another wallet)
     if (creature.owner_address !== walletAddress) {
-      return res.status(400).json({ error: 'Wallet address does not match creature owner' });
+      await supabase
+        .from('creatures')
+        .update({ owner_address: walletAddress })
+        .eq('id', creatureId);
     }
 
     // 2. Verify race exists and is open

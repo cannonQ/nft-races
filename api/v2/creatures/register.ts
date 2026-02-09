@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../_lib/supabase';
 import { getActiveSeason, computeCreatureResponse, countActionsToday } from '../../_lib/helpers';
-import { isCyberPet, getToken, parseTraits, computeBaseStats } from '../../_lib/cyberpets';
+import { isCyberPet } from '../../_lib/cyberpets';
 import { verifyNFTOwnership } from '../../../lib/ergo/server';
+import { registerCreature } from '../../_lib/register-creature';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -27,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Wallet does not currently own this NFT on-chain' });
     }
 
-    // 3. Fetch collection config (base_stat_template + trait_mapping)
+    // 3. Fetch collection config
     const { data: collection, error: collErr } = await supabase
       .from('collections')
       .select('id, base_stat_template, trait_mapping')
@@ -56,97 +57,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'No active season — cannot register outside a season' });
     }
 
-    // 6. Parse traits and compute base stats
-    const token = getToken(tokenId)!;
-    const traits = parseTraits(token.description);
-    if (!traits) {
-      return res.status(500).json({ error: 'Failed to parse CyberPet traits' });
-    }
-
-    const baseStats = computeBaseStats(
-      traits.rarity,
-      traits.bodyPartCount,
-      traits.materialQuality,
+    // 6. Register via shared helper
+    const result = await registerCreature(
+      tokenId,
+      walletAddress,
+      collection.id,
       collection.base_stat_template || {},
       collection.trait_mapping || {},
+      season.id,
     );
 
-    // 7. Insert creature
-    const { data: creatureRow, error: creatureErr } = await supabase
+    if (!result.success) {
+      return res.status(500).json({ error: result.error || 'Failed to register creature' });
+    }
+
+    // 7. Build full CreatureWithStats response
+    const { data: creatureRow } = await supabase
       .from('creatures')
-      .insert({
-        token_id: tokenId,
-        collection_id: collection.id,
-        name: token.name,
-        owner_address: walletAddress,
-        rarity: traits.rarity,
-        base_stats: baseStats,
-        metadata: {
-          pet: traits.pet,
-          skinColor: traits.skinColor,
-          background: traits.background,
-          stage: traits.stage,
-          bodyParts: traits.bodyParts,
-          bodyPartCount: traits.bodyPartCount,
-          materialQuality: traits.materialQuality,
-          number: token.number,
-        },
-      })
       .select('*')
+      .eq('id', result.creatureId)
       .single();
 
-    if (creatureErr || !creatureRow) {
-      console.error('Creature insert error:', creatureErr);
-      return res.status(500).json({ error: 'Failed to register creature' });
-    }
-
-    // 8. Insert creature_stats for active season
-    const { error: statsErr } = await supabase.from('creature_stats').insert({
-      creature_id: creatureRow.id,
-      season_id: season.id,
-      speed: 0,
-      stamina: 0,
-      accel: 0,
-      agility: 0,
-      heart: 0,
-      focus: 0,
-      fatigue: 0,
-      sharpness: 50,
-      action_count: 0,
-    });
-
-    if (statsErr) {
-      console.error('Stats insert error:', statsErr);
-      return res.status(500).json({ error: 'Failed to initialize season stats' });
-    }
-
-    // 9. Insert prestige row
-    const { error: prestigeErr } = await supabase.from('prestige').insert({
-      creature_id: creatureRow.id,
-      total_races: 0,
-      total_wins: 0,
-      total_podiums: 0,
-      total_earnings: 0,
-      seasons_completed: 0,
-    });
-
-    if (prestigeErr) {
-      console.error('Prestige insert error:', prestigeErr);
-      // Non-fatal: creature is registered, prestige can be added later
-    }
-
-    // 10. Build full CreatureWithStats response
     const { data: statsRow } = await supabase
       .from('creature_stats')
       .select('*')
-      .eq('creature_id', creatureRow.id)
+      .eq('creature_id', result.creatureId)
       .eq('season_id', season.id)
       .single();
 
     const { data: prestigeRow } = await supabase
       .from('prestige')
       .select('*')
-      .eq('creature_id', creatureRow.id)
+      .eq('creature_id', result.creatureId)
       .single();
 
     const creature = computeCreatureResponse(creatureRow, statsRow, prestigeRow, 0);

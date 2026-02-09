@@ -4,10 +4,10 @@ import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCreature, useCreaturesByWallet } from '@/api';
+import { useCreature, useCreaturesByWallet, useTrain } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { trainingActivities } from '@/data/trainingActivities';
-import { TrainingActivity } from '@/types/game';
+import { TrainingActivity, TrainResponse, Activity } from '@/types/game';
 import { CreatureTrainHeader } from '@/components/training/CreatureTrainHeader';
 import { ActivityCard } from '@/components/training/ActivityCard';
 import { TrainingConfirmModal } from '@/components/training/TrainingConfirmModal';
@@ -23,9 +23,13 @@ export default function Train() {
   const [selectedActivity, setSelectedActivity] = useState<TrainingActivity | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showResult, setShowResult] = useState(false);
+  const [trainResult, setTrainResult] = useState<TrainResponse | null>(null);
+  const [trainError, setTrainError] = useState<string | null>(null);
+  const [isTraining, setIsTraining] = useState(false);
 
-  const { data: creature, loading: creatureLoading } = useCreature(creatureId || null);
+  const { data: creature, loading: creatureLoading, refetch: refetchCreature } = useCreature(creatureId || null);
   const { data: userCreatures, loading: creaturesLoading } = useCreaturesByWallet(address);
+  const train = useTrain();
 
   // If no creature selected, show selection view
   if (!creatureId) {
@@ -69,23 +73,32 @@ export default function Train() {
                       }
                       ${hasRewards ? 'ring-1 ring-primary/30' : ''}`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-display text-lg font-semibold text-foreground">
-                          {c.name}
-                        </h3>
+                    <div className="flex items-center gap-3">
+                      {c.imageUrl && (
+                        <img
+                          src={c.imageUrl}
+                          alt={c.name}
+                          className="w-12 h-12 rounded-lg object-cover shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-display text-lg font-semibold text-foreground">
+                            {c.name}
+                          </h3>
+                          {isOnCooldown && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              On cooldown
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground capitalize">{c.rarity}</p>
-                        <RewardBadges 
-                          bonusActions={c.bonusActions} 
+                        <RewardBadges
+                          bonusActions={c.bonusActions}
                           boostMultiplier={c.boostMultiplier}
                           compact
                         />
                       </div>
-                      {isOnCooldown && (
-                        <span className="text-xs text-muted-foreground font-mono">
-                          On cooldown
-                        </span>
-                      )}
                     </div>
                     <div className="mt-2 flex gap-4 text-xs">
                       <span className="text-muted-foreground">
@@ -137,16 +150,28 @@ export default function Train() {
     setShowConfirm(true);
   };
 
-  const handleConfirmTraining = () => {
+  const handleConfirmTraining = async () => {
+    if (!selectedActivity || !creatureId || !address) return;
     setShowConfirm(false);
-    setTimeout(() => {
+    setTrainError(null);
+    setIsTraining(true);
+
+    try {
+      const result = await train.mutate(creatureId, selectedActivity.id as Activity, address);
+      setTrainResult(result);
       setShowResult(true);
-    }, 500);
+      refetchCreature();
+    } catch (err) {
+      setTrainError(err instanceof Error ? err.message : 'Training failed');
+    } finally {
+      setIsTraining(false);
+    }
   };
 
   const handleResultClose = () => {
     setShowResult(false);
     setSelectedActivity(null);
+    setTrainResult(null);
   };
 
   return (
@@ -183,6 +208,24 @@ export default function Train() {
           </div>
         )}
 
+        {trainError && (
+          <div className="cyber-card rounded-lg p-4 border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+              <p className="text-sm text-destructive">{trainError}</p>
+            </div>
+          </div>
+        )}
+
+        {isTraining && (
+          <div className="cyber-card rounded-lg p-4 border-primary/30 bg-primary/5">
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-primary">Training in progress...</p>
+            </div>
+          </div>
+        )}
+
         <div>
           <h2 className="font-display text-xl font-semibold text-foreground mb-4">
             Choose Training Activity
@@ -196,7 +239,7 @@ export default function Train() {
               >
                 <ActivityCard
                   activity={activity}
-                  disabled={isOnCooldown || creature.actionsRemaining === 0}
+                  disabled={isOnCooldown || creature.actionsRemaining === 0 || isTraining}
                   onSelect={handleSelectActivity}
                   boostMultiplier={creature.boostMultiplier}
                 />
@@ -219,6 +262,7 @@ export default function Train() {
           creature={creature}
           activity={selectedActivity}
           boostMultiplier={creature.boostMultiplier}
+          trainResult={trainResult}
         />
       </div>
     </MainLayout>
