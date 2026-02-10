@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../../_lib/supabase';
-import { getUtcMidnightToday } from '../../../_lib/helpers';
-import { applyConditionDecay } from '../../../../lib/training-engine';
-import { verifyNFTOwnership } from '../../../../lib/ergo/server';
+import { supabase } from '../../../_lib/supabase.js';
+import { getUtcMidnightToday } from '../../../_lib/helpers.js';
+import { applyConditionDecay } from '../../../../lib/training-engine.js';
+import { verifyNFTOwnership } from '../../../../lib/ergo/server.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -102,12 +102,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 6. Verify creature hasn't raced today (UTC)
-    if (stats.last_race_at) {
-      const todayStart = getUtcMidnightToday();
-      if (new Date(stats.last_race_at) >= new Date(todayStart)) {
-        return res.status(400).json({ error: 'Creature has already raced today' });
-      }
-    }
+    // TEMPORARY: Disabled for alpha testing — allow unlimited races per day
+    // if (stats.last_race_at) {
+    //   const todayStart = getUtcMidnightToday();
+    //   if (new Date(stats.last_race_at) >= new Date(todayStart)) {
+    //     return res.status(400).json({ error: 'Creature has already raced today' });
+    //   }
+    // }
 
     // 7. Snapshot current stats with real-time condition decay
     const { fatigue, sharpness } = applyConditionDecay(
@@ -134,14 +135,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         owner_address: walletAddress,
         snapshot_stats: snapshotStats,
         snapshot_base_stats: creature.base_stats,
-        snapshot_fatigue: Math.round(fatigue * 100) / 100,
-        snapshot_sharpness: Math.round(sharpness * 100) / 100,
+        snapshot_fatigue: Math.round(fatigue),
+        snapshot_sharpness: Math.round(sharpness),
       })
       .select('id')
       .single();
 
     if (insertErr || !entry) {
-      return res.status(500).json({ error: 'Failed to create race entry' });
+      console.error('Race entry insert error:', insertErr);
+      return res.status(500).json({ error: 'Failed to create race entry', detail: insertErr?.message });
     }
 
     // 9. Update creature_stats: last_race_at and race_count
@@ -156,7 +158,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ success: true, entryId: entry.id });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('POST /api/v2/races/[id]/enter error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', detail: message });
   }
 }

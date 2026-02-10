@@ -1,15 +1,6 @@
-import { Zap, Route, Wind, Timer, Dumbbell, Brain } from 'lucide-react';
+import { Zap, Route, Wind, Timer, Dumbbell, Brain, Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { StatType } from '@/types/game';
-
-interface TrainingLogEntry {
-  id: string;
-  activityName: string;
-  activityIcon: string;
-  primaryStat: StatType;
-  gain: number;
-  date: string; // ISO string
-}
+import { TrainingLogEntry, StatType } from '@/types/game';
 
 interface TrainingLogProps {
   logs: TrainingLogEntry[];
@@ -47,7 +38,7 @@ export function TrainingLog({ logs }: TrainingLogProps) {
       <div className="divide-y divide-border/30">
         {logs.map((entry) => {
           const IconComponent = iconMap[entry.activityIcon] || Zap;
-          const dateObj = new Date(entry.date);
+          const dateObj = new Date(entry.createdAt);
           const formattedDate = dateObj.toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -56,6 +47,12 @@ export function TrainingLog({ logs }: TrainingLogProps) {
             hour: 'numeric',
             minute: '2-digit',
           });
+
+          // Extract primary stat gain from statChanges
+          const primaryGain = entry.statChanges?.[entry.primaryStat] ?? 0;
+          // Sum all stat changes for a total
+          const allGains = Object.entries(entry.statChanges ?? {})
+            .filter(([, v]) => (v ?? 0) > 0);
 
           return (
             <div
@@ -70,26 +67,35 @@ export function TrainingLog({ logs }: TrainingLogProps) {
 
                 {/* Activity Info */}
                 <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {entry.activityName}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-foreground">
+                      {entry.activityName}
+                    </p>
+                    {entry.wasBoosted && (
+                      <Flame className="w-3 h-3 text-orange-400" />
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {formattedDate} • {formattedTime}
                   </p>
                 </div>
               </div>
 
-              {/* Gain */}
-              <div className="text-right">
-                <span className={cn(
-                  'font-mono text-sm font-semibold',
-                  statColors[entry.primaryStat]
-                )}>
-                  +{entry.gain}
-                </span>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  {entry.primaryStat}
-                </p>
+              {/* Gains */}
+              <div className="text-right space-y-0.5">
+                {allGains.map(([stat, value]) => (
+                  <div key={stat} className="flex items-center justify-end gap-1">
+                    <span className={cn(
+                      'font-mono text-sm font-semibold',
+                      statColors[stat as StatType] ?? 'text-primary'
+                    )}>
+                      +{Math.round((value ?? 0) * 100) / 100}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      {stat}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           );

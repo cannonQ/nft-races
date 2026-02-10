@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Trophy, Star, Zap, Dumbbell } from 'lucide-react';
+import { ArrowLeft, Trophy, Star, Zap, Dumbbell, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CreatureWithStats, Rarity } from '@/types/game';
 import { RewardBadges } from './RewardBadges';
+import { CooldownTimer } from './CooldownTimer';
+import { ActionsDisplay } from '../training/ActionsDisplay';
 import { cn } from '@/lib/utils';
 
 interface CreatureHeaderProps {
@@ -24,6 +26,7 @@ const defaultStyle = { bg: 'bg-muted/50', text: 'text-muted-foreground', border:
 
 export function CreatureHeader({ creature }: CreatureHeaderProps) {
   const style = rarityStyles[creature.rarity] ?? defaultStyle;
+  const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
   const winRate = creature.totalRaces > 0
     ? Math.round((creature.prestige.lifetimeWins / creature.totalRaces) * 100)
     : 0;
@@ -98,15 +101,25 @@ export function CreatureHeader({ creature }: CreatureHeaderProps) {
               </div>
             </div>
 
+            {/* Training Status */}
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              <CooldownTimer endsAt={creature.cooldownEndsAt} />
+              <ActionsDisplay
+                actionsRemaining={creature.actionsRemaining}
+                maxActionsToday={creature.maxActionsToday}
+                bonusActions={creature.bonusActions}
+              />
+            </div>
+
             {/* Claimable Rewards */}
-            {(creature.bonusActions > 0 || creature.boostMultiplier > 0) && (
+            {(creature.bonusActions > 0 || creature.boosts.length > 0) && (
               <div className="mt-3 p-2 rounded-lg bg-primary/5 border border-primary/20">
                 <p className="text-[10px] text-primary uppercase tracking-wider font-semibold mb-1">
-                  🎁 Rewards to Claim
+                  Rewards Available
                 </p>
-                <RewardBadges 
-                  bonusActions={creature.bonusActions} 
-                  boostMultiplier={creature.boostMultiplier}
+                <RewardBadges
+                  bonusActions={creature.bonusActions}
+                  boosts={creature.boosts}
                 />
               </div>
             )}
@@ -115,11 +128,25 @@ export function CreatureHeader({ creature }: CreatureHeaderProps) {
           {/* Train Button */}
           <Button
             asChild
-            className="shrink-0 bg-primary hover:bg-primary/90"
+            className={cn(
+              'shrink-0',
+              isOnCooldown
+                ? 'bg-muted text-muted-foreground hover:bg-muted/80'
+                : 'bg-primary hover:bg-primary/90'
+            )}
           >
             <Link to={`/train/${creature.id}`}>
-              <Dumbbell className="w-4 h-4 mr-2" />
-              Train Now
+              {isOnCooldown ? (
+                <>
+                  <Timer className="w-4 h-4 mr-2" />
+                  On Cooldown
+                </>
+              ) : (
+                <>
+                  <Dumbbell className="w-4 h-4 mr-2" />
+                  Train Now
+                </>
+              )}
             </Link>
           </Button>
         </div>

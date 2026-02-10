@@ -10,7 +10,7 @@ import type {
   VerificationResult,
   NFTOwnershipResult,
   ExplorerBalanceResponse,
-} from './types';
+} from './types.js';
 
 // ============================================
 // Dynamic Import for ergo-lib-wasm-nodejs

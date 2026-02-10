@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertCircle, Plus, Trophy, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertCircle, Plus, Trophy, RefreshCw, Pencil, X, Save } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +32,14 @@ export default function Admin() {
 
   // Resolving state
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editType, setEditType] = useState('');
+  const [editDeadline, setEditDeadline] = useState('');
+  const [editMaxEntries, setEditMaxEntries] = useState(8);
+  const [saving, setSaving] = useState(false);
 
   const adminFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     const res = await fetch(url, {
@@ -141,6 +150,51 @@ export default function Admin() {
       }
     } finally {
       setResolvingId(null);
+    }
+  };
+
+  const startEditing = (race: any) => {
+    setEditingId(race.id);
+    setEditName(race.name);
+    setEditType(race.raceType);
+    // Format deadline as local datetime-local input value
+    const dl = new Date(race.entryDeadline);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setEditDeadline(
+      `${dl.getFullYear()}-${pad(dl.getMonth() + 1)}-${pad(dl.getDate())}T${pad(dl.getHours())}:${pad(dl.getMinutes())}`
+    );
+    setEditMaxEntries(race.maxEntries);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+  };
+
+  const handleSaveRace = async () => {
+    if (!editingId) return;
+    setSaving(true);
+    try {
+      const res = await adminFetch(`${API_BASE}/admin/races/update`, {
+        method: 'POST',
+        body: JSON.stringify({
+          raceId: editingId,
+          name: editName,
+          raceType: editType,
+          entryDeadline: new Date(editDeadline).toISOString(),
+          maxEntries: editMaxEntries,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update race');
+      toast({ title: 'Race Updated', description: data.race.name });
+      setEditingId(null);
+      loadData();
+    } catch (err) {
+      if ((err as Error).message !== 'Unauthorized') {
+        toast({ title: 'Error', description: (err as Error).message, variant: 'destructive' });
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -291,28 +345,105 @@ export default function Admin() {
             {openRaces.length === 0 ? (
               <p className="text-muted-foreground text-sm">No open races.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {openRaces.map(race => (
                   <div
                     key={race.id}
-                    className="flex items-center justify-between py-3 px-4 rounded-lg bg-muted/30 border border-border/50"
+                    className="rounded-lg bg-muted/30 border border-border/50 overflow-hidden"
                   >
-                    <div>
-                      <span className="text-foreground font-semibold">{race.name}</span>
-                      <div className="flex gap-3 text-xs text-muted-foreground mt-1">
-                        <span className="uppercase">{race.raceType}</span>
-                        <span>{race.entryCount}/{race.maxEntries} entries</span>
-                        <span>Deadline: {new Date(race.entryDeadline).toLocaleString()}</span>
+                    {editingId === race.id ? (
+                      /* Edit Form */
+                      <div className="p-4 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">Name</label>
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={e => setEditName(e.target.value)}
+                              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">Type</label>
+                            <select
+                              value={editType}
+                              onChange={e => setEditType(e.target.value)}
+                              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            >
+                              {RACE_TYPES.map(t => (
+                                <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">Deadline</label>
+                            <input
+                              type="datetime-local"
+                              value={editDeadline}
+                              onChange={e => setEditDeadline(e.target.value)}
+                              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">Max Entries</label>
+                            <input
+                              type="number"
+                              value={editMaxEntries}
+                              onChange={e => setEditMaxEntries(Number(e.target.value))}
+                              min={2}
+                              max={20}
+                              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={handleSaveRace} disabled={saving} className="glow-cyan">
+                            <Save className="w-3.5 h-3.5 mr-1.5" />
+                            {saving ? 'Saving...' : 'Save'}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={cancelEditing}>
+                            <X className="w-3.5 h-3.5 mr-1.5" />
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleResolveRace(race.id)}
-                      disabled={resolvingId === race.id}
-                    >
-                      {resolvingId === race.id ? 'Resolving...' : 'Resolve'}
-                    </Button>
+                    ) : (
+                      /* Display Row */
+                      <div className="flex items-center justify-between py-3 px-4">
+                        <div>
+                          <Link
+                            to={`/races/${race.id}/results`}
+                            className="text-foreground font-semibold hover:text-primary transition-colors"
+                          >
+                            {race.name}
+                          </Link>
+                          <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                            <span className="uppercase">{race.raceType}</span>
+                            <span>{race.entryCount}/{race.maxEntries} entries</span>
+                            <span>Deadline: {new Date(race.entryDeadline).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => startEditing(race)}
+                          >
+                            <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleResolveRace(race.id)}
+                            disabled={resolvingId === race.id}
+                          >
+                            {resolvingId === race.id ? 'Resolving...' : 'Resolve'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -336,7 +467,12 @@ export default function Admin() {
                     key={race.id}
                     className="flex items-center justify-between py-2 px-4 rounded-lg bg-muted/20"
                   >
-                    <span className="text-foreground">{race.name}</span>
+                    <Link
+                      to={`/races/${race.id}/results`}
+                      className="text-foreground hover:text-primary transition-colors"
+                    >
+                      {race.name}
+                    </Link>
                     <div className="flex gap-3 text-xs text-muted-foreground">
                       <span className="uppercase">{race.raceType}</span>
                       <span>{race.entryCount} entries</span>

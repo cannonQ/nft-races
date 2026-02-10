@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../../_lib/supabase';
-import { nanoErgToErg } from '../../../_lib/constants';
+import { supabase } from '../../../_lib/supabase.js';
+import { nanoErgToErg } from '../../../_lib/constants.js';
 
 /**
  * GET /api/v2/creatures/:id/race-history

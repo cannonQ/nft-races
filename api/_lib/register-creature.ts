@@ -2,8 +2,8 @@
  * Shared creature registration logic.
  * Used by both POST /creatures/register and auto-discovery in GET /creatures/by-wallet.
  */
-import { supabase } from './supabase';
-import { isCyberPet, getToken, parseTraits, computeBaseStats } from './cyberpets';
+import { supabase } from './supabase.js';
+import { isCyberPet, getToken, parseTraits, computeBaseStats } from './cyberpets.js';
 
 interface RegisterResult {
   success: boolean;

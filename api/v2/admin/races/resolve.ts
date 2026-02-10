@@ -1,31 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../../_lib/supabase';
-import { requireAdmin } from '../../../_lib/auth';
-import { nanoErgToErg, positionToRewardLabel } from '../../../_lib/constants';
+import { supabase } from '../../../_lib/supabase.js';
+import { requireAdmin } from '../../../_lib/auth.js';
+import { getLatestErgoBlock } from '../../../_lib/helpers.js';
+import { nanoErgToErg, positionToRewardLabel } from '../../../_lib/constants.js';
 import {
   computeRaceResult,
   applyRaceRewards,
   applyConditionDecay,
   STAT_KEYS,
-} from '../../../../lib/training-engine';
-import type { RaceEntry } from '../../../../lib/training-engine';
-
-const ERGO_EXPLORER_API = 'https://api.ergoplatform.com/api/v1';
-
-/**
- * Fetch the latest Ergo block hash for deterministic RNG seeding.
- */
-async function getLatestBlockHash(): Promise<string> {
-  const res = await fetch(`${ERGO_EXPLORER_API}/blocks?limit=1`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error(`Explorer blocks API returned ${res.status}`);
-  const data = await res.json();
-  // Explorer returns { items: [ { id: "blockHash", ... } ] }
-  const blockId = data?.items?.[0]?.id;
-  if (!blockId) throw new Error('No block hash returned from explorer');
-  return blockId;
-}
+} from '../../../../lib/training-engine.js';
+import type { RaceEntry } from '../../../../lib/training-engine.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -100,8 +84,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to load game config' });
     }
 
-    // 5. Fetch latest Ergo block hash for deterministic RNG
-    const blockHash = await getLatestBlockHash();
+    // 5. Fetch latest Ergo block for deterministic RNG + boost expiry
+    const { hash: blockHash, height: blockHeight } = await getLatestErgoBlock();
 
     // 6. Build race entries with snapshot data
     const raceEntries: RaceEntry[] = entries.map((entry: any) => {
@@ -161,8 +145,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq('id', entryRow.id);
     }
 
-    // 10. Apply race reward boosts (bonus actions, boost multiplier)
-    await applyRaceRewards(raceResult.results, race.season_id, supabase);
+    // 10. Apply race reward boosts (bonus actions, discrete boost rewards)
+    await applyRaceRewards(raceResult.results, race.season_id, raceId, blockHeight, supabase);
 
     // 11. Update season_leaderboard for each participant
     for (const result of raceResult.results) {

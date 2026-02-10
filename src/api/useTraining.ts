@@ -54,7 +54,8 @@ export function useTrain(): MutationResponse<TrainResponse> {
   const mutate = useCallback(async (
     creatureId: string,
     activity: Activity,
-    walletAddress: string
+    walletAddress: string,
+    boostRewardIds?: string[],
   ): Promise<TrainResponse> => {
     setLoading(true);
     setError(null);
@@ -65,7 +66,7 @@ export function useTrain(): MutationResponse<TrainResponse> {
       const response = await fetch(`${API_BASE}/train`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatureId, activity, walletAddress }),
+        body: JSON.stringify({ creatureId, activity, walletAddress, boostRewardIds }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

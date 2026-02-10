@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, History } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCreature, useCreaturesByWallet, useTrain } from '@/api';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { useCreature, useCreaturesByWallet, useTrain, useTrainingLog, useGameConfig } from '@/api';
 import { useWallet } from '@/context/WalletContext';
-import { trainingActivities } from '@/data/trainingActivities';
-import { TrainingActivity, TrainResponse, Activity } from '@/types/game';
+import { trainingActivities as defaultActivities } from '@/data/trainingActivities';
+import { TrainingActivity, TrainResponse, Activity, StatBlock, StatType } from '@/types/game';
 import { CreatureTrainHeader } from '@/components/training/CreatureTrainHeader';
 import { ActivityCard } from '@/components/training/ActivityCard';
 import { TrainingConfirmModal } from '@/components/training/TrainingConfirmModal';
@@ -15,6 +16,7 @@ import { TrainingResultModal } from '@/components/training/TrainingResultModal';
 import { BoostBanner } from '@/components/training/BoostBanner';
 import { ActionsDisplay } from '@/components/training/ActionsDisplay';
 import { RewardBadges } from '@/components/creatures/RewardBadges';
+import { TrainingLog } from '@/components/creatures/TrainingLog';
 
 export default function Train() {
   const { creatureId } = useParams();
@@ -26,10 +28,42 @@ export default function Train() {
   const [trainResult, setTrainResult] = useState<TrainResponse | null>(null);
   const [trainError, setTrainError] = useState<string | null>(null);
   const [isTraining, setIsTraining] = useState(false);
+  // Snapshot creature state before training so result modal shows correct old→new
+  const [preTrainStats, setPreTrainStats] = useState<{ trained: StatBlock; base: StatBlock } | null>(null);
+  const [preTrainBoost, setPreTrainBoost] = useState(0);
+  const [currentBlockHeight, setCurrentBlockHeight] = useState<number | null>(null);
 
   const { data: creature, loading: creatureLoading, refetch: refetchCreature } = useCreature(creatureId || null);
   const { data: userCreatures, loading: creaturesLoading } = useCreaturesByWallet(address);
+  const { data: trainingLogs, loading: logsLoading, refetch: refetchLogs } = useTrainingLog(creatureId || null);
+  const { data: gameConfig } = useGameConfig();
   const train = useTrain();
+
+  // Merge real gain values from game_config into activity definitions.
+  // Falls back to hardcoded defaults if config hasn't loaded yet.
+  const trainingActivities: TrainingActivity[] = defaultActivities.map((activity) => {
+    const serverDef = gameConfig?.activities?.[activity.id];
+    if (!serverDef) return activity;
+    return {
+      ...activity,
+      primaryStat: (serverDef.primary as StatType) ?? activity.primaryStat,
+      secondaryStat: (serverDef.secondary as StatType) ?? activity.secondaryStat,
+      primaryGain: serverDef.primary_gain ?? activity.primaryGain,
+      secondaryGain: serverDef.secondary_gain ?? activity.secondaryGain,
+      fatigueCost: serverDef.fatigue_cost ?? activity.fatigueCost,
+    };
+  });
+
+  // Fetch current Ergo block height once for boost expiry display
+  useEffect(() => {
+    fetch('https://api.ergoplatform.com/api/v1/blocks?limit=1')
+      .then(r => r.json())
+      .then(data => {
+        const height = data?.items?.[0]?.height;
+        if (height) setCurrentBlockHeight(height);
+      })
+      .catch(() => {});
+  }, []);
 
   // If no creature selected, show selection view
   if (!creatureId) {
@@ -59,18 +93,16 @@ export default function Train() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {userCreatures.map((c) => {
-                const isOnCooldown = c.cooldownEndsAt && new Date(c.cooldownEndsAt) > new Date();
-                const hasRewards = c.bonusActions > 0 || c.boostMultiplier > 0;
+                // TEMPORARY: Cooldown disabled for alpha testing
+                // const isOnCooldown = c.cooldownEndsAt && new Date(c.cooldownEndsAt) > new Date();
+                const isOnCooldown = false;
+                const hasRewards = c.bonusActions > 0 || c.boosts.length > 0;
                 return (
                   <button
                     key={c.id}
-                    onClick={() => !isOnCooldown && navigate(`/train/${c.id}`)}
-                    disabled={isOnCooldown}
+                    onClick={() => navigate(`/train/${c.id}`)}
                     className={`cyber-card rounded-xl p-4 text-left transition-all duration-200
-                      ${isOnCooldown 
-                        ? 'opacity-50 cursor-not-allowed' 
-                        : 'hover:border-primary/50 hover:scale-[1.02]'
-                      }
+                      hover:border-primary/50 hover:scale-[1.02]
                       ${hasRewards ? 'ring-1 ring-primary/30' : ''}`}
                   >
                     <div className="flex items-center gap-3">
@@ -95,7 +127,7 @@ export default function Train() {
                         <p className="text-xs text-muted-foreground capitalize">{c.rarity}</p>
                         <RewardBadges
                           bonusActions={c.bonusActions}
-                          boostMultiplier={c.boostMultiplier}
+                          boosts={c.boosts}
                           compact
                         />
                       </div>
@@ -143,24 +175,40 @@ export default function Train() {
     );
   }
 
-  const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
+  // TEMPORARY: Cooldown disabled for alpha testing
+  // const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
+  const isOnCooldown = false;
 
   const handleSelectActivity = (activity: TrainingActivity) => {
     setSelectedActivity(activity);
     setShowConfirm(true);
   };
 
-  const handleConfirmTraining = async () => {
-    if (!selectedActivity || !creatureId || !address) return;
+  const handleConfirmTraining = async (selectedBoostIds: string[]) => {
+    if (!selectedActivity || !creatureId || !address || !creature) return;
     setShowConfirm(false);
     setTrainError(null);
     setIsTraining(true);
 
+    // Snapshot pre-training state before refetch overwrites it
+    setPreTrainStats({ trained: { ...creature.trainedStats }, base: { ...creature.baseStats } });
+    // Compute the boost total from selected IDs
+    const selectedBoostTotal = creature.boosts
+      .filter(b => selectedBoostIds.includes(b.id))
+      .reduce((sum, b) => sum + b.multiplier, 0);
+    setPreTrainBoost(selectedBoostTotal);
+
     try {
-      const result = await train.mutate(creatureId, selectedActivity.id as Activity, address);
+      const result = await train.mutate(
+        creatureId,
+        selectedActivity.id as Activity,
+        address,
+        selectedBoostIds.length > 0 ? selectedBoostIds : undefined,
+      );
       setTrainResult(result);
       setShowResult(true);
       refetchCreature();
+      refetchLogs();
     } catch (err) {
       setTrainError(err instanceof Error ? err.message : 'Training failed');
     } finally {
@@ -195,7 +243,34 @@ export default function Train() {
           maxActionsToday={creature.maxActionsToday}
           bonusActions={creature.bonusActions}
         />
-        <BoostBanner boostMultiplier={creature.boostMultiplier} />
+        <BoostBanner boosts={creature.boosts} currentBlockHeight={currentBlockHeight} />
+
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="sm" className="border-muted-foreground/30">
+              <History className="w-4 h-4 mr-2" />
+              Training Log
+            </Button>
+          </SheetTrigger>
+          <SheetContent className="cyber-card border-l-primary/20 overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle className="font-display text-lg text-foreground">
+                Training History
+              </SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              {logsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <TrainingLog logs={(trainingLogs || []).slice(0, 20)} />
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
 
         {isOnCooldown && (
           <div className="cyber-card rounded-lg p-4 border-destructive/30 bg-destructive/5">
@@ -241,7 +316,7 @@ export default function Train() {
                   activity={activity}
                   disabled={isOnCooldown || creature.actionsRemaining === 0 || isTraining}
                   onSelect={handleSelectActivity}
-                  boostMultiplier={creature.boostMultiplier}
+                  hasBoostsAvailable={creature.boosts.length > 0}
                 />
               </div>
             ))}
@@ -253,6 +328,7 @@ export default function Train() {
           onOpenChange={setShowConfirm}
           creature={creature}
           activity={selectedActivity}
+          currentBlockHeight={currentBlockHeight}
           onConfirm={handleConfirmTraining}
         />
 
@@ -261,7 +337,8 @@ export default function Train() {
           onOpenChange={handleResultClose}
           creature={creature}
           activity={selectedActivity}
-          boostMultiplier={creature.boostMultiplier}
+          boostMultiplier={preTrainBoost}
+          preTrainStats={preTrainStats}
           trainResult={trainResult}
         />
       </div>

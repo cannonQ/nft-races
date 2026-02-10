@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../../_lib/supabase';
-import { getActiveSeason, countActionsToday, computeCreatureResponse } from '../../../_lib/helpers';
+import { supabase } from '../../../_lib/supabase.js';
+import { getActiveSeason, getLatestErgoBlock, countRegularActionsToday, computeCreatureResponse } from '../../../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -43,15 +43,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .single(),
     ]);
 
-    const actionsToday = season && statsResult.data
-      ? await countActionsToday(id, season.id)
+    const regularActionsToday = season && statsResult.data
+      ? await countRegularActionsToday(id, season.id)
       : 0;
+
+    // Fetch available (unspent + unexpired) boost rewards
+    let availableBoosts: any[] = [];
+    if (season) {
+      const { height: currentHeight } = await getLatestErgoBlock();
+      const { data: boostRows } = await supabase
+        .from('boost_rewards')
+        .select('*')
+        .eq('creature_id', id)
+        .eq('season_id', season.id)
+        .is('spent_at', null)
+        .gt('expires_at_height', currentHeight);
+      availableBoosts = boostRows ?? [];
+    }
 
     const result = computeCreatureResponse(
       creature,
       statsResult.data ?? null,
       prestigeResult.data ?? null,
-      actionsToday,
+      regularActionsToday,
+      availableBoosts,
     );
 
     return res.status(200).json(result);

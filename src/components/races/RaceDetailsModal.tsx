@@ -4,57 +4,9 @@ import { formatCountdown } from '@/lib/utils';
 import { Clock, Users, Coins, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-
-interface RaceEntrant {
-  id: string;
-  creatureName: string;
-  creatureRarity: Rarity;
-  ownerAddress: string;
-  isCurrentUser: boolean;
-}
-
-// Mock entrants data
-const mockEntrants: Record<string, RaceEntrant[]> = {
-  race_001: [
-    { id: '1', creatureName: 'Thunder Bolt', creatureRarity: 'legendary', ownerAddress: '0x3c1F...8a2D', isCurrentUser: false },
-    { id: '2', creatureName: 'Plasma Storm', creatureRarity: 'mythic', ownerAddress: '0x9d4E...2c1A', isCurrentUser: false },
-    { id: '3', creatureName: 'Frost Weaver', creatureRarity: 'epic', ownerAddress: '0x5f2B...7e3C', isCurrentUser: false },
-    { id: '4', creatureName: 'Voltex Prime', creatureRarity: 'legendary', ownerAddress: '0x7a3B...4f2E', isCurrentUser: true },
-    { id: '5', creatureName: 'Dark Specter', creatureRarity: 'rare', ownerAddress: '0x2b8A...1d5F', isCurrentUser: false },
-  ],
-  race_002: [
-    { id: '1', creatureName: 'Endurance King', creatureRarity: 'epic', ownerAddress: '0x4a2C...9b3E', isCurrentUser: false },
-    { id: '2', creatureName: 'Marathon Master', creatureRarity: 'legendary', ownerAddress: '0x8c5D...2f4A', isCurrentUser: false },
-    { id: '3', creatureName: 'Shadow Runner', creatureRarity: 'epic', ownerAddress: '0x7a3B...4f2E', isCurrentUser: true },
-    { id: '4', creatureName: 'Iron Legs', creatureRarity: 'rare', ownerAddress: '0x1e7B...6c2D', isCurrentUser: false },
-    { id: '5', creatureName: 'Steady Strider', creatureRarity: 'uncommon', ownerAddress: '0x6d3F...4a1C', isCurrentUser: false },
-    { id: '6', creatureName: 'Long Haul', creatureRarity: 'rare', ownerAddress: '0x9f2E...7b5A', isCurrentUser: false },
-    { id: '7', creatureName: 'Pace Keeper', creatureRarity: 'epic', ownerAddress: '0x3a4B...8c2D', isCurrentUser: false },
-    { id: '8', creatureName: 'Distance Demon', creatureRarity: 'legendary', ownerAddress: '0x5c1D...3e4F', isCurrentUser: false },
-  ],
-  race_003: [
-    { id: '1', creatureName: 'Precision Strike', creatureRarity: 'legendary', ownerAddress: '0x2b8A...1d5F', isCurrentUser: false },
-    { id: '2', creatureName: 'Nimble Ghost', creatureRarity: 'epic', ownerAddress: '0x4c3E...9a2B', isCurrentUser: false },
-    { id: '3', creatureName: 'Quick Turn', creatureRarity: 'rare', ownerAddress: '0x7d5F...2c4A', isCurrentUser: false },
-    { id: '4', creatureName: 'Cyber Phantom', creatureRarity: 'cyberium', ownerAddress: '0x7a3B...4f2E', isCurrentUser: true },
-    { id: '5', creatureName: 'Slick Slider', creatureRarity: 'epic', ownerAddress: '0x8a2C...5b3D', isCurrentUser: false },
-    { id: '6', creatureName: 'Angle Master', creatureRarity: 'legendary', ownerAddress: '0x1f4A...6c2E', isCurrentUser: false },
-  ],
-  race_004: [
-    { id: '1', creatureName: 'Chaos Rider', creatureRarity: 'mythic', ownerAddress: '0x5d2B...4a1C', isCurrentUser: false },
-    { id: '2', creatureName: 'Hazard Hunter', creatureRarity: 'legendary', ownerAddress: '0x9c3E...7b5A', isCurrentUser: false },
-    { id: '3', creatureName: 'Neon Striker', creatureRarity: 'rare', ownerAddress: '0x7a3B...4f2E', isCurrentUser: true },
-  ],
-  race_005: [
-    { id: '1', creatureName: 'All-Rounder', creatureRarity: 'legendary', ownerAddress: '0x3a4B...8c2D', isCurrentUser: false },
-    { id: '2', creatureName: 'Jack of Trades', creatureRarity: 'epic', ownerAddress: '0x6c1D...3e4F', isCurrentUser: false },
-    { id: '3', creatureName: 'Versatile Vex', creatureRarity: 'mythic', ownerAddress: '0x2b5A...9d2C', isCurrentUser: false },
-    { id: '4', creatureName: 'Multi Talent', creatureRarity: 'legendary', ownerAddress: '0x8f3E...4a1B', isCurrentUser: false },
-    { id: '5', creatureName: 'Balanced Beast', creatureRarity: 'epic', ownerAddress: '0x5c2D...7b4A', isCurrentUser: false },
-    { id: '6', creatureName: 'Mixed Master', creatureRarity: 'rare', ownerAddress: '0x1a4C...6e3F', isCurrentUser: false },
-    { id: '7', creatureName: 'Grand Mixer', creatureRarity: 'legendary', ownerAddress: '0x4d5B...2c1A', isCurrentUser: false },
-  ],
-};
+import { Skeleton } from '@/components/ui/skeleton';
+import { useRaceResults } from '@/api';
+import { useWallet } from '@/context/WalletContext';
 
 const typeColors: Record<RaceType, { bg: string; text: string }> = {
   sprint: { bg: 'bg-race-sprint/20', text: 'text-race-sprint' },
@@ -90,10 +42,13 @@ interface RaceDetailsModalProps {
 }
 
 export function RaceDetailsModal({ open, onOpenChange, race, onEnter }: RaceDetailsModalProps) {
+  const { address } = useWallet();
+  const { data: results, loading } = useRaceResults(open && race ? race.id : null);
+
   if (!race) return null;
 
   const typeStyle = typeColors[race.raceType];
-  const entrants = mockEntrants[race.id] || [];
+  const entrants = results?.entries ?? [];
   const isFull = race.entryCount >= race.maxEntries;
   const isOpen = race.status === 'open' && !isFull;
 
@@ -161,46 +116,55 @@ export function RaceDetailsModal({ open, onOpenChange, race, onEnter }: RaceDeta
               Competitors ({entrants.length})
             </h3>
           </div>
-          
-          {entrants.length > 0 ? (
+
+          {loading ? (
             <div className="space-y-2">
-              {entrants.map((entrant, index) => (
-                <div
-                  key={entrant.id}
-                  className={cn(
-                    'flex items-center justify-between p-3 rounded-lg border transition-colors',
-                    entrant.isCurrentUser
-                      ? 'bg-primary/10 border-primary/30'
-                      : 'bg-muted/30 border-border/50'
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 flex items-center justify-center rounded-full bg-muted text-xs font-mono text-muted-foreground">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <p className={cn(
-                        'font-medium text-sm',
-                        entrant.isCurrentUser ? 'text-primary' : 'text-foreground'
-                      )}>
-                        {entrant.creatureName}
-                        {entrant.isCurrentUser && (
-                          <span className="ml-2 text-[10px] text-primary/70">(You)</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {entrant.ownerAddress}
-                      </p>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    'text-[10px] font-semibold uppercase tracking-wider',
-                    rarityStyles[entrant.creatureRarity]
-                  )}>
-                    {entrant.creatureRarity}
-                  </span>
-                </div>
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-lg" />
               ))}
+            </div>
+          ) : entrants.length > 0 ? (
+            <div className="space-y-2">
+              {entrants.map((entrant, index) => {
+                const isCurrentUser = entrant.ownerAddress === address;
+                return (
+                  <div
+                    key={entrant.creatureId}
+                    className={cn(
+                      'flex items-center justify-between p-3 rounded-lg border transition-colors',
+                      isCurrentUser
+                        ? 'bg-primary/10 border-primary/30'
+                        : 'bg-muted/30 border-border/50'
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 flex items-center justify-center rounded-full bg-muted text-xs font-mono text-muted-foreground">
+                        {index + 1}
+                      </span>
+                      <div>
+                        <p className={cn(
+                          'font-medium text-sm',
+                          isCurrentUser ? 'text-primary' : 'text-foreground'
+                        )}>
+                          {entrant.creatureName}
+                          {isCurrentUser && (
+                            <span className="ml-2 text-[10px] text-primary/70">(You)</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {entrant.ownerAddress.slice(0, 8)}...{entrant.ownerAddress.slice(-6)}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={cn(
+                      'text-[10px] font-semibold uppercase tracking-wider',
+                      rarityStyles[entrant.rarity]
+                    )}>
+                      {entrant.rarity}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground text-sm">

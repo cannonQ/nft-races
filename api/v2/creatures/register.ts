@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../_lib/supabase';
-import { getActiveSeason, computeCreatureResponse, countActionsToday } from '../../_lib/helpers';
-import { isCyberPet } from '../../_lib/cyberpets';
-import { verifyNFTOwnership } from '../../../lib/ergo/server';
-import { registerCreature } from '../../_lib/register-creature';
+import { supabase } from '../../_lib/supabase.js';
+import { getActiveSeason, computeCreatureResponse } from '../../_lib/helpers.js';
+import { isCyberPet } from '../../_lib/cyberpets.js';
+import { verifyNFTOwnership } from '../../../lib/ergo/server.js';
+import { registerCreature } from '../../_lib/register-creature.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

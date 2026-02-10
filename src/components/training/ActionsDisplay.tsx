@@ -9,20 +9,32 @@ interface ActionsDisplayProps {
 
 export function ActionsDisplay({ actionsRemaining, maxActionsToday, bonusActions, className }: ActionsDisplayProps) {
   const hasBonus = bonusActions > 0;
-  
+  const BASE_ACTIONS = 2;
+
+  // Dots: [bonus remaining...] [regular (2)...]
+  // Bonus dots come first since they're consumed first.
+  // Total dots = bonusActions + BASE_ACTIONS = maxActionsToday
+  const regularRemaining = Math.max(0, actionsRemaining - bonusActions);
+
   return (
     <div className={cn('flex items-center gap-2', className)}>
       <span className="text-sm text-muted-foreground">Actions:</span>
       <div className="flex items-center gap-1">
-        {Array.from({ length: maxActionsToday }).map((_, i) => (
+        {/* Bonus action dots (consumed first) */}
+        {Array.from({ length: bonusActions }).map((_, i) => (
           <div
-            key={i}
+            key={`bonus-${i}`}
+            className="w-3 h-3 rounded-full bg-race-sprint shadow-[0_0_8px_hsl(var(--race-sprint)/0.6)]"
+          />
+        ))}
+        {/* Regular daily action dots */}
+        {Array.from({ length: BASE_ACTIONS }).map((_, i) => (
+          <div
+            key={`regular-${i}`}
             className={cn(
               'w-3 h-3 rounded-full transition-all',
-              i < actionsRemaining
-                ? hasBonus && i >= (maxActionsToday - bonusActions)
-                  ? 'bg-race-sprint shadow-[0_0_8px_hsl(var(--race-sprint)/0.6)]' // Bonus action dot
-                  : 'bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.5)]'
+              i < regularRemaining
+                ? 'bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.5)]'
                 : 'bg-muted'
             )}
           />

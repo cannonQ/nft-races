@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../../_lib/supabase';
-import { getActiveSeason, getUtcMidnightToday, computeCreatureResponse } from '../../../_lib/helpers';
-import { isCyberPet } from '../../../_lib/cyberpets';
-import { fetchAddressBalanceWithFallback } from '../../../../lib/ergo/server';
-import { registerCreature } from '../../../_lib/register-creature';
+import { supabase } from '../../../_lib/supabase.js';
+import { getActiveSeason, getLatestErgoBlock, getUtcMidnightToday, computeCreatureResponse } from '../../../_lib/helpers.js';
+import { isCyberPet } from '../../../_lib/cyberpets.js';
+import { fetchAddressBalanceWithFallback } from '../../../../lib/ergo/server.js';
+import { registerCreature } from '../../../_lib/register-creature.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -123,10 +123,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json([]);
     }
 
-    // 8. Batch fetch creature_stats, prestige, and today's training logs
+    // 8. Get current block height for boost expiry filtering
+    let currentBlockHeight = 0;
+    if (season) {
+      const { height } = await getLatestErgoBlock();
+      currentBlockHeight = height;
+    }
+
+    // 9. Batch fetch creature_stats, prestige, training logs, and boost rewards
     const creatureIds = ownedCreatures.map((c: any) => c.id);
 
-    const [statsResult, prestigeResult, logsResult] = await Promise.all([
+    const [statsResult, prestigeResult, logsResult, boostsResult] = await Promise.all([
       season
         ? supabase
             .from('creature_stats')
@@ -144,7 +151,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select('creature_id')
             .in('creature_id', creatureIds)
             .eq('season_id', season.id)
+            .eq('bonus_action', false)
             .gte('created_at', getUtcMidnightToday())
+        : { data: [] },
+      season
+        ? supabase
+            .from('boost_rewards')
+            .select('*')
+            .in('creature_id', creatureIds)
+            .eq('season_id', season.id)
+            .is('spent_at', null)
+            .gt('expires_at_height', currentBlockHeight)
         : { data: [] },
     ]);
 
@@ -164,12 +181,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       actionCountMap.set(log.creature_id, current + 1);
     }
 
-    // 9. Assemble responses
+    const boostsMap = new Map<string, any[]>();
+    for (const b of (boostsResult.data ?? [])) {
+      const arr = boostsMap.get(b.creature_id) ?? [];
+      arr.push(b);
+      boostsMap.set(b.creature_id, arr);
+    }
+
+    // 10. Assemble responses
     const result = ownedCreatures.map((creature: any) => {
       const stats = statsMap.get(creature.id) ?? null;
       const prestige = prestigeMap.get(creature.id) ?? null;
       const actionsToday = actionCountMap.get(creature.id) ?? 0;
-      return computeCreatureResponse(creature, stats, prestige, actionsToday);
+      const boosts = boostsMap.get(creature.id) ?? [];
+      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts);
     });
 
     return res.status(200).json(result);

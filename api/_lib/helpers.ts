@@ -1,6 +1,6 @@
-import { supabase } from './supabase';
-import { applyConditionDecay } from '../../lib/training-engine';
-import { nanoErgToErg } from './constants';
+import { supabase } from './supabase.js';
+import { applyConditionDecay } from '../../lib/training-engine.js';
+import { nanoErgToErg } from './constants.js';
 
 const ERGO_EXPLORER_API = 'https://api.ergoplatform.com/api/v1';
 

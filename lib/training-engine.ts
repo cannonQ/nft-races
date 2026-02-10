@@ -44,6 +44,8 @@ export interface ValidationResult {
   seasonId?: string;
   /** Raw creature_stats row for boost fields */
   statsRow?: Record<string, any>;
+  /** Whether this action will consume a bonus action */
+  isBonusAction?: boolean;
 }
 
 /** Reward boost values set after a race finish */
@@ -86,6 +88,9 @@ export const STAT_KEYS: StatName[] = ['speed', 'stamina', 'accel', 'agility', 'h
 
 const PER_STAT_CAP = 80;
 const TOTAL_STAT_CAP = 300;
+
+/** Boost rewards expire after this many Ergo blocks (~3 days at 720 blocks/day). */
+export const BOOST_EXPIRY_BLOCKS = 2160;
 
 // ---------------------------------------------------------------------------
 // Training gains
@@ -206,40 +211,53 @@ export async function validateTrainingAction(
     return { valid: false, reason: 'Creature stats not found for this season' };
   }
 
-  // 3. Count actions today
-  const todayStart = new Date();
-  todayStart.setUTCHours(0, 0, 0, 0);
+  // TEMPORARY: Set to false to re-enable training limits
+  const ALPHA_TESTING = true;
 
-  const { count: actionsToday } = await supabase
-    .from('training_log')
-    .select('*', { count: 'exact', head: true })
-    .eq('creature_id', creatureId)
-    .eq('season_id', seasonId)
-    .gte('created_at', todayStart.toISOString());
+  const BASE_ACTIONS = 2;
+  const COOLDOWN_HOURS = 6;
+  const bonusActions = stats.bonus_actions ?? 0;
 
-  const maxActions = 2 + (stats.bonus_actions ?? 0);
-  const todayCount = actionsToday ?? 0;
+  // Bonus actions are consumed first, then regular daily actions.
+  const isBonusAction = bonusActions > 0;
 
-  if (todayCount >= maxActions) {
-    return { valid: false, reason: 'No actions remaining today' };
-  }
+  if (!isBonusAction) {
+    // 3. Count only regular (non-bonus) actions today for daily limit
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
 
-  // 4. Dynamic cooldown: 24 / maxActions hours
-  if (stats.last_action_at) {
-    const cooldownHours = 24 / maxActions;
-    const cooldownMs = cooldownHours * 60 * 60 * 1000;
-    const lastAction = new Date(stats.last_action_at).getTime();
-    const now = Date.now();
+    const { count: regularToday } = await supabase
+      .from('training_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('creature_id', creatureId)
+      .eq('season_id', seasonId)
+      .eq('bonus_action', false)
+      .gte('created_at', todayStart.toISOString());
 
-    if (lastAction + cooldownMs > now) {
-      const remainingMin = Math.ceil((lastAction + cooldownMs - now) / (60 * 1000));
-      const readyAt = new Date(lastAction + cooldownMs);
-      return {
-        valid: false,
-        reason: `Cooldown: ${remainingMin} minutes remaining. Next action at ${readyAt.toISOString()}`,
-      };
+    const regularCount = regularToday ?? 0;
+
+    // 3b. Daily regular action limit
+    if (!ALPHA_TESTING && regularCount >= BASE_ACTIONS) {
+      return { valid: false, reason: 'No actions remaining today' };
+    }
+
+    // 4. Cooldown: 6 hours between regular actions.
+    if (!ALPHA_TESTING && stats.last_action_at) {
+      const cooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
+      const lastAction = new Date(stats.last_action_at).getTime();
+      const now = Date.now();
+
+      if (lastAction + cooldownMs > now) {
+        const remainingMin = Math.ceil((lastAction + cooldownMs - now) / (60 * 1000));
+        const readyAt = new Date(lastAction + cooldownMs);
+        return {
+          valid: false,
+          reason: `Cooldown: ${remainingMin} minutes remaining. Next action at ${readyAt.toISOString()}`,
+        };
+      }
     }
   }
+  // Bonus actions bypass both daily limit and cooldown
 
   const currentStats: Stats = {
     speed: stats.speed ?? 0,
@@ -250,7 +268,7 @@ export async function validateTrainingAction(
     focus: stats.focus ?? 0,
   };
 
-  return { valid: true, stats: currentStats, seasonId, statsRow: stats };
+  return { valid: true, stats: currentStats, seasonId, statsRow: stats, isBonusAction };
 }
 
 // ---------------------------------------------------------------------------
@@ -404,32 +422,49 @@ export function getRaceRewardBoost(position: number): RaceRewardBoost {
 }
 
 /**
- * Apply race reward boosts to all entrants' creature_stats after resolution.
+ * Apply race reward boosts to all entrants after resolution.
+ * - 1st place: +1 bonus_action on creature_stats
+ * - 2nd–4th+: discrete boost_rewards row (UTXO-style, expires after BOOST_EXPIRY_BLOCKS)
  */
 export async function applyRaceRewards(
   results: RaceResultEntry[],
   seasonId: string,
+  raceId: string,
+  blockHeight: number,
   supabase: SupabaseClient,
 ): Promise<void> {
   for (const entry of results) {
     const boost = getRaceRewardBoost(entry.position);
 
-    // Fetch current values so we increment rather than overwrite
-    const { data: current } = await supabase
-      .from('creature_stats')
-      .select('bonus_actions, boost_multiplier')
-      .eq('creature_id', entry.creatureId)
-      .eq('season_id', seasonId)
-      .single();
+    // Bonus actions still live on creature_stats
+    if (boost.bonus_actions > 0) {
+      const { data: current } = await supabase
+        .from('creature_stats')
+        .select('bonus_actions')
+        .eq('creature_id', entry.creatureId)
+        .eq('season_id', seasonId)
+        .single();
 
-    await supabase
-      .from('creature_stats')
-      .update({
-        bonus_actions: (current?.bonus_actions ?? 0) + boost.bonus_actions,
-        boost_multiplier: (current?.boost_multiplier ?? 0) + boost.boost_multiplier,
-      })
-      .eq('creature_id', entry.creatureId)
-      .eq('season_id', seasonId);
+      await supabase
+        .from('creature_stats')
+        .update({
+          bonus_actions: (current?.bonus_actions ?? 0) + boost.bonus_actions,
+        })
+        .eq('creature_id', entry.creatureId)
+        .eq('season_id', seasonId);
+    }
+
+    // Boost multiplier → discrete boost_rewards row
+    if (boost.boost_multiplier > 0) {
+      await supabase.from('boost_rewards').insert({
+        creature_id: entry.creatureId,
+        season_id: seasonId,
+        race_id: raceId,
+        multiplier: boost.boost_multiplier,
+        awarded_at_height: blockHeight,
+        expires_at_height: blockHeight + BOOST_EXPIRY_BLOCKS,
+      });
+    }
   }
 }
 

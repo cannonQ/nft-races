@@ -53,7 +53,7 @@ let _tokenIndex: Map<string, TokenEntry> | null = null;
 
 function loadTokens(): TokenEntry[] {
   if (!_tokens) {
-    const jsonPath = path.resolve(__dirname, '../../data/ergo/cyberpets/cyber_pet_traits.json');
+    const jsonPath = path.resolve(process.cwd(), 'data/ergo/cyberpets/cyber_pet_traits.json');
     const raw = fs.readFileSync(jsonPath, 'utf-8');
     const data = JSON.parse(raw);
     _tokens = (data.tokens as TokenEntry[]).filter(t => t.status === 'circulating');

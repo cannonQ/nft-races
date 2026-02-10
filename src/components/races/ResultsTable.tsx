@@ -1,12 +1,51 @@
-import { RaceEntry, Rarity } from '@/types/game';
+import { RaceEntry, RaceType, Rarity, StatType } from '@/types/game';
 import { useWallet } from '@/context/WalletContext';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp, Trophy, Flame, Zap, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trophy, Flame, Zap, Sparkles, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface ResultsTableProps {
   results: RaceEntry[];
+  raceType?: RaceType;
+}
+
+const statLabels: Record<StatType, string> = {
+  speed: 'SPD',
+  stamina: 'STM',
+  accel: 'ACC',
+  agility: 'AGI',
+  heart: 'HRT',
+  focus: 'FOC',
+};
+
+const statFullNames: Record<StatType, string> = {
+  speed: 'Speed',
+  stamina: 'Stamina',
+  accel: 'Acceleration',
+  agility: 'Agility',
+  heart: 'Heart',
+  focus: 'Focus',
+};
+
+function formatMod(value: number): { text: string; color: string } {
+  const pct = (value - 1) * 100;
+  if (Math.abs(pct) < 0.05) return { text: '0%', color: 'text-muted-foreground' };
+  const sign = pct > 0 ? '+' : '';
+  return {
+    text: `${sign}${pct.toFixed(1)}%`,
+    color: pct > 0 ? 'text-secondary' : 'text-destructive',
+  };
+}
+
+function formatRng(value: number): { text: string; color: string } {
+  const pct = value * 100;
+  if (Math.abs(pct) < 0.05) return { text: '0%', color: 'text-muted-foreground' };
+  const sign = pct > 0 ? '+' : '';
+  return {
+    text: `${sign}${pct.toFixed(1)}%`,
+    color: pct > 0 ? 'text-secondary' : 'text-destructive',
+  };
 }
 
 const rarityStyles: Record<Rarity, string> = {
@@ -156,43 +195,122 @@ function BreakdownRow({ result }: { result: RaceEntry }) {
         {content}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="ml-8 mr-4 mb-2 p-3 rounded-lg bg-background/50 border border-border/50">
-          <p className="text-xs text-muted-foreground mb-2 font-semibold uppercase tracking-wider">
-            Score Breakdown
-          </p>
-          <div className="grid grid-cols-4 gap-4 text-xs">
+        {result.breakdown && (
+          <div className="ml-4 md:ml-8 mr-4 mb-2 p-4 rounded-lg bg-background/50 border border-border/50 space-y-3">
+            {/* Step 1: Stat Weights — show what mattered */}
             <div>
-              <p className="text-muted-foreground">Weighted</p>
-              <p className="font-mono text-foreground">
-                {result.breakdown?.weightedScore.toLocaleString()}
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-2">
+                Stat Contributions
               </p>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                {(['speed', 'stamina', 'accel', 'agility', 'heart', 'focus'] as const).map((stat) => {
+                  const effective = result.breakdown!.effectiveStats[stat] ?? 0;
+                  const weight = result.breakdown!.raceTypeWeights?.[stat] ?? 0;
+                  const contribution = effective * weight;
+                  const isKeystat = weight >= 0.20;
+                  return (
+                    <div
+                      key={stat}
+                      className={cn(
+                        'rounded px-2 py-1.5 text-center border',
+                        isKeystat
+                          ? 'border-primary/30 bg-primary/5'
+                          : 'border-border/30 bg-muted/20'
+                      )}
+                    >
+                      <p className={cn(
+                        'text-[10px] font-semibold uppercase',
+                        isKeystat ? 'text-primary' : 'text-muted-foreground'
+                      )}>
+                        {statLabels[stat]}
+                      </p>
+                      <p className="font-mono text-xs text-foreground">
+                        {effective.toFixed(1)}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground">
+                        {weight > 0 ? `×${weight.toFixed(2)}` : '—'}
+                      </p>
+                      {weight > 0 && (
+                        <p className={cn(
+                          'font-mono text-[10px] font-semibold',
+                          isKeystat ? 'text-primary' : 'text-foreground'
+                        )}>
+                          {contribution.toFixed(1)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <p className="text-muted-foreground">Fatigue</p>
-              <p className="font-mono text-destructive">
-                {result.breakdown?.fatigueMod}
-              </p>
+
+            {/* Step 2: Score Pipeline — Base → Modifiers → Final */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/30">
+              {/* Base Power */}
+              <div className="text-center">
+                <p className="text-[10px] text-muted-foreground">Base Power</p>
+                <p className="font-mono text-sm font-semibold text-foreground">
+                  {result.breakdown.weightedScore.toFixed(1)}
+                </p>
+              </div>
+
+              <ArrowRight className="w-3 h-3 text-muted-foreground hidden sm:block" />
+
+              {/* Fatigue */}
+              <div className="text-center">
+                <p className="text-[10px] text-muted-foreground">
+                  Fatigue <span className="font-mono">({result.breakdown.fatigue ?? '?'})</span>
+                </p>
+                <p className={cn('font-mono text-sm font-semibold', formatMod(result.breakdown.fatigueMod).color)}>
+                  {formatMod(result.breakdown.fatigueMod).text}
+                </p>
+              </div>
+
+              <ArrowRight className="w-3 h-3 text-muted-foreground hidden sm:block" />
+
+              {/* Sharpness */}
+              <div className="text-center">
+                <p className="text-[10px] text-muted-foreground">
+                  Sharpness <span className="font-mono">({result.breakdown.sharpness ?? '?'})</span>
+                </p>
+                <p className={cn('font-mono text-sm font-semibold', formatMod(result.breakdown.sharpnessMod).color)}>
+                  {formatMod(result.breakdown.sharpnessMod).text}
+                </p>
+              </div>
+
+              <ArrowRight className="w-3 h-3 text-muted-foreground hidden sm:block" />
+
+              {/* Luck (RNG) */}
+              <div className="text-center">
+                <p className="text-[10px] text-muted-foreground">Luck</p>
+                <p className={cn('font-mono text-sm font-semibold', formatRng(result.breakdown.rngMod).color)}>
+                  {formatRng(result.breakdown.rngMod).text}
+                </p>
+              </div>
+
+              <ArrowRight className="w-3 h-3 text-muted-foreground hidden sm:block" />
+
+              {/* Final Score */}
+              <div className="text-center px-3 py-1 rounded bg-primary/10 border border-primary/20">
+                <p className="text-[10px] text-primary">Final</p>
+                <p className="font-mono text-sm font-bold text-primary">
+                  {result.breakdown.finalScore.toFixed(3)}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-muted-foreground">Sharpness</p>
-              <p className="font-mono text-primary">
-                +{result.breakdown?.sharpnessMod}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Final</p>
-              <p className="font-mono text-foreground font-semibold">
-                {result.breakdown?.finalScore.toLocaleString()}
-              </p>
-            </div>
+
+            {/* Formula hint */}
+            <p className="text-[10px] text-muted-foreground/60 italic">
+              Final = Base Power × Fatigue × Sharpness × (1 + Luck)
+            </p>
           </div>
-        </div>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
-export function ResultsTable({ results }: ResultsTableProps) {
+export function ResultsTable({ results, raceType }: ResultsTableProps) {
   return (
     <div className="cyber-card rounded-xl overflow-hidden">
       {/* Header */}

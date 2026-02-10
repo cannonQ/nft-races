@@ -38,25 +38,37 @@ export default function Races() {
     setShowDetailsModal(true);
   };
 
-  const handleConfirmEntry = async (creatureId: string) => {
-    if (!selectedRace || !address) return;
+  const handleConfirmEntry = async (creatureIds: string[]) => {
+    if (!selectedRace || !address || creatureIds.length === 0) return;
     setShowEntryModal(false);
     setEntryError(null);
     setIsEntering(true);
 
-    try {
-      await enterRace.mutate(selectedRace.id, creatureId, address);
+    let entered = 0;
+    const errors: string[] = [];
+
+    for (const creatureId of creatureIds) {
+      try {
+        await enterRace.mutate(selectedRace.id, creatureId, address);
+        entered++;
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : 'Failed to enter race');
+      }
+    }
+
+    if (entered > 0) {
       toast({
         title: "Entry Confirmed!",
-        description: `Your creature has been entered into ${selectedRace.name}`,
+        description: `${entered} creature${entered > 1 ? 's' : ''} entered into ${selectedRace.name}`,
       });
-      refetchRaces();
-    } catch (err) {
-      setEntryError(err instanceof Error ? err.message : 'Failed to enter race');
-    } finally {
-      setIsEntering(false);
-      setSelectedRace(null);
     }
+    if (errors.length > 0) {
+      setEntryError(`${errors.length} failed: ${errors[0]}`);
+    }
+
+    refetchRaces();
+    setIsEntering(false);
+    setSelectedRace(null);
   };
 
   return (

@@ -12,6 +12,7 @@ import RaceResults from "./pages/RaceResults";
 import Leaderboard from "./pages/Leaderboard";
 import CreatureProfile from "./pages/CreatureProfile";
 import Admin from "./pages/Admin";
+import FAQ from "./pages/FAQ";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/races/:raceId/results" element={<RaceResults />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/creatures/:creatureId" element={<CreatureProfile />} />
+            <Route path="/faq" element={<FAQ />} />
             <Route path="/admin" element={<Admin />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

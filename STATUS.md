@@ -7,7 +7,7 @@
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 14 API endpoints built, all frontend hooks wired, admin page for race management.
+Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 16 API endpoints built, all frontend hooks wired, admin page for race management. FAQ page explains all game mechanics.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
@@ -52,23 +52,25 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | 5 | `GET /api/v2/races` | `api/v2/races/index.ts` | Open + recently resolved races |
 | 6 | `GET /api/v2/races/:id/results` | `api/v2/races/[id]/results.ts` | Race results with score breakdown |
 | 7 | `GET /api/v2/leaderboard` | `api/v2/leaderboard.ts` | Season standings (optional `?season=`) |
+| 8 | `GET /api/v2/config` | `api/v2/config.ts` | Public game config (activities, race type weights) |
+| 9 | `GET /api/v2/creatures/:id/race-history` | `api/v2/creatures/[id]/race-history.ts` | Race entries for a creature |
 
 ### Public POST Endpoints (User Actions)
 
 | # | Endpoint | File | Purpose |
 |---|----------|------|---------|
-| 8 | `POST /api/v2/creatures/register` | `api/v2/creatures/register.ts` | Register NFT — verifies on-chain ownership |
-| 9 | `POST /api/v2/train` | `api/v2/train.ts` | Train creature — validates cooldowns, applies gains |
-| 10 | `POST /api/v2/races/:id/enter` | `api/v2/races/[id]/enter.ts` | Enter race — snapshots stats, validates limits |
+| 10 | `POST /api/v2/creatures/register` | `api/v2/creatures/register.ts` | Register NFT — verifies on-chain ownership |
+| 11 | `POST /api/v2/train` | `api/v2/train.ts` | Train creature — validates cooldowns, applies gains |
+| 12 | `POST /api/v2/races/:id/enter` | `api/v2/races/[id]/enter.ts` | Enter race — snapshots stats, validates limits |
 
 ### Admin POST Endpoints (Bearer token auth)
 
 | # | Endpoint | File | Purpose |
 |---|----------|------|---------|
-| 11 | `POST /api/v2/admin/seasons/start` | `api/v2/admin/seasons/start.ts` | Start new season, init creature stats |
-| 12 | `POST /api/v2/admin/seasons/end` | `api/v2/admin/seasons/end.ts` | End season, compute payouts, update prestige |
-| 13 | `POST /api/v2/admin/races/create` | `api/v2/admin/races/create.ts` | Create a new race |
-| 14 | `POST /api/v2/admin/races/resolve` | `api/v2/admin/races/resolve.ts` | Resolve race — deterministic results from Ergo block hash |
+| 13 | `POST /api/v2/admin/seasons/start` | `api/v2/admin/seasons/start.ts` | Start new season, init creature stats |
+| 14 | `POST /api/v2/admin/seasons/end` | `api/v2/admin/seasons/end.ts` | End season, compute payouts, update prestige |
+| 15 | `POST /api/v2/admin/races/create` | `api/v2/admin/races/create.ts` | Create a new race |
+| 16 | `POST /api/v2/admin/races/resolve` | `api/v2/admin/races/resolve.ts` | Resolve race — deterministic results from Ergo block hash |
 
 ### Utility Endpoints
 
@@ -83,7 +85,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 |------|---------|
 | `api/_lib/supabase.ts` | Supabase service client |
 | `api/_lib/auth.ts` | Admin `CRON_SECRET` bearer token guard |
-| `api/_lib/helpers.ts` | `getActiveSeason()`, `computeCreatureResponse()`, `countActionsToday()` |
+| `api/_lib/helpers.ts` | `getActiveSeason()`, `getLatestErgoBlock()`, `computeCreatureResponse()`, `countRegularActionsToday()` |
 | `api/_lib/constants.ts` | Activity display map, reward labels, nanoErg conversion |
 | `api/_lib/cyberpets.ts` | CyberPet JSON loader, trait parser, base stat computation |
 | `api/_lib/register-creature.ts` | Shared creature registration (used by register endpoint + auto-discovery) |
@@ -102,6 +104,8 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | `useRegisterCreature` | `POST /api/v2/creatures/register` | Mutation |
 | `useTrain` | `POST /api/v2/train` | Mutation |
 | `useEnterRace` | `POST /api/v2/races/:id/enter` | Mutation |
+| `useGameConfig` | `GET /api/v2/config` | Query |
+| `useRaceHistory` | `GET /api/v2/creatures/:id/race-history` | Query |
 
 ---
 
@@ -150,7 +154,7 @@ Results computed deterministically from Ergo block hash.
 ### Step 6: Verify Results
 
 Race results page, leaderboard, creature profile all update with race outcomes.
-Reward boosts (bonus actions, boost multiplier) applied to winners.
+Reward boosts applied to winners: 1st gets bonus action, 2nd–4th+ get discrete boost rewards (selectable, expire after ~3 days).
 
 ---
 
@@ -174,7 +178,8 @@ Reward boosts (bonus actions, boost multiplier) applied to winners.
 | **Wallet connect** | Read wallet address | `ergo.get_change_address()` via Nautilus EIP-12 |
 | **Creature discovery** | Read all tokens in wallet | `GET /addresses/{addr}/balance/confirmed` — Explorer API (1 call per wallet load) |
 | **Ownership verification** | Same balance endpoint | Checked on every train, race entry, and wallet load |
-| **Race resolution RNG** | Read latest block hash | `GET /blocks?limit=1` — Explorer API. Used as seed for deterministic scoring. |
+| **Race resolution RNG** | Read latest block hash + height | `GET /blocks?limit=1` — Explorer API. Hash = RNG seed, height = boost expiry reference |
+| **Boost expiry** | Read current block height | Same blocks endpoint. Used to filter expired boosts and validate at training time |
 
 ### What Is DB-Only NOW (Moves On-Chain in Phase 2)
 
@@ -183,16 +188,43 @@ Reward boosts (bonus actions, boost multiplier) applied to winners.
 | **Training state** (stats, fatigue, sharpness) | `creature_stats` table | AVL tree in state box register |
 | **Training action** | API validates + DB update | User TX: 0.01 ERG fee + AVL proof → Training Contract validates |
 | **Training log** | `training_log` table | On-chain TX history, indexed by scanner |
+| **Boost rewards** | `boost_rewards` table (UTXO-style rows, block height expiry) | Actual Ergo boxes (reward tokens) sent to NFT owner, consumed as TX inputs |
 | **Race entry** | API validates + DB insert | User TX: entry fee to race box + snapshot stats |
 | **Race resolution** | Admin calls API → DB update | Permissionless: anyone triggers → Contract reads `CONTEXT.headers(0).id` |
 | **Prize distribution** | DB ledger (manual payout) | Contract auto-creates payout output boxes |
 | **Leaderboard** | `season_leaderboard` table | AVL tree or extended creature tree |
-| **Cooldowns** | `last_action_at` timestamps | `HEIGHT >= lastHeight + N` blocks |
+| **Cooldowns** | `last_action_at` timestamps (6h / 180 blocks) | `HEIGHT >= lastHeight + 180` blocks |
 | **Fee collection** | Not yet implemented | User TX includes fee output natively |
 
 ### Phase 2 Vision: Everything On-Chain, DB = Read Cache
 
 In Phase 2, the Ergo blockchain is the **source of truth** for all game state. The DB becomes a read-only index (mirror) for fast frontend queries. The chain enforces all rules (cooldowns, stat caps, fee collection, prize distribution) via ErgoScript contracts. No admin needed for race resolution or season payouts.
+
+### Current Game Constants (Phase 1 — as implemented)
+
+These are the actual values enforced in the working codebase. Subject to tuning from alpha playtesting.
+
+| Constant | Value | Source |
+|----------|-------|--------|
+| **Per-stat cap** | 80 | `PER_STAT_CAP` in `training-engine.ts` |
+| **Total stat cap** | 300 (sum of all 6 stats) | `TOTAL_STAT_CAP` in `training-engine.ts` |
+| **Diminishing returns** | `gain = base_gain × (1 - current_stat / 80)` | `computeTrainingGains()` |
+| **Regular actions/day** | 2 | `BASE_ACTIONS` in `training-engine.ts`, `helpers.ts`, `train.ts` |
+| **Cooldown** | 6 hours (≈180 blocks at 720 blocks/day) | `COOLDOWN_HOURS = 6` |
+| **Bonus actions** | Bypass cooldown + daily limit, consumed first | `validateTrainingAction()` |
+| **Boost expiry** | 2160 blocks (~3 days) | `BOOST_EXPIRY_BLOCKS` in `training-engine.ts` |
+| **Fatigue decay** | -3 per 24h (prorated), floor 0 | `applyConditionDecay()` |
+| **Sharpness decay** | No decay 0–24h, -10/day after 24h | `applyConditionDecay()` |
+| **Fatigue race modifier** | `1.0 - fatigue/200` → range [0.50, 1.00] | `computeRaceResult()` |
+| **Sharpness race modifier** | `0.90 + sharpness/1000` → range [0.90, 1.00] | `computeRaceResult()` |
+| **Focus RNG swing** | `0.30 × (1 - focus/(80 + baseFocus))` | `computeRaceResult()` |
+| **RNG seed** | `sha256(blockHash + creatureId)` → seedrandom → [-1, 1] | `seedToFloat()` |
+| **Final race score** | `weighted × fatigueMod × sharpnessMod × (1 + rngMod)` | `computeRaceResult()` |
+| **Race prize split** | 50% / 30% / 20% (configurable via `game_config`) | `prize_distribution` default |
+| **Race rewards** | 1st: +1 bonus action, 2nd: +50% boost, 3rd: +25% boost, 4th+: +10% boost | `getRaceRewardBoost()` |
+| **Training cost** | 0.01 ERG (planned, not yet enforced) | Architecture spec |
+| **Race entry fee** | Configurable per-race (`entry_fee_nanoerg` column) | `season_races` table |
+| **Alpha testing mode** | `ALPHA_TESTING = true` — cooldown and daily limits disabled | `validateTrainingAction()` |
 
 ---
 
@@ -233,11 +265,11 @@ PHASE 2 (Target — Smart Contracts)
 | Phase 1 Endpoint | Phase 2 Equivalent | What Changes |
 |------------------|--------------------|--------------|
 | **POST /creatures/register** | **No contract needed** — NFT ownership is native. Creature exists if the wallet holds the token. Base stats derived from on-chain metadata (packed-data box). | DB insert → AVL tree insert (first training TX auto-registers) |
-| **POST /train** | **Training Contract** — User builds TX: sends 0.01 ERG to pool box + AVL proof of stat update. Contract validates: cooldown (`HEIGHT >= lastAction + 360`), diminishing returns formula, fatigue cost, stat caps. | Server validation → ErgoScript validation. Same formulas. |
-| **POST /races/:id/enter** | **Race Entry Contract** — User builds TX: sends 0.05 ERG to race box + snapshot stats from AVL read. Contract validates: ownership, cooldown, race not full. | Snapshot stored in race box registers instead of DB. |
-| **POST /admin/races/resolve** | **Race Resolution Contract** — Anyone can trigger (no admin needed). Contract reads `CONTEXT.headers(0).id` for block hash RNG seed. Computes scores identically. Distributes payouts from race box automatically. | Admin trigger → permissionless. Payouts are TX outputs, not DB entries. |
+| **POST /train** | **Training Contract** — User builds TX: sends 0.01 ERG to pool box + AVL proof of stat update + optional boost reward box inputs. Contract validates: cooldown (`HEIGHT >= lastAction + 180`), 2 actions/day limit, diminishing returns (`gain = base × (1 - current/80)`), per-stat cap (80), total cap (300), fatigue cost. Boost reward inputs consumed in same TX. | Server validation → ErgoScript validation. Same formulas. |
+| **POST /races/:id/enter** | **Race Entry Contract** — User builds TX: sends entry fee to race box + snapshot stats from AVL read. Contract validates: ownership, not already entered, race not full. | Snapshot stored in race box registers instead of DB. |
+| **POST /admin/races/resolve** | **Race Resolution Contract** — Anyone can trigger (no admin needed). Contract reads `CONTEXT.headers(0).id` for block hash RNG seed. Computes scores identically. Creates boost reward output boxes for 2nd–4th+ and bonus action marker for 1st. Distributes prize pool (50/30/20 split). | Admin trigger → permissionless. Payouts + boost rewards are TX outputs, not DB entries. |
 | **POST /admin/seasons/start** | **Season Contract** — New season box created with: AVL tree digest (all stats zeroed), prize pool = 0, end height. | Admin action → scheduled or governance vote. |
-| **POST /admin/seasons/end** | **Season Payout Contract** — Triggered when `HEIGHT >= season_end_height`. Reads leaderboard from AVL tree. Creates payout output boxes (40%/35%/25% split). | Admin trigger → automated by block height. |
+| **POST /admin/seasons/end** | **Season Payout Contract** — Triggered when `HEIGHT >= season_end_height`. Reads leaderboard from AVL tree. Creates payout output boxes. | Admin trigger → automated by block height. |
 | **GET /seasons/current** | **TX Builder reads season box** from chain. Indexed in DB for fast frontend reads. | API reads DB → API reads chain-synced DB. |
 | **GET /creatures/by-wallet/:addr** | **TX Builder queries AVL tree** with wallet's token IDs. Indexed in DB. | Same API, data source changes from "source of truth" to "indexed mirror." |
 | **GET /leaderboard** | **Leaderboard AVL tree** (separate tree or same tree extended). Indexed in DB. | Same shape, indexed from chain. |
@@ -247,18 +279,20 @@ PHASE 2 (Target — Smart Contracts)
 
 | Component | Phase 1 | Phase 2 | Notes |
 |-----------|---------|---------|-------|
-| **Stat storage** | `creature_stats` table | AVL tree (26 bytes/creature) in state box register | Digest stored on-chain; full tree in off-chain service for proof generation |
-| **Training validation** | `validateTrainingAction()` in API | ErgoScript in Training Contract | Identical rules: cooldown, daily limits, stat caps |
-| **Stat gain computation** | `computeTrainingGains()` in API | ErgoScript arithmetic | Same formula: `gain = base × (1 - current/80)` |
-| **Condition decay** | `applyConditionDecay()` computed at read time | Computed at TX time from `HEIGHT - lastActionHeight` | Block height replaces wall-clock time |
-| **Race scoring** | `computeRaceResult()` in API | ErgoScript in Resolution Contract | Same formula, `CONTEXT.headers` replaces Explorer API for block hash |
+| **Stat storage** | `creature_stats` table (6 stats + fatigue + sharpness + counters) | AVL tree in state box register | Digest stored on-chain; full tree in off-chain service for proof generation |
+| **Training validation** | `validateTrainingAction()` in API | ErgoScript in Training Contract | Rules: 6h cooldown (180 blocks), 2 regular actions/day, bonus actions bypass both, per-stat cap 80, total cap 300 |
+| **Stat gain computation** | `computeTrainingGains()` in API | ErgoScript arithmetic | Diminishing returns: `gain = base × (1 - current/80)`. Boost: `gain × (1 + totalBoostMultiplier)` |
+| **Condition decay** | `applyConditionDecay()` computed at read time | Computed at TX time from `HEIGHT - lastActionHeight` | Fatigue: -3/24h prorated. Sharpness: no decay 0-24h, -10/day after 24h |
+| **Race scoring** | `computeRaceResult()` in API | ErgoScript in Resolution Contract | `finalScore = weighted × fatigueMod × sharpnessMod × (1 + rngMod)` |
 | **RNG** | `sha256(blockHash + creatureId)` → seedrandom | `blake2b256(raceBoxId ++ headers(0).id ++ tokenId)` modular arithmetic | Deterministic and verifiable in both phases |
-| **Prize distribution** | DB ledger → admin payout | SC creates output boxes automatically | Trustless, no admin needed |
-| **Cooldowns** | `last_action_at` timestamps | `HEIGHT >= lastHeight + N` (360 blocks ≈ 12h) | Block height is more reliable than timestamps |
-| **Fee collection** | API constructs TX | User TX includes fee output natively | Self-enforcing via contract |
-| **Auth** | Wallet signature → API verifies | TX signature = auth (native to UTXO model) | No separate auth layer needed |
+| **Race modifiers** | fatigueMod = `1 - fatigue/200`, sharpnessMod = `0.90 + sharpness/1000`, focusSwing = `0.30 × (1 - focus/(80+baseFocus))` | Same formulas in ErgoScript | fatigueMod range [0.50, 1.00], sharpnessMod range [0.90, 1.00] |
+| **Prize distribution** | Race prizes: 50/30/20% of entry pool (from `game_config`) | SC creates output boxes automatically | Configurable per-race via `game_config.prize_distribution` |
+| **Boost rewards** | `boost_rewards` table — discrete rows with block height expiry (2160 blocks ≈ 3 days) | Actual Ergo boxes (reward tokens) with `HEIGHT` expiry in contract | UTXO model: select which boosts to spend per training action |
+| **Cooldowns** | `last_action_at` timestamps (6 hours between regular actions) | `HEIGHT >= lastHeight + 180` (180 blocks ≈ 6h) | Bonus actions bypass cooldown. Block height more reliable than timestamps |
+| **Fee collection** | Not yet implemented (planned: 0.01 ERG per training action) | User TX includes fee output natively | Self-enforcing via contract |
+| **Auth** | On-chain NFT ownership verified via Explorer API (no wallet signing in Phase 1) | TX signature = auth (native to UTXO model) | Phase 1 checks balance endpoint; Phase 2 is native UTXO ownership |
 | **Leaderboard** | `season_leaderboard` table | Separate AVL tree or extended creature tree | Indexed off-chain for fast reads |
-| **Training log** | `training_log` table | On-chain TX history | Indexed by scanner for frontend display |
+| **Training log** | `training_log` table (with `bonus_action` flag, `boosted` flag) | On-chain TX history | Indexed by scanner for frontend display |
 
 ### Key Technical Decisions for Phase 2
 
@@ -286,6 +320,103 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Discrete Boost Rewards (UTXO-Style) — 2026-02-09
+
+### Overview
+Race rewards now produce **discrete, spendable boost rewards** instead of a single accumulating `boost_multiplier` on `creature_stats`. Each boost is a separate row in `boost_rewards` with an Ergo block height expiry (~3 days / 2160 blocks). Players select which boosts to consume at training time via a chip-selector UI in the confirm modal.
+
+### Migration
+- `migrations/006_boost_rewards_table.sql` — Creates `boost_rewards` table with partial index on unspent boosts
+
+### Boost Lifecycle
+1. **Awarded**: Race resolution inserts a `boost_rewards` row with `multiplier`, `awarded_at_height`, and `expires_at_height = awarded + 2160`
+2. **Displayed**: Creature API endpoints return `boosts[]` (available, unspent, unexpired). Frontend shows count + expiry in BoostBanner, selectable chips in confirm modal
+3. **Consumed**: Training endpoint accepts `boostRewardIds[]`, validates ownership/expiry, sums multipliers, applies to stat gains, marks rows as `spent_at` + links to `training_log.id`
+4. **Expired**: Boosts past their `expires_at_height` are filtered out of API responses. ~3 days to use them
+
+### Reward Structure (unchanged)
+| Position | Reward |
+|----------|--------|
+| 1st | +1 Bonus Action (on `creature_stats`) |
+| 2nd | +50% Boost (discrete row) |
+| 3rd | +25% Boost (discrete row) |
+| 4th+ | +10% Boost (discrete row) |
+
+### Files Changed
+- `api/_lib/helpers.ts` — Added `getLatestErgoBlock()`, updated `computeCreatureResponse()` with boosts parameter
+- `lib/training-engine.ts` — `applyRaceRewards()` now inserts `boost_rewards` rows, exported `BOOST_EXPIRY_BLOCKS = 2160`
+- `api/v2/admin/races/resolve.ts` — Uses shared `getLatestErgoBlock()`, passes `raceId` + `blockHeight` to `applyRaceRewards()`
+- `api/v2/train.ts` — Accepts `boostRewardIds[]`, validates+consumes discrete boosts, returns `totalBoostMultiplier` + `boostsConsumed`
+- `api/v2/creatures/[id]/index.ts` — Fetches available boosts for response
+- `api/v2/creatures/by-wallet/[address].ts` — Batch-fetches available boosts
+- `src/types/game.ts` — Added `BoostReward` interface, `boosts` on `CreatureWithStats`, `totalBoostMultiplier`/`boostsConsumed` on `TrainResponse`
+- `src/api/useTraining.ts` — `useTrain()` accepts optional `boostRewardIds`
+- `src/components/training/TrainingConfirmModal.tsx` — Boost selector UI (toggleable chips with expiry labels, Select All/Clear, projected gains preview)
+- `src/components/training/BoostBanner.tsx` — Shows boost inventory with individual multipliers and expiry
+- `src/components/training/ActivityCard.tsx` — Simplified to `hasBoostsAvailable` boolean indicator
+- `src/components/training/TrainingResultModal.tsx` — Shows consumed boost total from server response
+- `src/components/creatures/RewardBadges.tsx` — Shows boost count instead of percentage
+- `src/components/creatures/CreatureCard.tsx` — Uses `creature.boosts.length` for reward check
+- `src/components/creatures/CreatureHeader.tsx` — Uses `creature.boosts.length` for reward check
+- `src/pages/Train.tsx` — Block height fetch on mount, boost selection orchestration, passes `boostRewardIds` to train mutation
+
+### Phase 2 Note
+`boost_rewards` mirrors the on-chain UTXO model — each boost is a "box" with a value and expiry height. In Phase 2, these will be actual Ergo boxes (reward tokens) sent to the NFT owner's address, consumed as TX inputs when training.
+
+---
+
+## Score Breakdown, FAQ, & Bug Fixes (2026-02-09)
+
+### Score Breakdown Redesign
+The race results score breakdown was showing `Weighted: 0` and raw modifier values with no context. Completely redesigned:
+
+**Backend** (`api/v2/races/[id]/results.ts`):
+- Now loads `game_config` to get `race_type_weights` for the race type
+- Computes proper `weightedScore` (each stat × its weight, summed)
+- Recomputes `rngMod` deterministically from stored `block_hash` + creature ID using `seedrandom`
+- Includes raw fatigue/sharpness values and the weights map in the breakdown response
+
+**Frontend** (`src/components/races/ResultsTable.tsx`):
+- **Stat Contributions grid**: Shows each stat with effective value, weight multiplier, and contribution. Key stats (weight >= 0.20) highlighted
+- **Score Pipeline**: Visual flow: Base Power → Fatigue (%) → Sharpness (%) → Luck (%) → Final Score
+- **Formula hint**: `Final = Base Power × Fatigue × Sharpness × (1 + Luck)`
+
+### FAQ Page
+- `src/pages/FAQ.tsx` — **NEW**: Comprehensive game guide with accordion sections
+- Covers: stats, training, fatigue/sharpness, race types, scoring formula, rewards/boosts, rarity, Focus & luck, seasons, blockchain integration
+- Route: `/faq`, accessible from HelpCircle icon at bottom of sidebar navigation
+
+### Training Math Fix
+The frontend confirm modal showed projected gains that didn't match actual results. Root cause: hardcoded activity gain values in `trainingActivities.ts` didn't match the `game_config` database values.
+- `api/v2/config.ts` — **NEW**: Public endpoint exposing activity definitions and race type weights from `game_config`
+- `src/api/useGameConfig.ts` — **NEW**: Hook to fetch game config
+- `src/pages/Train.tsx` — Merges real server config into activity definitions, falling back to hardcoded defaults if fetch fails. Projected gains in confirm modal now match actual server-side computation.
+
+### Creature Profile Fixes
+- **Race History**: Was hardcoded mock data (2 fake races). Now queries real race entries from `season_race_entries` table.
+  - `api/v2/creatures/[id]/race-history.ts` — **NEW**: Returns all resolved race entries for a creature
+  - `src/api/useRaceHistory.ts` — **NEW**: Hook for race history
+- **Training Log "Invalid Date"**: The CreatureProfile page was remapping training logs into a wrong object shape (`date` instead of `createdAt`, missing `statChanges`, `wasBoosted`). Now passes raw API response directly to `<TrainingLog />`.
+
+### New API Endpoints
+
+| # | Endpoint | File | Purpose |
+|---|----------|------|---------|
+| 15 | `GET /api/v2/config` | `api/v2/config.ts` | Public game config (activities, race type weights) |
+| 16 | `GET /api/v2/creatures/:id/race-history` | `api/v2/creatures/[id]/race-history.ts` | Race entries for a creature |
+
+### New Frontend Hooks
+
+| Hook | Endpoint | Type |
+|------|----------|------|
+| `useGameConfig` | `GET /api/v2/config` | Query |
+| `useRaceHistory` | `GET /api/v2/creatures/:id/race-history` | Query |
+
+### Updated Types
+- `ScoreBreakdown` — Added `raceTypeWeights`, raw `fatigue`/`sharpness` values
 
 ---
 

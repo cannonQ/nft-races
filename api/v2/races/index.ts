@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../_lib/supabase';
-import { getActiveSeason } from '../../_lib/helpers';
-import { nanoErgToErg } from '../../_lib/constants';
+import { supabase } from '../../_lib/supabase.js';
+import { getActiveSeason } from '../../_lib/helpers.js';
+import { nanoErgToErg } from '../../_lib/constants.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {

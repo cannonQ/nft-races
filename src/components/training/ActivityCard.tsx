@@ -1,4 +1,4 @@
-import { Zap, Route, Wind, Timer, Dumbbell, Brain, LucideIcon } from 'lucide-react';
+import { Zap, Route, Wind, Timer, Dumbbell, Brain, Flame, LucideIcon } from 'lucide-react';
 import { TrainingActivity, StatType } from '@/types/game';
 import { cn } from '@/lib/utils';
 
@@ -6,7 +6,7 @@ interface ActivityCardProps {
   activity: TrainingActivity;
   disabled?: boolean;
   onSelect: (activity: TrainingActivity) => void;
-  boostMultiplier?: number;
+  hasBoostsAvailable?: boolean;
 }
 
 const iconMap: Record<string, LucideIcon> = {
@@ -36,11 +36,8 @@ const statLabels: Record<StatType, string> = {
   focus: 'Focus',
 };
 
-export function ActivityCard({ activity, disabled, onSelect, boostMultiplier = 0 }: ActivityCardProps) {
+export function ActivityCard({ activity, disabled, onSelect, hasBoostsAvailable = false }: ActivityCardProps) {
   const Icon = iconMap[activity.icon] || Dumbbell;
-  const hasBoost = boostMultiplier > 0;
-  const boostedPrimary = hasBoost ? Math.round(activity.primaryGain * (1 + boostMultiplier)) : activity.primaryGain;
-  const boostedSecondary = hasBoost ? Math.round(activity.secondaryGain * (1 + boostMultiplier)) : activity.secondaryGain;
 
   return (
     <button
@@ -50,7 +47,7 @@ export function ActivityCard({ activity, disabled, onSelect, boostMultiplier = 0
         'cyber-card rounded-xl p-4 text-left transition-all duration-300 group',
         'hover:scale-[1.02] active:scale-[0.98]',
         disabled && 'opacity-50 pointer-events-none grayscale',
-        hasBoost && 'ring-1 ring-primary/40'
+        hasBoostsAvailable && 'ring-1 ring-primary/40'
       )}
     >
       {/* Icon & Name */}
@@ -82,10 +79,10 @@ export function ActivityCard({ activity, disabled, onSelect, boostMultiplier = 0
           'bg-primary/10',
           statColors[activity.primaryStat]
         )}>
-          <span>+{boostedPrimary}</span>
+          <span>+{activity.primaryGain}</span>
           <span className="opacity-70">{statLabels[activity.primaryStat]}</span>
-          {hasBoost && (
-            <span className="text-primary text-[10px]">🔥</span>
+          {hasBoostsAvailable && (
+            <Flame className="w-3 h-3 text-primary" />
           )}
         </div>
         {activity.secondaryStat && (
@@ -94,11 +91,8 @@ export function ActivityCard({ activity, disabled, onSelect, boostMultiplier = 0
             'bg-muted',
             statColors[activity.secondaryStat]
           )}>
-            <span>+{boostedSecondary}</span>
+            <span>+{activity.secondaryGain}</span>
             <span className="opacity-70">{statLabels[activity.secondaryStat]}</span>
-            {hasBoost && (
-              <span className="text-primary text-[10px]">🔥</span>
-            )}
           </div>
         )}
       </div>

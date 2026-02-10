@@ -1,16 +1,15 @@
 import { Trophy, Flame } from 'lucide-react';
+import { BoostReward } from '@/types/game';
 import { cn } from '@/lib/utils';
 
 interface RewardBadgesProps {
   bonusActions: number;
-  boostMultiplier: number;
+  boosts: BoostReward[];
   compact?: boolean;
 }
 
-export function RewardBadges({ bonusActions, boostMultiplier, compact = false }: RewardBadgesProps) {
-  if (bonusActions === 0 && boostMultiplier === 0) return null;
-
-  const boostPercent = Math.round(boostMultiplier * 100);
+export function RewardBadges({ bonusActions, boosts, compact = false }: RewardBadgesProps) {
+  if (bonusActions === 0 && boosts.length === 0) return null;
 
   return (
     <div className={cn('flex flex-wrap gap-1.5', compact ? 'mt-1' : 'mt-2')}>
@@ -26,15 +25,15 @@ export function RewardBadges({ bonusActions, boostMultiplier, compact = false }:
         </div>
       )}
 
-      {/* Boost Multiplier Badge */}
-      {boostMultiplier > 0 && (
+      {/* Boost Rewards Badge */}
+      {boosts.length > 0 && (
         <div className={cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider',
           'bg-primary/20 text-primary border border-primary/30',
           'animate-pulse shadow-[0_0_10px_hsl(var(--primary)/0.4)]'
         )}>
           <Flame className="w-3 h-3" />
-          <span>+{boostPercent}% Boost</span>
+          <span>{boosts.length} Boost{boosts.length > 1 ? 's' : ''}</span>
         </div>
       )}
     </div>

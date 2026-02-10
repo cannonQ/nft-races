@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { StatBar, ConditionGauge, RarityBadge } from './StatBar';
 import { CooldownTimer } from './CooldownTimer';
 import { RewardBadges } from './RewardBadges';
+import { ActionsDisplay } from '../training/ActionsDisplay';
 import { cn } from '@/lib/utils';
 
 interface CreatureCardProps {
@@ -17,7 +18,7 @@ const statOrder: StatType[] = ['speed', 'stamina', 'accel', 'agility', 'heart', 
 
 export function CreatureCard({ creature, className, style }: CreatureCardProps) {
   const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
-  const hasRewards = creature.bonusActions > 0 || creature.boostMultiplier > 0;
+  const hasRewards = creature.bonusActions > 0 || creature.boosts.length > 0;
 
   return (
     <div 
@@ -49,7 +50,7 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
               <RarityBadge rarity={creature.rarity} />
               <RewardBadges
                 bonusActions={creature.bonusActions}
-                boostMultiplier={creature.boostMultiplier}
+                boosts={creature.boosts}
                 compact
               />
             </div>
@@ -80,8 +81,13 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
         <ConditionGauge type="sharpness" value={creature.sharpness} />
       </div>
 
-      {/* Cooldown Timer */}
-      <div className="flex justify-center">
+      {/* Actions & Cooldown */}
+      <div className="flex flex-col items-center gap-2">
+        <ActionsDisplay
+          actionsRemaining={creature.actionsRemaining}
+          maxActionsToday={creature.maxActionsToday}
+          bonusActions={creature.bonusActions}
+        />
         <CooldownTimer endsAt={creature.cooldownEndsAt} />
       </div>
 
@@ -106,11 +112,7 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
           asChild
           variant="outline"
           size="sm"
-          className={cn(
-            'flex-1 border-secondary/50 text-secondary hover:bg-secondary/10 hover:border-secondary',
-            isOnCooldown && 'opacity-50 pointer-events-none'
-          )}
-          disabled={isOnCooldown}
+          className="flex-1 border-secondary/50 text-secondary hover:bg-secondary/10 hover:border-secondary"
         >
           <Link to="/races">
             <Flag className="w-4 h-4 mr-2" />

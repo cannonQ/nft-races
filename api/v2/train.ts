@@ -1,20 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../_lib/supabase';
-import { getActiveSeason } from '../_lib/helpers';
+import { supabase } from '../_lib/supabase.js';
+import { getActiveSeason, getLatestErgoBlock } from '../_lib/helpers.js';
 import {
   validateTrainingAction,
   computeTrainingGains,
   applyConditionDecay,
   STAT_KEYS,
-} from '../../lib/training-engine';
-import { verifyNFTOwnership } from '../../lib/ergo/server';
+} from '../../lib/training-engine.js';
+import { verifyNFTOwnership } from '../../lib/ergo/server.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const { creatureId, activity, walletAddress } = req.body ?? {};
+  const { creatureId, activity, walletAddress, boostRewardIds } = req.body ?? {};
 
   if (!creatureId || !activity || !walletAddress) {
     return res.status(400).json({ error: 'creatureId, activity, and walletAddress are required' });
@@ -80,15 +80,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const currentStats = validation.stats!;
     const gains = computeTrainingGains(activity, currentStats, gameConfig.config);
 
-    // 6. Determine if boost is used
-    const boostMultiplier = validation.statsRow?.boost_multiplier ?? 0;
-    const boostUsed = boostMultiplier > 0;
+    // 6. Validate + apply discrete boost rewards (if any selected)
+    const selectedBoostIds: string[] = Array.isArray(boostRewardIds) ? boostRewardIds : [];
+    let totalBoostMultiplier = 0;
+    let boostUsed = false;
+    let validatedBoosts: any[] = [];
 
-    // Apply boost to stat gains
-    if (boostUsed) {
+    if (selectedBoostIds.length > 0) {
+      // Fetch selected boosts — must belong to this creature, be unspent
+      const { data: boostRows, error: boostErr } = await supabase
+        .from('boost_rewards')
+        .select('*')
+        .in('id', selectedBoostIds)
+        .eq('creature_id', creatureId)
+        .is('spent_at', null);
+
+      if (boostErr || !boostRows || boostRows.length !== selectedBoostIds.length) {
+        return res.status(400).json({ error: 'One or more selected boosts are invalid, already spent, or do not belong to this creature' });
+      }
+
+      // Verify none are expired (need current block height)
+      const { height: currentHeight } = await getLatestErgoBlock();
+      const expired = boostRows.filter(b => b.expires_at_height <= currentHeight);
+      if (expired.length > 0) {
+        return res.status(400).json({ error: `${expired.length} selected boost(s) have expired` });
+      }
+
+      validatedBoosts = boostRows;
+      totalBoostMultiplier = boostRows.reduce((sum: number, b: any) => sum + Number(b.multiplier), 0);
+      boostUsed = true;
+
+      // Apply boost to stat gains
       for (const key of STAT_KEYS) {
         if (gains.statChanges[key] !== undefined) {
-          gains.statChanges[key] = Math.round(gains.statChanges[key]! * (1 + boostMultiplier) * 100) / 100;
+          gains.statChanges[key] = Math.round(gains.statChanges[key]! * (1 + totalBoostMultiplier) * 100) / 100;
         }
       }
     }
@@ -109,7 +134,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const now = new Date().toISOString();
 
-    // 9. Update creature_stats
+    // 9. Determine if this is a bonus action (bonus consumed first)
+    const isBonusAction = validation.isBonusAction ?? false;
+    const currentBonusActions = validation.statsRow?.bonus_actions ?? 0;
+
+    // 10. Insert training log FIRST (before stats update).
+    //     If the log insert fails, stats remain unchanged — no orphaned cooldown state.
+    //     Use .select('id').single() to capture log ID for linking spent boosts.
+    const { data: logRow, error: logErr } = await supabase.from('training_log').insert({
+      creature_id: creatureId,
+      season_id: season.id,
+      owner_address: walletAddress,
+      activity,
+      stat_changes: gains.statChanges,
+      fatigue_change: gains.fatigueDelta,
+      sharpness_change: gains.sharpnessDelta,
+      boosted: boostUsed,
+      bonus_action: isBonusAction,
+    }).select('id').single();
+
+    if (logErr || !logRow) {
+      console.error('Training log insert error:', logErr);
+      return res.status(500).json({ error: 'Failed to record training action' });
+    }
+
+    // 10b. Mark selected boosts as spent (link to this training log)
+    if (validatedBoosts.length > 0) {
+      const now = new Date().toISOString();
+      const { error: spendErr } = await supabase
+        .from('boost_rewards')
+        .update({ spent_at: now, spent_in_training_log_id: logRow.id })
+        .in('id', validatedBoosts.map((b: any) => b.id));
+
+      if (spendErr) {
+        console.error('Failed to mark boosts as spent:', spendErr);
+        // Non-fatal — boosts were validated, training is committed
+      }
+    }
+
+    // 11. Update creature_stats (only after log is safely persisted)
+    const newBonusActions = isBonusAction
+      ? Math.max(0, currentBonusActions - 1)
+      : currentBonusActions;
+
     const { error: updateErr } = await supabase
       .from('creature_stats')
       .update({
@@ -118,8 +185,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         sharpness,
         last_action_at: now,
         action_count: (validation.statsRow?.action_count ?? 0) + 1,
-        // Consume boost after use (reset to 0)
-        boost_multiplier: boostUsed ? 0 : boostMultiplier,
+        // Decrement bonus_actions when a bonus action is consumed
+        bonus_actions: newBonusActions,
       })
       .eq('creature_id', creatureId)
       .eq('season_id', season.id);
@@ -129,39 +196,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to update creature stats' });
     }
 
-    // 10. Insert training log
-    const { error: logErr } = await supabase.from('training_log').insert({
-      creature_id: creatureId,
-      season_id: season.id,
-      activity,
-      stat_changes: gains.statChanges,
-      fatigue_change: gains.fatigueDelta,
-      sharpness_change: gains.sharpnessDelta,
-      boosted: boostUsed,
-    });
+    // 12. Compute actions remaining
+    //     Bonus actions (remaining after this one) + regular actions left today.
+    const BASE_ACTIONS = 2;
+    const COOLDOWN_HOURS = 6;
 
-    if (logErr) {
-      console.error('Training log insert error:', logErr);
-      return res.status(500).json({ error: 'Failed to record training action' });
-    }
-
-    // 11. Compute actions remaining
-    const maxActions = 2 + (validation.statsRow?.bonus_actions ?? 0);
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
-    const { count: actionsToday } = await supabase
+    const { count: regularToday } = await supabase
       .from('training_log')
       .select('*', { count: 'exact', head: true })
       .eq('creature_id', creatureId)
       .eq('season_id', season.id)
+      .eq('bonus_action', false)
       .gte('created_at', todayStart.toISOString());
 
-    const actionsRemaining = Math.max(0, maxActions - (actionsToday ?? 0));
+    const regularRemaining = Math.max(0, BASE_ACTIONS - (regularToday ?? 0));
+    const actionsRemaining = newBonusActions + regularRemaining;
 
-    // 12. Compute next action cooldown
-    const cooldownHours = 24 / maxActions;
-    const cooldownMs = cooldownHours * 60 * 60 * 1000;
-    const readyAt = new Date(Date.now() + cooldownMs);
+    // 13. Compute next action cooldown
+    //     Bonus actions bypass cooldown — if bonus remaining, ready immediately
+    const nextIsBonusAction = newBonusActions > 0;
+    const cooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
+    const readyAt = nextIsBonusAction ? new Date() : new Date(Date.now() + cooldownMs);
     const nextActionAt = actionsRemaining > 0 ? readyAt.toISOString() : null;
 
     return res.status(200).json({
@@ -171,6 +228,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       fatigue,
       sharpness,
       boostUsed,
+      totalBoostMultiplier,
+      boostsConsumed: validatedBoosts.map((b: any) => b.id),
       actionsRemaining,
       nextActionAt,
     });

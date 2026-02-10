@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CreatureWithStats, TrainingActivity, TrainResponse, StatType } from '@/types/game';
+import { CreatureWithStats, TrainingActivity, TrainResponse, StatType, StatBlock } from '@/types/game';
 import { cn } from '@/lib/utils';
 
 interface TrainingResultModalProps {
@@ -16,6 +16,8 @@ interface TrainingResultModalProps {
   creature: CreatureWithStats;
   activity: TrainingActivity | null;
   boostMultiplier?: number;
+  /** Pre-training snapshot so we can show correct old→new even after refetch */
+  preTrainStats?: { trained: StatBlock; base: StatBlock } | null;
   trainResult?: TrainResponse | null;
 }
 
@@ -37,6 +39,11 @@ const statColors: Record<StatType, string> = {
   focus: 'text-stat-focus',
 };
 
+/** Round to 2 decimal places for display */
+function r2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 interface AnimatedNumberProps {
   from: number;
   to: number;
@@ -51,7 +58,7 @@ function AnimatedNumber({ from, to, className }: AnimatedNumberProps) {
     const steps = 20;
     const increment = (to - from) / steps;
     const stepDuration = duration / steps;
-    
+
     let step = 0;
     const timer = setInterval(() => {
       step++;
@@ -59,14 +66,14 @@ function AnimatedNumber({ from, to, className }: AnimatedNumberProps) {
         setCurrent(to);
         clearInterval(timer);
       } else {
-        setCurrent(Math.round(from + increment * step));
+        setCurrent(r2(from + increment * step));
       }
     }, stepDuration);
 
     return () => clearInterval(timer);
   }, [from, to]);
 
-  return <span className={className}>{current}</span>;
+  return <span className={className}>{r2(current)}</span>;
 }
 
 export function TrainingResultModal({
@@ -75,6 +82,7 @@ export function TrainingResultModal({
   creature,
   activity,
   boostMultiplier = 0,
+  preTrainStats,
   trainResult,
 }: TrainingResultModalProps) {
   const [showAnimation, setShowAnimation] = useState(false);
@@ -90,28 +98,35 @@ export function TrainingResultModal({
 
   if (!activity) return null;
 
-  // Use real API data when available, fall back to estimated gains
+  // Use the pre-training snapshot for "old" values (before refetch overwrites creature)
+  const baseStats = preTrainStats?.base ?? creature.baseStats;
+  const oldTrained = preTrainStats?.trained ?? creature.trainedStats;
+
+  // Boost: use the actual total from server response, fallback to pre-train snapshot
   const hasBoost = trainResult ? trainResult.boostUsed : boostMultiplier > 0;
-  const primaryGain = trainResult?.statChanges[activity.primaryStat] ?? (
-    hasBoost ? Math.round(activity.primaryGain * (1 + boostMultiplier)) : activity.primaryGain
-  );
+  const boostPercent = trainResult?.totalBoostMultiplier
+    ? Math.round(trainResult.totalBoostMultiplier * 100)
+    : Math.round(boostMultiplier * 100);
+
+  // Actual gains from server response
+  const primaryGain = r2(trainResult?.statChanges[activity.primaryStat] ?? 0);
   const secondaryGain = activity.secondaryStat
-    ? (trainResult?.statChanges[activity.secondaryStat] ?? (
-        hasBoost ? Math.round(activity.secondaryGain * (1 + boostMultiplier)) : activity.secondaryGain
-      ))
+    ? r2(trainResult?.statChanges[activity.secondaryStat] ?? 0)
     : 0;
 
-  const oldPrimary = creature.baseStats[activity.primaryStat] + creature.trainedStats[activity.primaryStat];
+  // Old = base + pre-training trained stat
+  const oldPrimary = r2(baseStats[activity.primaryStat] + oldTrained[activity.primaryStat]);
+  // New = base + server's newStats (which is the new trained value)
   const newPrimary = trainResult
-    ? (trainResult.newStats[activity.primaryStat] + creature.baseStats[activity.primaryStat])
-    : oldPrimary + primaryGain;
+    ? r2(trainResult.newStats[activity.primaryStat] + baseStats[activity.primaryStat])
+    : r2(oldPrimary + primaryGain);
 
   const oldSecondary = activity.secondaryStat
-    ? creature.baseStats[activity.secondaryStat] + creature.trainedStats[activity.secondaryStat]
+    ? r2(baseStats[activity.secondaryStat] + oldTrained[activity.secondaryStat])
     : 0;
   const newSecondary = activity.secondaryStat && trainResult
-    ? (trainResult.newStats[activity.secondaryStat] + creature.baseStats[activity.secondaryStat])
-    : oldSecondary + secondaryGain;
+    ? r2(trainResult.newStats[activity.secondaryStat] + baseStats[activity.secondaryStat])
+    : r2(oldSecondary + secondaryGain);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -139,8 +154,8 @@ export function TrainingResultModal({
               <span className="text-foreground font-semibold">{activity.name}</span>
             </p>
             {hasBoost && (
-              <p className="text-primary text-sm mt-1 font-semibold">
-                🔥 +{Math.round(boostMultiplier * 100)}% Boost Applied!
+              <p className="text-orange-400 text-sm mt-1 font-semibold">
+                +{boostPercent}% Boost Applied!
               </p>
             )}
           </div>
@@ -170,12 +185,12 @@ export function TrainingResultModal({
                       oldPrimary
                     )}
                   </span>
-                    <span className="text-accent font-mono text-lg">+{Math.round(primaryGain * 100) / 100}</span>
+                    <span className="text-accent font-mono text-lg">+{primaryGain}</span>
                   </div>
-                
+
                 {/* Animated bar */}
                 <div className="mt-3 h-3 rounded-full bg-muted overflow-hidden">
-                  <div 
+                  <div
                     className={cn(
                       'h-full rounded-full transition-all duration-1000 ease-out',
                       activity.primaryStat === 'speed' && 'bg-stat-speed',
@@ -185,7 +200,7 @@ export function TrainingResultModal({
                       activity.primaryStat === 'heart' && 'bg-stat-heart',
                       activity.primaryStat === 'focus' && 'bg-stat-focus',
                     )}
-                    style={{ 
+                    style={{
                       width: showAnimation ? `${newPrimary}%` : `${oldPrimary}%`,
                     }}
                   />
@@ -193,7 +208,7 @@ export function TrainingResultModal({
               </div>
 
               {/* Secondary Stat */}
-              {activity.secondaryStat && (
+              {activity.secondaryStat && secondaryGain > 0 && (
                 <div className="text-center pt-3 border-t border-border">
                   <div className="flex items-center justify-center gap-2 mb-2">
                     <Sparkles className={cn('w-3 h-3', statColors[activity.secondaryStat])} />
@@ -211,7 +226,7 @@ export function TrainingResultModal({
                         oldSecondary
                       )}
                     </span>
-                    <span className="text-accent font-mono text-sm">+{Math.round(secondaryGain * 100) / 100}</span>
+                    <span className="text-accent font-mono text-sm">+{secondaryGain}</span>
                   </div>
                 </div>
               )}

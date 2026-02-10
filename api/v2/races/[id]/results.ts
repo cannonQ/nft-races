@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash } from 'crypto';
 import seedrandom from 'seedrandom';
-import { supabase } from '../../../_lib/supabase';
-import { nanoErgToErg, positionToRewardLabel } from '../../../_lib/constants';
-import { getCreatureDisplayName } from '../../../_lib/helpers';
-import { STAT_KEYS } from '../../../../lib/training-engine';
-import type { StatName } from '../../../../lib/training-engine';
+import { supabase } from '../../../_lib/supabase.js';
+import { nanoErgToErg, positionToRewardLabel } from '../../../_lib/constants.js';
+import { getCreatureDisplayName } from '../../../_lib/helpers.js';
+import { STAT_KEYS } from '../../../../lib/training-engine.js';
+import type { StatName } from '../../../../lib/training-engine.js';
 
 function seedToFloat(hexSeed: string): number {
   const rng = seedrandom(hexSeed);
