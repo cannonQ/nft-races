@@ -54,9 +54,15 @@ let _tokenIndex: Map<string, TokenEntry> | null = null;
 function loadTokens(): TokenEntry[] {
   if (!_tokens) {
     const jsonPath = path.resolve(process.cwd(), 'data/ergo/cyberpets/cyber_pet_traits.json');
-    const raw = fs.readFileSync(jsonPath, 'utf-8');
-    const data = JSON.parse(raw);
-    _tokens = (data.tokens as TokenEntry[]).filter(t => t.status === 'circulating');
+    try {
+      const raw = fs.readFileSync(jsonPath, 'utf-8');
+      const data = JSON.parse(raw);
+      _tokens = (data.tokens as TokenEntry[]).filter(t => t.status === 'circulating');
+      console.log(`[cyberpets] Loaded ${_tokens.length} circulating tokens from ${jsonPath}`);
+    } catch (err) {
+      console.error(`[cyberpets] FAILED to load ${jsonPath}:`, err);
+      _tokens = [];
+    }
   }
   return _tokens;
 }
