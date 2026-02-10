@@ -54,6 +54,14 @@ export function getRarityColor(rarity: Rarity): string {
 }
 
 /**
+ * Format a stat number to at most 2 decimal places.
+ * Strips trailing zeros: 10.00 → "10", 10.50 → "10.5", 10.37 → "10.37"
+ */
+export function fmtStat(value: number): string {
+  return (Math.round(value * 100) / 100).toString();
+}
+
+/**
  * Get CSS class for race type styling
  */
 export function getRaceTypeColor(type: RaceType): string {

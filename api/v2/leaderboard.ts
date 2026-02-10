@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../_lib/supabase';
-import { getActiveSeason } from '../_lib/helpers';
+import { getActiveSeason, getCreatureDisplayName, getCreatureImageUrl } from '../_lib/helpers';
 import { nanoErgToErg } from '../_lib/constants';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data, error } = await supabase
       .from('season_leaderboard')
-      .select('*, creatures(name, token_id, rarity)')
+      .select('*, creatures(name, token_id, rarity, metadata)')
       .eq('season_id', seasonId)
       .order('wins', { ascending: false })
       .order('places', { ascending: false })
@@ -33,17 +33,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
+    // Compute average scores from race entries
+    const creatureIds = (data ?? []).map((r: any) => r.creature_id);
+    let avgScores: Record<string, number> = {};
+    if (creatureIds.length > 0) {
+      const { data: entries } = await supabase
+        .from('season_race_entries')
+        .select('creature_id, performance_score')
+        .in('creature_id', creatureIds)
+        .not('performance_score', 'is', null);
+      if (entries) {
+        const totals: Record<string, { sum: number; count: number }> = {};
+        for (const e of entries) {
+          if (!totals[e.creature_id]) totals[e.creature_id] = { sum: 0, count: 0 };
+          totals[e.creature_id].sum += e.performance_score ?? 0;
+          totals[e.creature_id].count += 1;
+        }
+        for (const [id, { sum, count }] of Object.entries(totals)) {
+          avgScores[id] = Math.round((sum / count) * 100) / 100;
+        }
+      }
+    }
+
     const result = (data ?? []).map((row: any, index: number) => ({
       rank: index + 1,
       creatureId: row.creature_id,
-      creatureName: row.creatures?.name ?? 'Unknown',
+      creatureName: getCreatureDisplayName(row.creatures?.metadata, row.creatures?.name ?? 'Unknown'),
       tokenId: row.creatures?.token_id ?? '',
       rarity: row.creatures?.rarity ?? 'common',
+      imageUrl: getCreatureImageUrl(row.creatures?.metadata),
       ownerAddress: row.owner_address,
       wins: row.wins ?? 0,
       places: row.places ?? 0,
       shows: row.shows ?? 0,
       racesEntered: row.races_entered ?? 0,
+      avgScore: avgScores[row.creature_id] ?? 0,
       earnings: nanoErgToErg(row.total_earnings_nanoerg ?? 0),
     }));
 

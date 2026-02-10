@@ -1,5 +1,5 @@
 import { CreatureWithStats, StatType } from '@/types/game';
-import { cn } from '@/lib/utils';
+import { cn, fmtStat } from '@/lib/utils';
 import { RarityBadge, ConditionGauge } from '@/components/creatures/StatBar';
 import { CooldownTimer } from '@/components/creatures/CooldownTimer';
 import { Link } from 'react-router-dom';
@@ -116,7 +116,7 @@ export function CreatureTrainHeader({ creature }: CreatureTrainHeaderProps) {
                     </div>
                   </div>
                   <span className="font-mono text-xs text-foreground w-8 text-right">
-                    {total}
+                    {fmtStat(total)}
                   </span>
                 </div>
               );

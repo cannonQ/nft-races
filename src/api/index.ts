@@ -30,6 +30,12 @@ export {
 // Leaderboard
 export { useLeaderboard } from './useLeaderboard';
 
+// Game Config
+export { useGameConfig } from './useGameConfig';
+
+// Race History (creature profile)
+export { useRaceHistory } from './useRaceHistory';
+
 // Re-export types for convenience
 export type {
   StatBlock,

@@ -1,6 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createHash } from 'crypto';
+import seedrandom from 'seedrandom';
 import { supabase } from '../../../_lib/supabase';
 import { nanoErgToErg, positionToRewardLabel } from '../../../_lib/constants';
+import { getCreatureDisplayName } from '../../../_lib/helpers';
+import { STAT_KEYS } from '../../../../lib/training-engine';
+import type { StatName } from '../../../../lib/training-engine';
+
+function seedToFloat(hexSeed: string): number {
+  const rng = seedrandom(hexSeed);
+  return rng() * 2 - 1;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -27,13 +37,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fetch entries with creature details, ordered by finish position
     const { data: entries, error: entriesErr } = await supabase
       .from('season_race_entries')
-      .select('*, creatures(name, rarity)')
+      .select('*, creatures(name, rarity, metadata)')
       .eq('race_id', id)
       .order('finish_position', { ascending: true });
 
     if (entriesErr) {
       return res.status(500).json({ error: 'Failed to fetch race entries' });
     }
+
+    // Load game_config to get race type weights for breakdown
+    const { data: gameConfig } = await supabase
+      .from('game_config')
+      .select('*')
+      .limit(1)
+      .single();
+
+    const raceTypeWeights: Record<string, number> =
+      gameConfig?.config?.race_type_weights?.[race.race_type] ?? {};
 
     const totalPrizePool = (entries ?? []).reduce(
       (sum: number, e: any) => sum + (e.payout_nanoerg ?? 0),
@@ -46,23 +66,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (entry.snapshot_stats && entry.snapshot_base_stats) {
         const base = entry.snapshot_base_stats;
         const trained = entry.snapshot_stats;
-        const effectiveStats = {
-          speed: (base.speed ?? 0) + (trained.speed ?? 0),
-          stamina: (base.stamina ?? 0) + (trained.stamina ?? 0),
-          accel: (base.accel ?? 0) + (trained.accel ?? 0),
-          agility: (base.agility ?? 0) + (trained.agility ?? 0),
-          heart: (base.heart ?? 0) + (trained.heart ?? 0),
-          focus: (base.focus ?? 0) + (trained.focus ?? 0),
-        };
-        const fatigueMod = 1.0 - (entry.snapshot_fatigue ?? 0) / 200;
-        const sharpnessMod = 0.90 + (entry.snapshot_sharpness ?? 0) / 1000;
+        const effectiveStats: Record<string, number> = {};
+        for (const key of STAT_KEYS) {
+          effectiveStats[key] = (base[key] ?? 0) + (trained[key] ?? 0);
+        }
+
+        // Weighted score from race type weights
+        const weightedScore = STAT_KEYS.reduce(
+          (sum, key) => sum + (effectiveStats[key] ?? 0) * (raceTypeWeights[key] ?? 0),
+          0,
+        );
+
+        // Condition modifiers
+        const fatigue = entry.snapshot_fatigue ?? 0;
+        const sharpness = entry.snapshot_sharpness ?? 50;
+        const fatigueMod = 1.0 - fatigue / 200;
+        const sharpnessMod = 0.90 + sharpness / 1000;
+
+        // Recompute RNG modifier from block hash (deterministic)
+        let rngMod = 0;
+        if (race.block_hash) {
+          const rngSeed = createHash('sha256')
+            .update(race.block_hash + entry.creature_id)
+            .digest('hex');
+          const rngValue = seedToFloat(rngSeed);
+          const focusSwing = 0.30 * (1 - effectiveStats.focus / (80 + (base.focus ?? 0)));
+          rngMod = rngValue * focusSwing;
+        }
 
         breakdown = {
           effectiveStats,
-          weightedScore: 0, // Would need race_type_weights to compute
+          raceTypeWeights,
+          weightedScore: Math.round(weightedScore * 1000) / 1000,
+          fatigue,
+          sharpness,
           fatigueMod: Math.round(fatigueMod * 1000) / 1000,
           sharpnessMod: Math.round(sharpnessMod * 1000) / 1000,
-          rngMod: 0, // Stored in performance_score implicitly
+          rngMod: Math.round(rngMod * 10000) / 10000,
           finalScore: entry.performance_score ?? 0,
         };
       }
@@ -70,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return {
         position: entry.finish_position,
         creatureId: entry.creature_id,
-        creatureName: entry.creatures?.name ?? 'Unknown',
+        creatureName: getCreatureDisplayName(entry.creatures?.metadata, entry.creatures?.name ?? 'Unknown'),
         rarity: entry.creatures?.rarity ?? 'common',
         ownerId: entry.owner_address,
         ownerAddress: entry.owner_address,

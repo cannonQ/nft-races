@@ -6,6 +6,12 @@ import { useWallet } from '@/context/WalletContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
+import { RarityBadge } from '@/components/creatures/StatBar';
+
+function truncateAddress(addr: string): string {
+  if (addr.length <= 15) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-6)}`;
+}
 
 export default function Leaderboard() {
   const { data: leaderboard, loading } = useLeaderboard();
@@ -36,13 +42,25 @@ export default function Leaderboard() {
             Season Leaders
           </h2>
           <div className="cyber-card rounded-xl overflow-hidden">
-            {/* Header */}
-            <div className="grid grid-cols-12 gap-2 md:gap-4 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
-              <div className="col-span-1 text-center">#</div>
-              <div className="col-span-4 md:col-span-3">Creature</div>
-              <div className="col-span-3 hidden md:block">Owner</div>
-              <div className="col-span-2 text-center">W/P/S</div>
-              <div className="col-span-4 md:col-span-3 text-right">Races</div>
+            {/* Desktop Header */}
+            <div className="hidden md:grid grid-cols-[3rem_2.5rem_1fr_5rem_8rem_5rem_5rem_3.5rem] gap-3 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+              <div className="text-center">Rank</div>
+              <div></div>
+              <div>Creature</div>
+              <div>Rarity</div>
+              <div>Owner</div>
+              <div className="text-center">W/P/S</div>
+              <div className="text-center">Avg</div>
+              <div className="text-right">Races</div>
+            </div>
+
+            {/* Mobile Header */}
+            <div className="grid md:hidden grid-cols-[2.5rem_2rem_1fr_4.5rem_3rem] gap-2 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+              <div className="text-center">#</div>
+              <div></div>
+              <div>Creature</div>
+              <div className="text-center">W/P/S</div>
+              <div className="text-right">Races</div>
             </div>
 
             {/* Rows */}
@@ -57,55 +75,126 @@ export default function Leaderboard() {
                 {(leaderboard || []).map((entry) => {
                   const isUser = isUserCreature(entry.ownerAddress);
                   return (
-                    <div
-                      key={entry.rank}
-                      className={cn(
-                        'grid grid-cols-12 gap-2 md:gap-4 items-center p-3 transition-colors',
-                        isUser ? 'bg-primary/10' : 'hover:bg-muted/30'
-                      )}
-                    >
-                      {/* Rank */}
-                      <div className="col-span-1 text-center">
-                        {entry.rank === 1 && <Trophy className="w-5 h-5 text-race-sprint mx-auto" />}
-                        {entry.rank === 2 && <Medal className="w-5 h-5 text-muted-foreground mx-auto" />}
-                        {entry.rank === 3 && <Award className="w-5 h-5 text-race-hazard mx-auto" />}
-                        {entry.rank > 3 && (
-                          <span className="font-mono text-sm text-foreground">{entry.rank}</span>
+                    <div key={entry.rank}>
+                      {/* Desktop Row */}
+                      <div
+                        className={cn(
+                          'hidden md:grid grid-cols-[3rem_2.5rem_1fr_5rem_8rem_5rem_5rem_3.5rem] gap-3 items-center p-3 transition-colors',
+                          isUser ? 'bg-primary/10' : 'hover:bg-muted/30'
                         )}
-                      </div>
+                      >
+                        {/* Rank */}
+                        <div className="text-center">
+                          {entry.rank === 1 && <Trophy className="w-5 h-5 text-race-sprint mx-auto" />}
+                          {entry.rank === 2 && <Medal className="w-5 h-5 text-muted-foreground mx-auto" />}
+                          {entry.rank === 3 && <Award className="w-5 h-5 text-race-hazard mx-auto" />}
+                          {entry.rank > 3 && (
+                            <span className="font-mono text-sm text-foreground">{entry.rank}</span>
+                          )}
+                        </div>
 
-                      {/* Creature */}
-                      <div className="col-span-4 md:col-span-3">
-                        <Link to={`/creatures/${entry.creatureId}`} className="block">
-                          <p className={cn(
-                            'font-medium text-sm truncate hover:underline cursor-pointer',
-                            isUser ? 'text-primary' : 'text-foreground'
-                          )}>
-                            {entry.creatureName}
-                            {isUser && <span className="ml-1 text-[10px] text-primary/70">(You)</span>}
+                        {/* Image */}
+                        <div>
+                          {entry.imageUrl ? (
+                            <img
+                              src={entry.imageUrl}
+                              alt={entry.creatureName}
+                              className="w-8 h-8 rounded-md object-cover"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-md bg-muted/50" />
+                          )}
+                        </div>
+
+                        {/* Creature Name */}
+                        <div>
+                          <Link to={`/creatures/${entry.creatureId}`} className="block">
+                            <p className={cn(
+                              'font-medium text-sm truncate hover:underline cursor-pointer',
+                              isUser ? 'text-primary' : 'text-foreground'
+                            )}>
+                              {entry.creatureName}
+                              {isUser && <span className="ml-1 text-[10px] text-primary/70">(You)</span>}
+                            </p>
+                          </Link>
+                        </div>
+
+                        {/* Rarity */}
+                        <div>
+                          <RarityBadge rarity={entry.rarity} />
+                        </div>
+
+                        {/* Owner */}
+                        <div>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {truncateAddress(entry.ownerAddress)}
                           </p>
-                        </Link>
+                        </div>
+
+                        {/* W/P/S */}
+                        <div className="text-center">
+                          <span className="font-mono text-sm text-foreground">
+                            {entry.wins}/{entry.places}/{entry.shows}
+                          </span>
+                        </div>
+
+                        {/* Avg Score */}
+                        <div className="text-center">
+                          <span className="font-mono text-sm text-foreground">
+                            {entry.avgScore > 0 ? entry.avgScore.toFixed(1) : '-'}
+                          </span>
+                        </div>
+
+                        {/* Races */}
+                        <div className="text-right">
+                          <span className="font-mono text-sm text-foreground">
+                            {entry.racesEntered}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Owner */}
-                      <div className="col-span-3 hidden md:block">
-                        <p className="text-xs text-muted-foreground font-mono truncate">
-                          {entry.ownerAddress}
-                        </p>
-                      </div>
-
-                      {/* W/P/S */}
-                      <div className="col-span-2 text-center">
-                        <span className="font-mono text-sm text-foreground">
-                          {entry.wins}/{entry.places}/{entry.shows}
-                        </span>
-                      </div>
-
-                      {/* Races */}
-                      <div className="col-span-4 md:col-span-3 text-right">
-                        <span className="font-mono text-sm text-foreground">
-                          {entry.racesEntered}
-                        </span>
+                      {/* Mobile Row */}
+                      <div
+                        className={cn(
+                          'grid md:hidden grid-cols-[2.5rem_2rem_1fr_4.5rem_3rem] gap-2 items-center p-3 transition-colors',
+                          isUser ? 'bg-primary/10' : 'hover:bg-muted/30'
+                        )}
+                      >
+                        <div className="text-center">
+                          {entry.rank <= 3 ? (
+                            entry.rank === 1 ? <Trophy className="w-4 h-4 text-race-sprint mx-auto" /> :
+                            entry.rank === 2 ? <Medal className="w-4 h-4 text-muted-foreground mx-auto" /> :
+                            <Award className="w-4 h-4 text-race-hazard mx-auto" />
+                          ) : (
+                            <span className="font-mono text-sm text-foreground">{entry.rank}</span>
+                          )}
+                        </div>
+                        <div>
+                          {entry.imageUrl ? (
+                            <img src={entry.imageUrl} alt="" className="w-7 h-7 rounded object-cover" />
+                          ) : (
+                            <div className="w-7 h-7 rounded bg-muted/50" />
+                          )}
+                        </div>
+                        <div>
+                          <Link to={`/creatures/${entry.creatureId}`}>
+                            <p className={cn(
+                              'font-medium text-sm truncate',
+                              isUser ? 'text-primary' : 'text-foreground'
+                            )}>
+                              {entry.creatureName}
+                            </p>
+                          </Link>
+                          <RarityBadge rarity={entry.rarity} className="mt-0.5" />
+                        </div>
+                        <div className="text-center">
+                          <span className="font-mono text-xs text-foreground">
+                            {entry.wins}/{entry.places}/{entry.shows}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono text-xs text-foreground">{entry.racesEntered}</span>
+                        </div>
                       </div>
                     </div>
                   );

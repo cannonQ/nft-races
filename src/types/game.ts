@@ -14,6 +14,15 @@ export type StatType = keyof StatBlock;
 // Rarity tiers for creatures
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic' | 'cyberium';
 
+// Discrete boost reward (UTXO-style, awarded from races)
+export interface BoostReward {
+  id: string;
+  multiplier: number;
+  awardedAtHeight: number;
+  expiresAtHeight: number;
+  raceId: string | null;
+}
+
 // Full creature object with all stats and metadata
 export interface CreatureWithStats {
   id: string;
@@ -28,7 +37,8 @@ export interface CreatureWithStats {
   fatigue: number;
   sharpness: number;
   bonusActions: number;
-  boostMultiplier: number;
+  boosts: BoostReward[];
+  boostMultiplier: number; // computed sum of available boosts
   actionsRemaining: number;
   maxActionsToday: number;
   cooldownEndsAt: string | null;
@@ -93,7 +103,10 @@ export interface Race {
 // Score breakdown for race results
 export interface ScoreBreakdown {
   effectiveStats: StatBlock;
+  raceTypeWeights: StatBlock;
   weightedScore: number;
+  fatigue: number;
+  sharpness: number;
   fatigueMod: number;
   sharpnessMod: number;
   rngMod: number;
@@ -145,6 +158,8 @@ export interface TrainResponse {
   fatigue: number;
   sharpness: number;
   boostUsed: boolean;
+  totalBoostMultiplier: number;
+  boostsConsumed: string[];
   actionsRemaining: number;
   nextActionAt: string | null;
 }
@@ -171,11 +186,13 @@ export interface LeaderboardEntry {
   creatureName: string;
   tokenId: string;
   rarity: Rarity;
+  imageUrl?: string;
   ownerAddress: string;
   wins: number;
   places: number;
   shows: number;
   racesEntered: number;
+  avgScore: number;
   earnings: number;
 }
 

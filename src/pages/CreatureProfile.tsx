@@ -8,14 +8,16 @@ import { StatsRadarChart } from '@/components/creatures/StatsRadarChart';
 import { ConditionGauges } from '@/components/creatures/ConditionGauges';
 import { RaceHistory } from '@/components/creatures/RaceHistory';
 import { TrainingLog } from '@/components/creatures/TrainingLog';
-import { useCreature, useTrainingLog } from '@/api';
+import { useCreature, useTrainingLog, useRaceHistory } from '@/api';
 import { StatBlock, StatType } from '@/types/game';
+import { fmtStat } from '@/lib/utils';
 
 export default function CreatureProfile() {
   const { creatureId } = useParams<{ creatureId: string }>();
   
   const { data: creature, loading: creatureLoading } = useCreature(creatureId || null);
   const { data: trainingLogs, loading: logsLoading } = useTrainingLog(creatureId || null);
+  const { data: raceHistory, loading: racesLoading } = useRaceHistory(creatureId || null);
 
   if (creatureLoading) {
     return (
@@ -50,22 +52,6 @@ export default function CreatureProfile() {
     );
   }
 
-  // Mock race history for now
-  const raceHistory = [
-    { raceId: 'race_past_001', raceName: 'Neon Thunder Sprint', date: '2026-02-05', position: 3, payout: 400 },
-    { raceId: 'race_past_002', raceName: 'Endurance Marathon', date: '2026-02-02', position: 5, payout: 0 },
-  ];
-
-  // Convert training logs for TrainingLog component
-  const formattedLogs = (trainingLogs || []).map(log => ({
-    id: log.id,
-    activityName: log.activityName,
-    activityIcon: log.activityIcon,
-    primaryStat: log.primaryStat,
-    gain: Object.values(log.statChanges)[0] || 0,
-    date: log.createdAt,
-  }));
-
   // Calculate total stats
   const totalStats: StatBlock = {
     speed: creature.baseStats.speed + creature.trainedStats.speed,
@@ -93,11 +79,11 @@ export default function CreatureProfile() {
               <div className="flex items-center gap-4 text-xs">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded bg-muted" />
-                  <span className="text-muted-foreground font-mono">{baseTotal}</span>
+                  <span className="text-muted-foreground font-mono">{fmtStat(baseTotal)}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded bg-primary/50" />
-                  <span className="text-primary font-mono">+{trainedTotal}</span>
+                  <span className="text-primary font-mono">+{fmtStat(trainedTotal)}</span>
                 </div>
               </div>
             </div>
@@ -121,10 +107,10 @@ export default function CreatureProfile() {
                       {stat.slice(0, 3)}
                     </p>
                     <p className="font-mono text-lg font-bold text-foreground">
-                      {totalStats[stat]}
+                      {fmtStat(totalStats[stat])}
                     </p>
                     <p className="text-[10px] text-primary font-mono">
-                      +{creature.trainedStats[stat]}
+                      +{fmtStat(creature.trainedStats[stat])}
                     </p>
                   </div>
                 ))}
@@ -138,14 +124,14 @@ export default function CreatureProfile() {
             <h2 className="font-display text-lg font-semibold text-foreground mb-4">
               Race History
             </h2>
-            <RaceHistory history={raceHistory} />
+            <RaceHistory history={raceHistory || []} />
           </div>
 
           <div>
             <h2 className="font-display text-lg font-semibold text-foreground mb-4">
               Training Log
             </h2>
-            <TrainingLog logs={formattedLogs} />
+            <TrainingLog logs={trainingLogs || []} />
           </div>
         </div>
       </div>

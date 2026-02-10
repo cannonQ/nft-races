@@ -2,7 +2,36 @@ import { supabase } from './supabase';
 import { applyConditionDecay } from '../../lib/training-engine';
 import { nanoErgToErg } from './constants';
 
+const ERGO_EXPLORER_API = 'https://api.ergoplatform.com/api/v1';
+
+/** Fetch the latest Ergo block hash and height from Explorer. */
+export async function getLatestErgoBlock(): Promise<{ hash: string; height: number }> {
+  const res = await fetch(`${ERGO_EXPLORER_API}/blocks?limit=1`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Explorer blocks API returned ${res.status}`);
+  const data = await res.json();
+  const block = data?.items?.[0];
+  if (!block?.id) throw new Error('No block returned from explorer');
+  return { hash: block.id, height: block.height };
+}
+
 const STAT_KEYS = ['speed', 'stamina', 'accel', 'agility', 'heart', 'focus'] as const;
+
+/** Derive display name from metadata (e.g., "Ostrich 247") with fallback to DB name. */
+export function getCreatureDisplayName(metadata: any, fallbackName: string): string {
+  if (metadata?.pet && metadata?.number != null) {
+    return `${metadata.pet} ${metadata.number}`;
+  }
+  return fallbackName;
+}
+
+/** Build the standard CyberPet image URL from the token number. */
+export function getCreatureImageUrl(metadata: any): string | undefined {
+  return metadata?.number
+    ? `https://api.ergexplorer.com/nftcache/QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw_${metadata.number}.png.png`
+    : undefined;
+}
 
 /** Get ISO string for start of today in UTC */
 export function getUtcMidnightToday(): string {
@@ -38,15 +67,32 @@ export async function countActionsToday(
   return count ?? 0;
 }
 
+/** Count only regular (non-bonus) training actions today */
+export async function countRegularActionsToday(
+  creatureId: string,
+  seasonId: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from('training_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('creature_id', creatureId)
+    .eq('season_id', seasonId)
+    .eq('bonus_action', false)
+    .gte('created_at', getUtcMidnightToday());
+  return count ?? 0;
+}
+
 /**
  * Assemble a CreatureWithStats response object from DB rows.
- * Matches the shape in src/types/game.ts (CreatureWithStats interface).
+ * @param regularActionsToday — count of NON-bonus training actions today.
+ * @param boostRewards — available (unspent, unexpired) boost_rewards rows.
  */
 export function computeCreatureResponse(
   creatureRow: Record<string, any>,
   statsRow: Record<string, any> | null,
   prestigeRow: Record<string, any> | null,
-  actionsToday: number,
+  regularActionsToday: number,
+  boostRewards: any[] = [],
 ) {
   const trainedStats = {
     speed: statsRow?.speed ?? 0,
@@ -57,9 +103,16 @@ export function computeCreatureResponse(
     focus: statsRow?.focus ?? 0,
   };
 
+  const BASE_ACTIONS = 2;
+  const COOLDOWN_HOURS = 6;
+
   const totalTrained = STAT_KEYS.reduce((sum, k) => sum + trainedStats[k], 0);
-  const maxActionsToday = 2 + (statsRow?.bonus_actions ?? 0);
-  const actionsRemaining = Math.max(0, maxActionsToday - actionsToday);
+  const bonusActions = statsRow?.bonus_actions ?? 0;
+
+  // Actions remaining = remaining bonus + remaining regular today
+  const regularRemaining = Math.max(0, BASE_ACTIONS - regularActionsToday);
+  const actionsRemaining = bonusActions + regularRemaining;
+  const maxActionsToday = BASE_ACTIONS + bonusActions;
 
   // Apply real-time condition decay
   const { fatigue, sharpness } = applyConditionDecay(
@@ -68,11 +121,11 @@ export function computeCreatureResponse(
     statsRow?.last_action_at ?? null,
   );
 
-  // Compute cooldown
+  // Compute cooldown: 6h fixed, bonus actions bypass cooldown
   let cooldownEndsAt: string | null = null;
-  if (statsRow?.last_action_at) {
-    const cooldownHours = 24 / maxActionsToday;
-    const cooldownMs = cooldownHours * 60 * 60 * 1000;
+  // If bonus actions remain, next action is bonus → no cooldown
+  if (bonusActions === 0 && statsRow?.last_action_at) {
+    const cooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
     const lastAction = new Date(statsRow.last_action_at).getTime();
     const readyAt = lastAction + cooldownMs;
     if (readyAt > Date.now()) {
@@ -82,7 +135,7 @@ export function computeCreatureResponse(
 
   return {
     id: creatureRow.id,
-    name: creatureRow.name,
+    name: getCreatureDisplayName(creatureRow.metadata, creatureRow.name),
     rarity: creatureRow.rarity,
     tokenId: creatureRow.token_id,
     collectionId: creatureRow.collection_id,
@@ -92,8 +145,15 @@ export function computeCreatureResponse(
     totalTrained: Math.round(totalTrained * 100) / 100,
     fatigue: Math.round(fatigue * 100) / 100,
     sharpness: Math.round(sharpness * 100) / 100,
-    bonusActions: statsRow?.bonus_actions ?? 0,
-    boostMultiplier: statsRow?.boost_multiplier ?? 0,
+    bonusActions,
+    boosts: boostRewards.map((b: any) => ({
+      id: b.id,
+      multiplier: Number(b.multiplier),
+      awardedAtHeight: b.awarded_at_height,
+      expiresAtHeight: b.expires_at_height,
+      raceId: b.race_id ?? null,
+    })),
+    boostMultiplier: boostRewards.reduce((sum: number, b: any) => sum + Number(b.multiplier), 0),
     actionsRemaining,
     maxActionsToday,
     cooldownEndsAt,
@@ -111,8 +171,6 @@ export function computeCreatureResponse(
       lifetimeRaces: prestigeRow?.lifetime_races ?? 0,
       badges: prestigeRow?.badges ?? [],
     },
-    imageUrl: creatureRow.metadata?.number
-      ? `https://api.ergexplorer.com/nftcache/QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw_${creatureRow.metadata.number}.png.png`
-      : undefined,
+    imageUrl: getCreatureImageUrl(creatureRow.metadata),
   };
 }

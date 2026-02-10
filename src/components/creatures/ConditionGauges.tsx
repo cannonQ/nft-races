@@ -1,5 +1,5 @@
 import { Battery, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, fmtStat } from '@/lib/utils';
 
 interface ConditionGaugesProps {
   fatigue: number;
@@ -33,7 +33,7 @@ export function ConditionGauges({ fatigue, sharpness }: ConditionGaugesProps) {
           </span>
         </div>
         <div className="flex items-end justify-between mb-2">
-          <span className="font-mono text-2xl font-bold text-foreground">{fatigue}%</span>
+          <span className="font-mono text-2xl font-bold text-foreground">{fmtStat(fatigue)}%</span>
           <span className={cn(
             'text-xs font-semibold',
             fatigue >= 70 ? 'text-destructive' : fatigue >= 40 ? 'text-race-sprint' : 'text-secondary'
@@ -61,7 +61,7 @@ export function ConditionGauges({ fatigue, sharpness }: ConditionGaugesProps) {
           </span>
         </div>
         <div className="flex items-end justify-between mb-2">
-          <span className="font-mono text-2xl font-bold text-foreground">{sharpness}%</span>
+          <span className="font-mono text-2xl font-bold text-foreground">{fmtStat(sharpness)}%</span>
           <span className={cn(
             'text-xs font-semibold',
             sharpness >= 70 ? 'text-secondary' : sharpness >= 40 ? 'text-race-sprint' : 'text-destructive'

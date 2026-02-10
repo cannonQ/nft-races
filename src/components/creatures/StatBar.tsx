@@ -1,5 +1,5 @@
 import { Rarity, StatType } from '@/types/game';
-import { cn } from '@/lib/utils';
+import { cn, fmtStat } from '@/lib/utils';
 
 interface StatBarProps {
   stat: StatType;
@@ -56,7 +56,7 @@ export function StatBar({ stat, baseValue, trainedValue, maxValue = 100 }: StatB
         )}
       </div>
       <span className="font-mono text-xs text-foreground w-8 text-right">
-        {totalValue}
+        {fmtStat(totalValue)}
       </span>
     </div>
   );
@@ -93,8 +93,8 @@ export function ConditionGauge({ type, value }: ConditionGaugeProps) {
           style={{ width: `${value}%` }}
         />
       </div>
-      <span className="font-mono text-[10px] text-muted-foreground w-6 text-right">
-        {value}%
+      <span className="font-mono text-[10px] text-muted-foreground w-10 text-right">
+        {fmtStat(value)}%
       </span>
     </div>
   );
