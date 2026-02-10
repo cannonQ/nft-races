@@ -17,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fetch open/upcoming races and recently resolved races (last 7 days)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [openResult, resolvedResult] = await Promise.all([
+    const [openResult, resolvedResult, cancelledResult] = await Promise.all([
       supabase
         .from('season_races')
         .select('*, season_race_entries(count)')
@@ -29,6 +29,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select('*, season_race_entries(count)')
         .eq('season_id', season.id)
         .in('status', ['resolved', 'locked'])
+        .order('created_at', { ascending: false })
+        .limit(20),
+      supabase
+        .from('season_races')
+        .select('*, season_race_entries(count)')
+        .eq('season_id', season.id)
+        .eq('status', 'cancelled')
         .order('created_at', { ascending: false })
         .limit(20),
     ]);
@@ -48,8 +55,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const openRaces = (openResult.data ?? []).map(mapRace);
     const resolvedRaces = (resolvedResult.data ?? []).map(mapRace);
+    const cancelledRaces = (cancelledResult.data ?? []).map(mapRace);
 
-    return res.status(200).json([...openRaces, ...resolvedRaces]);
+    return res.status(200).json([...openRaces, ...resolvedRaces, ...cancelledRaces]);
   } catch (err) {
     console.error('GET /api/v2/races error:', err);
     return res.status(500).json({ error: 'Internal server error' });

@@ -1,23 +1,28 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-09
+**Date:** 2026-02-10
 **Phase:** 1 (DB + API — Alpha Testing)
 
 ---
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 16 API endpoints built, all frontend hooks wired, admin page for race management. FAQ page explains all game mechanics.
+Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 18 API endpoints built, all frontend hooks wired, admin page for race management. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
 - **Auto-discovery**: CyberPets in wallet are detected on-chain and auto-registered to DB (no manual registration needed)
 - Dashboard displays owned CyberPets with NFT images, stale ownership auto-cleaned
 - Training calls real API: stat gains, diminishing returns, actions counter (2/day), cooldown enforcement
+- Discrete boost rewards: earned from races, selectable at training time, block-height expiry
 - Race entry calls real API with on-chain ownership verification
-- Race results, leaderboard, creature profile pages functional
-- Admin page (`/admin`) for creating and resolving races
+- Race results with full score breakdown (stat contributions, modifiers, luck)
+- Leaderboard, creature profile, race history pages functional
+- Admin page (`/admin`) for creating, editing, resolving, and reopening races
+- Cancelled races visible in admin with reopen capability
+- Resolve confirmation dialog prevents accidental race cancellation
 - On-chain NFT ownership verification on all mutation endpoints (train, race entry)
+- FAQ page with comprehensive game mechanics guide
 
 ### Open Items
 - [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Not yet implemented. Requires treasury address. When added, Nautilus `sign_tx()` will show ERG amount (better UX than current no-cost flow).
@@ -71,6 +76,8 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | 14 | `POST /api/v2/admin/seasons/end` | `api/v2/admin/seasons/end.ts` | End season, compute payouts, update prestige |
 | 15 | `POST /api/v2/admin/races/create` | `api/v2/admin/races/create.ts` | Create a new race |
 | 16 | `POST /api/v2/admin/races/resolve` | `api/v2/admin/races/resolve.ts` | Resolve race — deterministic results from Ergo block hash |
+| 17 | `POST /api/v2/admin/races/update` | `api/v2/admin/races/update.ts` | Edit open race (name, type, deadline, max entries) |
+| 18 | `POST /api/v2/admin/races/reopen` | `api/v2/admin/races/reopen.ts` | Reopen cancelled race (sets status back to open) |
 
 ### Utility Endpoints
 
@@ -111,61 +118,98 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 
 ## Alpha Testing Plan
 
-### Prerequisites
+The basic game loop (wallet → discover → train → race → results) is confirmed working with multiple testers. The focus now is edge-case testing, multi-user scenarios, and balance tuning.
 
-1. **Run migration** — Execute `migrations/003_add_boosted_column.sql` in Supabase SQL editor
-2. **Seed `game_config`** — Insert the game config row (activities, race_type_weights, prize_distribution) from `PRE-architecture-sketch.md`
-3. **Verify env vars** — `CRON_SECRET`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` in Vercel dashboard / `.env.local`
+### Completed (Verified Working)
+- [x] Wallet connect + auto-discover CyberPets
+- [x] Training with stat gains + diminishing returns
+- [x] Admin: create race, edit race, resolve race
+- [x] Race entry with ownership verification
+- [x] Race results with score breakdown
+- [x] Leaderboard updates after race resolution
+- [x] Boost rewards awarded from race results
+- [x] FAQ page with game mechanics
+- [x] Cancelled races visible in admin + reopen functionality
+- [x] Resolve confirmation dialog (prevents accidental cancellation)
 
-### Step 1: Connect Wallet & Discover Creatures
+### Testing Checklist — Multi-User & Edge Cases
 
-Connect Nautilus wallet. The `by-wallet` endpoint auto-discovers CyberPets on-chain:
-- Fetches full wallet balance from Explorer API (single call)
-- Filters to CyberPets using `isCyberPet()` + `cyber_pet_traits.json`
-- Auto-registers any missing creatures (inserts creature + stats + prestige)
-- Re-claims creatures with stale/null ownership
-- Clears creatures transferred to other wallets
+#### Wallet & Creature Discovery
+- [ ] Two wallets with different CyberPets see only their own creatures
+- [ ] Transferring a CyberPet NFT to another wallet: old wallet loses it, new wallet gains it on next load
+- [ ] Wallet with no CyberPets shows empty state (no errors)
+- [ ] Disconnect and reconnect wallet — creatures reload correctly
+- [ ] Wallet with many NFTs (non-CyberPets) loads without delay
 
-No manual registration needed.
+#### Training
+- [ ] Train 2 times — actions counter shows 0/2 remaining
+- [ ] 3rd training attempt is blocked with clear message
+- [ ] Cooldown timer displays and counts down correctly after training
+- [ ] Training after cooldown expires works as expected
+- [ ] Diminishing returns: stat near 80 shows very small gains in confirm modal
+- [ ] Projected gains in confirm modal match actual results
+- [ ] Training with boost rewards selected — gains are multiplied correctly
+- [ ] Boost reward expiry — expired boosts not selectable
+- [ ] Training with `ALPHA_TESTING = true` — cooldown/daily limits bypassed
 
-### Step 2: Train a Creature
+#### Race Entry
+- [ ] Enter a race with a valid creature — success toast + entry count increments
+- [ ] Try to enter same creature twice in same race — blocked
+- [ ] Try to enter a creature you no longer own (transferred) — blocked with ownership error
+- [ ] Race at max entries — new entry attempts blocked
+- [ ] Race past deadline — entry attempts blocked
+- [ ] Multiple users enter the same race — all entries appear
 
-From Training page: select creature → pick activity → confirm → real API call.
-- 2 actions/day + cooldown enforced
-- Stat gains with diminishing returns
-- Actions counter decrements in real-time
+#### Race Management (Admin)
+- [ ] Create race with different types (sprint, distance, technical, mixed, hazard)
+- [ ] Edit open race: change name, type, deadline, max entries — verify updates
+- [ ] Edit deadline to extend time — users can still enter
+- [ ] Resolve race with 2+ entries — results computed, leaderboard updated
+- [ ] Resolve race with <2 entries — cancelled with reason shown
+- [ ] Cancelled race appears in "Cancelled Races" section
+- [ ] Reopen cancelled race — moves back to "Open Races" with new deadline
+- [ ] Reopen race → users can enter → resolve successfully
+- [ ] Confirm dialog on resolve — clicking "No" cancels the action
 
-### Step 3: Create a Race (Admin)
+#### Race Results & Rewards
+- [ ] Results page shows all participants with positions and scores
+- [ ] Score breakdown: stat contributions, fatigue/sharpness modifiers, luck factor
+- [ ] 1st place receives +1 bonus action on creature_stats
+- [ ] 2nd place receives +50% discrete boost reward
+- [ ] 3rd place receives +25% discrete boost reward
+- [ ] 4th+ receives +10% discrete boost reward
+- [ ] Boosts show in creature profile and training confirm modal
+- [ ] Bonus action consumed before regular actions
+- [ ] Leaderboard: wins/places/shows counters update correctly
 
-Navigate to `/admin` → authenticate → Create Race form.
-Or via CLI: `npx ts-node scripts/create-race.ts --name "Sprint #1" --type sprint --deadline 60`
+#### Cross-Feature & Stress Tests
+- [ ] Full loop: train creature → enter race → resolve → check results → use boost reward → train again
+- [ ] Two users racing against each other — different results based on stats
+- [ ] Race results deterministic — same block hash always produces same outcome
+- [ ] Multiple races created and resolved in sequence — no state leakage
+- [ ] Creature profile race history shows all past races
+- [ ] Training log shows all past training sessions with correct details
 
-### Step 4: Enter Race
-
-From Races page: select open race → pick creature → confirm entry.
-On-chain ownership re-verified at entry time.
-
-### Step 5: Resolve Race (Admin)
-
-From `/admin` → click "Resolve" on an open race.
-Or via CLI: `npx ts-node scripts/resolve-races.ts`
-Results computed deterministically from Ergo block hash.
-
-### Step 6: Verify Results
-
-Race results page, leaderboard, creature profile all update with race outcomes.
-Reward boosts applied to winners: 1st gets bonus action, 2nd–4th+ get discrete boost rewards (selectable, expire after ~3 days).
+### Balance & Tuning (Collect Data)
+- [ ] Are diminishing returns too aggressive or too lenient?
+- [ ] Is 2 actions/day + 6h cooldown the right pace?
+- [ ] Do boost rewards feel impactful enough?
+- [ ] Is the fatigue/sharpness system clear to players?
+- [ ] Are race type weights producing interesting variety?
+- [ ] Is the Focus/luck swing too swingy or not enough?
+- [ ] Do prize splits (50/30/20) feel fair?
 
 ---
 
 ## Deploy Checklist
 
-1. [ ] Verify all env vars are set in Vercel dashboard
-2. [ ] Run `migrations/003_add_boosted_column.sql` in Supabase
-3. [ ] Seed `game_config` table with activity/race config
+1. [x] Verify all env vars are set in Vercel dashboard
+2. [x] Run migrations (003 through 006) in Supabase SQL editor
+3. [x] Seed `game_config` table with activity/race config
 4. [ ] Push to git → triggers Vercel deploy
-5. [ ] Smoke test: connect wallet → creatures auto-discovered
-6. [ ] Full loop: train → create race (admin) → enter race → resolve → check results
+5. [x] Smoke test: connect wallet → creatures auto-discovered
+6. [x] Full loop: train → create race (admin) → enter race → resolve → check results
+7. [ ] Multi-user test: two different wallets complete full loop concurrently
 
 ---
 
@@ -320,6 +364,30 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Admin Improvements & Race Lifecycle Fixes (2026-02-10)
+
+### Problem
+Cancelled races disappeared from the admin panel entirely — the API excluded them and the UI had no section for them. Additionally, the "Resolve" button was easy to accidentally click, which could cancel a race with <2 entries with no way to recover.
+
+### Fixes
+- **Races API** (`api/v2/races/index.ts`) — Now includes cancelled races in the response alongside open/resolved
+- **Reopen endpoint** (`api/v2/admin/races/reopen.ts`) — **NEW**: Admin can restore cancelled races back to open status with a fresh deadline
+- **Admin UI** (`src/pages/Admin.tsx`):
+  - Added "Cancelled Races" section with Reopen button (sets 60-min deadline, moves to Open Races)
+  - Added resolve confirmation dialog — first click shows "Sure?" with "Yes, Resolve" / "No" buttons
+  - Prevents accidental race cancellation from misclicks
+
+### New Endpoints
+| # | Endpoint | File | Purpose |
+|---|----------|------|---------|
+| 17 | `POST /api/v2/admin/races/update` | `api/v2/admin/races/update.ts` | Edit open race (name, type, deadline, max entries) |
+| 18 | `POST /api/v2/admin/races/reopen` | `api/v2/admin/races/reopen.ts` | Reopen cancelled race (sets status back to open) |
+
+### Alpha Testing Plan Refresh
+Replaced step-by-step setup guide (all steps now verified working) with comprehensive testing checklists covering: multi-user scenarios, edge cases, race lifecycle, reward validation, and balance tuning areas.
 
 ---
 
