@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 interface RaceHistoryEntry {
   raceId: string;
   raceName: string;
+  raceType?: string;
   date: string; // ISO string
   position: number;
   payout: number;
@@ -58,9 +59,14 @@ export function RaceHistory({ history }: RaceHistoryProps) {
                 {/* Race Info */}
                 <div>
                   <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                    {entry.raceName}
+                    {entry.raceName || 'Race'}
                   </p>
-                  <p className="text-xs text-muted-foreground">{formattedDate}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {entry.raceType && (
+                      <span className="uppercase font-semibold tracking-wider">{entry.raceType}</span>
+                    )}
+                    <span>{formattedDate}</span>
+                  </div>
                 </div>
               </div>
 

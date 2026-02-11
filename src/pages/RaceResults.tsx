@@ -66,7 +66,7 @@ export default function RaceResults() {
           <h2 className="font-display text-lg font-semibold text-foreground mb-4">
             Full Results
           </h2>
-          <ResultsTable results={results.entries} raceType={results.race.raceType} />
+          <ResultsTable results={results.entries} raceType={results.race.raceType} blockHash={results.race.blockHash} />
         </div>
       </div>
     </MainLayout>

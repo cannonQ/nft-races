@@ -319,6 +319,35 @@ export default function FAQ() {
               </AccordionContent>
             </AccordionItem>
 
+            {/* Race Entries */}
+            <AccordionItem value="race-entries">
+              <AccordionTrigger className="text-foreground">
+                How do race entries work?
+              </AccordionTrigger>
+              <AccordionContent className="text-muted-foreground space-y-3">
+                <p>
+                  To enter a race, pick an open race from the Races page, select one of your
+                  CyberPets, and confirm entry. Your creature's current stats, fatigue, and
+                  sharpness are <strong>snapshotted</strong> at entry time — training after
+                  entering won't change your race stats.
+                </p>
+                <p>
+                  <strong>One entry per creature per race.</strong> You can enter multiple
+                  creatures into the same race if you own more than one.
+                </p>
+                <p className="text-xs border-l-2 border-destructive/30 pl-3">
+                  <strong>No withdrawals, no refunds.</strong> Once you enter a race, your entry
+                  is locked. Choose wisely — check your creature's condition and the race type
+                  before committing. When entry fees are active, your fee goes into the prize
+                  pool and is distributed to finishers.
+                </p>
+                <p>
+                  Races require at least 2 entries to run. If a race doesn't reach minimum
+                  entries, it's cancelled by the admin.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
             {/* Rewards & Boosts */}
             <AccordionItem value="rewards">
               <AccordionTrigger className="text-foreground">

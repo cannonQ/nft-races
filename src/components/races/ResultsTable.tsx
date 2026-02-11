@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 interface ResultsTableProps {
   results: RaceEntry[];
   raceType?: RaceType;
+  blockHash?: string | null;
 }
 
 const statLabels: Record<StatType, string> = {
@@ -92,7 +93,13 @@ function getPositionReward(position: number) {
   }
 }
 
-function BreakdownRow({ result }: { result: RaceEntry }) {
+function truncateHash(hash: string, chars = 8): string {
+  return hash.length > chars * 2 + 3
+    ? `${hash.slice(0, chars)}...${hash.slice(-chars)}`
+    : hash;
+}
+
+function BreakdownRow({ result, blockHash }: { result: RaceEntry; blockHash?: string | null }) {
   const [isOpen, setIsOpen] = useState(false);
   const { address } = useWallet();
   const isCurrentUser = result.ownerAddress === address;
@@ -288,6 +295,7 @@ function BreakdownRow({ result }: { result: RaceEntry }) {
                 </p>
               </div>
 
+
               <ArrowRight className="w-3 h-3 text-muted-foreground hidden sm:block" />
 
               {/* Final Score */}
@@ -303,6 +311,20 @@ function BreakdownRow({ result }: { result: RaceEntry }) {
             <p className="text-[10px] text-muted-foreground/60 italic">
               Final = Base Power × Fatigue × Sharpness × (1 + Luck)
             </p>
+
+            {/* Luck seed provenance */}
+            {blockHash && (
+              <div className="pt-2 border-t border-border/20 space-y-1">
+                <p className="text-[10px] text-muted-foreground/60 font-semibold uppercase tracking-wider">
+                  Luck Seed (Verifiable)
+                </p>
+                <div className="flex flex-col gap-0.5 text-[10px] font-mono text-muted-foreground/50">
+                  <span>Block: <span className="text-muted-foreground/70 select-all">{truncateHash(blockHash, 12)}</span></span>
+                  <span>Creature: <span className="text-muted-foreground/70 select-all">{truncateHash(result.creatureId, 12)}</span></span>
+                  <span className="text-muted-foreground/40 italic">seed = sha256(blockHash + creatureId) → luck swing scaled by Focus</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CollapsibleContent>
@@ -310,7 +332,7 @@ function BreakdownRow({ result }: { result: RaceEntry }) {
   );
 }
 
-export function ResultsTable({ results, raceType }: ResultsTableProps) {
+export function ResultsTable({ results, raceType, blockHash }: ResultsTableProps) {
   return (
     <div className="cyber-card rounded-xl overflow-hidden">
       {/* Header */}
@@ -325,7 +347,7 @@ export function ResultsTable({ results, raceType }: ResultsTableProps) {
       {/* Rows */}
       <div className="divide-y divide-border/30">
         {results.map((result) => (
-          <BreakdownRow key={result.creatureId} result={result} />
+          <BreakdownRow key={result.creatureId} result={result} blockHash={blockHash} />
         ))}
       </div>
     </div>

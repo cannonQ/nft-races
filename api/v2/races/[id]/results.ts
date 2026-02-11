@@ -134,6 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalEntrants: mappedEntries.length,
         totalPrizePool: nanoErgToErg(totalPrizePool),
         completedAt: race.updated_at ?? race.created_at,
+        blockHash: race.block_hash ?? null,
       },
       entries: mappedEntries,
     });

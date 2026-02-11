@@ -133,6 +133,7 @@ export interface RaceResults {
     totalEntrants: number;
     totalPrizePool: number;
     completedAt: string;
+    blockHash: string | null;
   };
   entries: RaceEntry[];
 }
