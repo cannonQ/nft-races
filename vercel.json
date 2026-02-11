@@ -8,6 +8,9 @@
       "includeFiles": "data/ergo/cyberpets/**"
     }
   },
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
