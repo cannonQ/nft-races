@@ -409,7 +409,6 @@ export async function isValidErgoAddress(address: string): Promise<boolean> {
   // Mainnet P2PK addresses start with '9'
   if (!address.startsWith('9') && !address.startsWith('3')) {
     // Could be a P2S address, allow it
-    console.log('Non-P2PK address format, allowing:', address.slice(0, 10));
   }
 
   // Try WASM validation if available, but don't fail if it doesn't work
@@ -419,7 +418,6 @@ export async function isValidErgoAddress(address: string): Promise<boolean> {
     return true;
   } catch (error) {
     // WASM validation failed, but basic format check passed
-    console.log('WASM address validation failed, using basic check:', error);
     return true; // Trust the basic format check for MVP
   }
 }

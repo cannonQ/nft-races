@@ -135,65 +135,65 @@ The basic game loop (wallet → discover → train → race → results) is conf
 ### Testing Checklist — Multi-User & Edge Cases
 
 #### Wallet & Creature Discovery
-- [ ] Two wallets with different CyberPets see only their own creatures
-- [ ] Transferring a CyberPet NFT to another wallet: old wallet loses it, new wallet gains it on next load
-- [ ] Wallet with no CyberPets shows empty state (no errors)
-- [ ] Disconnect and reconnect wallet — creatures reload correctly
-- [ ] Wallet with many NFTs (non-CyberPets) loads without delay
+- [x] Two wallets with different CyberPets see only their own creatures
+- [x] Transferring a CyberPet NFT to another wallet: old wallet loses it, new wallet gains it on next load
+- [x] Wallet with no CyberPets shows empty state (no errors)
+- [x] Disconnect and reconnect wallet — creatures reload correctly
+- [x] Wallet with many NFTs (non-CyberPets) loads without delay
 
 #### Training
-- [ ] Train 2 times — actions counter shows 0/2 remaining
-- [ ] 3rd training attempt is blocked with clear message
+- [x] Train 2 times — actions counter shows 0/2 remaining
+- [x] 3rd training attempt is blocked with clear message -- not sure message was clear that only 2 per day, UTC reset daily
 - [ ] Cooldown timer displays and counts down correctly after training
-- [ ] Training after cooldown expires works as expected
+- [x] Training after cooldown expires works as expected
 - [ ] Diminishing returns: stat near 80 shows very small gains in confirm modal
-- [ ] Projected gains in confirm modal match actual results
-- [ ] Training with boost rewards selected — gains are multiplied correctly
-- [ ] Boost reward expiry — expired boosts not selectable
-- [ ] Training with `ALPHA_TESTING = true` — cooldown/daily limits bypassed
+- [x] Projected gains in confirm modal match actual results
+- [x] Training with boost rewards selected — gains are multiplied correctly
+- [x] Boost reward expiry — expired boosts not selectable
+- [x] Training with `ALPHA_TESTING = true` — cooldown/daily limits bypassed
 
 #### Race Entry
-- [ ] Enter a race with a valid creature — success toast + entry count increments
-- [ ] Try to enter same creature twice in same race — blocked
-- [ ] Try to enter a creature you no longer own (transferred) — blocked with ownership error
-- [ ] Race at max entries — new entry attempts blocked
-- [ ] Race past deadline — entry attempts blocked
-- [ ] Multiple users enter the same race — all entries appear
+- [x] Enter a race with a valid creature — success toast + entry count increments
+- [x] Try to enter same creature twice in same race — blocked
+- [x] Try to enter a creature you no longer own (transferred) — blocked with ownership error
+- [x] Race at max entries — new entry attempts blocked
+- [x] Race past deadline — entry attempts blocked
+- [x] Multiple users enter the same race — all entries appear
 
 #### Race Management (Admin)
-- [ ] Create race with different types (sprint, distance, technical, mixed, hazard)
-- [ ] Edit open race: change name, type, deadline, max entries — verify updates
-- [ ] Edit deadline to extend time — users can still enter
-- [ ] Resolve race with 2+ entries — results computed, leaderboard updated
-- [ ] Resolve race with <2 entries — cancelled with reason shown
-- [ ] Cancelled race appears in "Cancelled Races" section
-- [ ] Reopen cancelled race — moves back to "Open Races" with new deadline
-- [ ] Reopen race → users can enter → resolve successfully
-- [ ] Confirm dialog on resolve — clicking "No" cancels the action
+- [x] Create race with different types (sprint, distance, technical, mixed, hazard)
+- [x] Edit open race: change name, type, deadline, max entries — verify updates
+- [x] Edit deadline to extend time — users can still enter
+- [x] Resolve race with 2+ entries — results computed, leaderboard updated
+- [x] Resolve race with <2 entries — cancelled with reason shown
+- [x] Cancelled race appears in "Cancelled Races" section
+- [x] Reopen cancelled race — moves back to "Open Races" with new deadline
+- [x] Reopen race → users can enter → resolve successfully
+- [x] Confirm dialog on resolve — clicking "No" cancels the action
 
 #### Race Results & Rewards
-- [ ] Results page shows all participants with positions and scores
-- [ ] Score breakdown: stat contributions, fatigue/sharpness modifiers, luck factor
-- [ ] 1st place receives +1 bonus action on creature_stats
-- [ ] 2nd place receives +50% discrete boost reward
-- [ ] 3rd place receives +25% discrete boost reward
-- [ ] 4th+ receives +10% discrete boost reward
-- [ ] Boosts show in creature profile and training confirm modal
-- [ ] Bonus action consumed before regular actions
-- [ ] Leaderboard: wins/places/shows counters update correctly
+- [x] Results page shows all participants with positions and scores
+- [x] Score breakdown: stat contributions, fatigue/sharpness modifiers, luck factor
+- [x] 1st place receives +1 bonus action on creature_stats
+- [x] 2nd place receives +50% discrete boost reward
+- [x] 3rd place receives +25% discrete boost reward
+- [x] 4th+ receives +10% discrete boost reward
+- [x] Boosts show in creature profile and training confirm modal
+- [x] Bonus action consumed before regular actions
+- [x] Leaderboard: wins/places/shows counters update correctly
 
 #### Cross-Feature & Stress Tests
-- [ ] Full loop: train creature → enter race → resolve → check results → use boost reward → train again
-- [ ] Two users racing against each other — different results based on stats
-- [ ] Race results deterministic — same block hash always produces same outcome
-- [ ] Multiple races created and resolved in sequence — no state leakage
+- [x] Full loop: train creature → enter race → resolve → check results → use boost reward → train again
+- [x] Two users racing against each other — different results based on stats
+- [x] Race results deterministic — same block hash always produces same outcome
+- [x] Multiple races created and resolved in sequence — no state leakage
 - [ ] Creature profile race history shows all past races
-- [ ] Training log shows all past training sessions with correct details
+- [x] Training log shows all past training sessions with correct details
 
 ### Balance & Tuning (Collect Data)
 - [ ] Are diminishing returns too aggressive or too lenient?
 - [ ] Is 2 actions/day + 6h cooldown the right pace?
-- [ ] Do boost rewards feel impactful enough?
+- [x] Do boost rewards feel impactful enough?
 - [ ] Is the fatigue/sharpness system clear to players?
 - [ ] Are race type weights producing interesting variety?
 - [ ] Is the Focus/luck swing too swingy or not enough?

@@ -10,9 +10,7 @@ import { API_BASE } from '@/api/config';
 const RACE_TYPES = ['sprint', 'distance', 'technical', 'mixed', 'hazard'] as const;
 
 export default function Admin() {
-  const [secret, setSecret] = useState<string>(
-    () => sessionStorage.getItem('admin-secret') || ''
-  );
+  const [secret, setSecret] = useState<string>('');
   const [authenticated, setAuthenticated] = useState(false);
   const [secretInput, setSecretInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -57,7 +55,6 @@ export default function Admin() {
     if (res.status === 401) {
       setAuthError('Invalid admin secret');
       setAuthenticated(false);
-      sessionStorage.removeItem('admin-secret');
       throw new Error('Unauthorized');
     }
     return res;
@@ -78,7 +75,7 @@ export default function Admin() {
         setSeason(await seasonRes.json());
       }
     } catch (err) {
-      console.error('Failed to load admin data:', err);
+      // silently fail — toast will show if needed
     } finally {
       setLoading(false);
     }
@@ -88,13 +85,8 @@ export default function Admin() {
     if (authenticated) loadData();
   }, [authenticated, loadData]);
 
-  useEffect(() => {
-    if (secret) setAuthenticated(true);
-  }, []);
-
   const authenticate = () => {
     if (!secretInput.trim()) return;
-    sessionStorage.setItem('admin-secret', secretInput);
     setSecret(secretInput);
     setAuthenticated(true);
     setAuthError(null);

@@ -211,8 +211,7 @@ export async function validateTrainingAction(
     return { valid: false, reason: 'Creature stats not found for this season' };
   }
 
-  // TEMPORARY: Set to false to re-enable training limits
-  const ALPHA_TESTING = true;
+  const ALPHA_TESTING = false;
 
   const BASE_ACTIONS = 2;
   const COOLDOWN_HOURS = 6;
