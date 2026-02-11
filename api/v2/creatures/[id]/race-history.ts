@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (const raceId of raceIds) {
       const { data: race, error: raceErr } = await supabase
         .from('season_races')
-        .select('id, name, race_type, status, updated_at')
+        .select('id, name, race_type, status, created_at')
         .eq('id', raceId)
         .single();
 
@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         raceId: entry.race_id,
         raceName: race?.name ?? 'Unknown Race',
         raceType: race?.race_type ?? 'mixed',
-        date: race?.updated_at ?? entry.created_at,
+        date: race?.created_at ?? entry.created_at,
         position: entry.finish_position,
         payout: nanoErgToErg(entry.payout_nanoerg ?? 0),
       };
