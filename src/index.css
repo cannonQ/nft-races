@@ -77,7 +77,9 @@
     --rarity-common: 220 10% 50%;
     --rarity-uncommon: 156 60% 45%;
     --rarity-rare: 210 100% 55%;
+    --rarity-masterwork: 30 80% 55%;
     --rarity-epic: 270 100% 60%;
+    --rarity-relic: 180 70% 50%;
     --rarity-legendary: 45 100% 55%;
     --rarity-mythic: 300 100% 55%;
 

@@ -112,7 +112,50 @@ export default function FAQ() {
             </div>
           </div>
 
-          {/* Side-by-side comparison */}
+          {/* Rarity stat budget table */}
+          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
+            Starting Stat Budgets by Rarity
+          </p>
+          <div className="rounded-lg border border-border/50 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-muted/30 text-muted-foreground">
+                  <th className="text-left px-3 py-2 font-semibold">Rarity</th>
+                  <th className="text-right px-3 py-2 font-semibold">Stat Budget</th>
+                  <th className="text-right px-3 py-2 font-semibold">Avg / Stat</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30">
+                {[
+                  { name: 'Common', total: 60, style: 'text-muted-foreground' },
+                  { name: 'Uncommon', total: 70, style: 'text-rarity-uncommon' },
+                  { name: 'Rare', total: 80, style: 'text-rarity-rare' },
+                  { name: 'Masterwork', total: 85, style: 'text-rarity-rare' },
+                  { name: 'Epic', total: 90, style: 'text-rarity-epic' },
+                  { name: 'Relic', total: 95, style: 'text-rarity-epic' },
+                  { name: 'Legendary', total: 100, style: 'text-rarity-legendary' },
+                  { name: 'Mythic', total: 110, style: 'text-rarity-mythic' },
+                  { name: 'Cyberium', total: 120, style: 'text-primary' },
+                ].map((r) => (
+                  <tr key={r.name}>
+                    <td className={cn('px-3 py-1.5 font-semibold', r.style)}>{r.name}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-foreground">{r.total}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">
+                      ~{(r.total / 6).toFixed(1)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Body parts and material quality shift points between stats (more parts = stamina
+            bonus, better material = focus bonus), but the total stays within the rarity budget.
+            Because the trained stat cap is the same for everyone (300), a Common can close the
+            gap through focused training and smart race-type selection.
+          </p>
+
+          {/* Side-by-side example */}
           <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
             Example: Common vs Epic
           </p>
@@ -130,12 +173,12 @@ export default function FAQ() {
                   Budget: ~60 · 8 parts · Silver material
                 </p>
                 {[
-                  { abbr: 'SPD', val: 10.0, color: 'text-race-sprint' },
-                  { abbr: 'STM', val: 14.0, color: 'text-race-distance' },
-                  { abbr: 'ACC', val: 10.0, color: 'text-race-technical' },
-                  { abbr: 'AGI', val: 10.0, color: 'text-race-mixed' },
-                  { abbr: 'HRT', val: 10.0, color: 'text-secondary' },
-                  { abbr: 'FOC', val: 10.5, color: 'text-primary' },
+                  { abbr: 'SPD', val: 9.2, color: 'text-race-sprint' },
+                  { abbr: 'STM', val: 13.2, color: 'text-race-distance' },
+                  { abbr: 'ACC', val: 9.2, color: 'text-race-technical' },
+                  { abbr: 'AGI', val: 9.2, color: 'text-race-mixed' },
+                  { abbr: 'HRT', val: 9.2, color: 'text-secondary' },
+                  { abbr: 'FOC', val: 9.7, color: 'text-primary' },
                 ].map((s) => (
                   <div key={s.abbr} className="flex items-center gap-2">
                     <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
@@ -145,7 +188,7 @@ export default function FAQ() {
                     <span className="font-mono text-foreground w-8 text-right">{s.val}</span>
                   </div>
                 ))}
-                <p className="font-mono text-muted-foreground text-right pt-1">Total: 64.5</p>
+                <p className="font-mono text-muted-foreground text-right pt-1">Total: 59.7</p>
               </div>
             </div>
 
@@ -162,12 +205,12 @@ export default function FAQ() {
                   Budget: ~90 · 6 parts · Cyberium material
                 </p>
                 {[
-                  { abbr: 'SPD', val: 15.0, color: 'text-race-sprint' },
-                  { abbr: 'STM', val: 18.0, color: 'text-race-distance' },
-                  { abbr: 'ACC', val: 15.0, color: 'text-race-technical' },
-                  { abbr: 'AGI', val: 15.0, color: 'text-race-mixed' },
-                  { abbr: 'HRT', val: 15.0, color: 'text-secondary' },
-                  { abbr: 'FOC', val: 17.0, color: 'text-primary' },
+                  { abbr: 'SPD', val: 14.1, color: 'text-race-sprint' },
+                  { abbr: 'STM', val: 17.1, color: 'text-race-distance' },
+                  { abbr: 'ACC', val: 14.1, color: 'text-race-technical' },
+                  { abbr: 'AGI', val: 14.1, color: 'text-race-mixed' },
+                  { abbr: 'HRT', val: 14.1, color: 'text-secondary' },
+                  { abbr: 'FOC', val: 16.1, color: 'text-primary' },
                 ].map((s) => (
                   <div key={s.abbr} className="flex items-center gap-2">
                     <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
@@ -177,15 +220,10 @@ export default function FAQ() {
                     <span className="font-mono text-foreground w-8 text-right">{s.val}</span>
                   </div>
                 ))}
-                <p className="font-mono text-rarity-epic text-right pt-1">Total: 95.0</p>
+                <p className="font-mono text-rarity-epic text-right pt-1">Total: 89.6</p>
               </div>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            The Epic starts with ~50% more stat points. But because the trained stat cap is
-            the same for everyone (300), a Common can still close the gap through focused training
-            and smart race-type selection.
-          </p>
         </div>
 
         {/* FAQ Accordion */}
@@ -405,9 +443,12 @@ export default function FAQ() {
                   <span className="px-2 py-1 rounded bg-muted/30 text-muted-foreground">Common</span>
                   <span className="px-2 py-1 rounded bg-rarity-uncommon/10 text-rarity-uncommon">Uncommon</span>
                   <span className="px-2 py-1 rounded bg-rarity-rare/10 text-rarity-rare">Rare</span>
+                  <span className="px-2 py-1 rounded bg-rarity-rare/10 text-rarity-rare">Masterwork</span>
                   <span className="px-2 py-1 rounded bg-rarity-epic/10 text-rarity-epic">Epic</span>
+                  <span className="px-2 py-1 rounded bg-rarity-epic/10 text-rarity-epic">Relic</span>
                   <span className="px-2 py-1 rounded bg-rarity-legendary/10 text-rarity-legendary">Legendary</span>
                   <span className="px-2 py-1 rounded bg-rarity-mythic/10 text-rarity-mythic">Mythic</span>
+                  <span className="px-2 py-1 rounded bg-primary/10 text-primary">Cyberium</span>
                 </div>
                 <p>
                   A well-trained Common focused on speed can beat an untrained Epic in a sprint.

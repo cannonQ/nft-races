@@ -12,7 +12,7 @@ export interface StatBlock {
 export type StatType = keyof StatBlock;
 
 // Rarity tiers for creatures
-export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic' | 'cyberium';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'masterwork' | 'epic' | 'relic' | 'legendary' | 'mythic' | 'cyberium';
 
 // Discrete boost reward (UTXO-style, awarded from races)
 export interface BoostReward {

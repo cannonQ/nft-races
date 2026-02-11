@@ -1,7 +1,7 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-10
-**Phase:** 1 (DB + API — Alpha Testing)
+**Date:** 2026-02-11
+**Phase:** 1 (DB + API — Launch Day)
 
 ---
 
@@ -144,9 +144,8 @@ The basic game loop (wallet → discover → train → race → results) is conf
 #### Training
 - [x] Train 2 times — actions counter shows 0/2 remaining
 - [x] 3rd training attempt is blocked with clear message -- not sure message was clear that only 2 per day, UTC reset daily
-- [ ] Cooldown timer displays and counts down correctly after training
+- [x] Cooldown timer displays and counts down correctly after training
 - [x] Training after cooldown expires works as expected
-- [ ] Diminishing returns: stat near 80 shows very small gains in confirm modal
 - [x] Projected gains in confirm modal match actual results
 - [x] Training with boost rewards selected — gains are multiplied correctly
 - [x] Boost reward expiry — expired boosts not selectable
@@ -187,7 +186,7 @@ The basic game loop (wallet → discover → train → race → results) is conf
 - [x] Two users racing against each other — different results based on stats
 - [x] Race results deterministic — same block hash always produces same outcome
 - [x] Multiple races created and resolved in sequence — no state leakage
-- [ ] Creature profile race history shows all past races
+- [x] Creature profile race history shows all past races
 - [x] Training log shows all past training sessions with correct details
 
 ### Balance & Tuning (Collect Data)
@@ -206,7 +205,7 @@ The basic game loop (wallet → discover → train → race → results) is conf
 1. [x] Verify all env vars are set in Vercel dashboard
 2. [x] Run migrations (003 through 006) in Supabase SQL editor
 3. [x] Seed `game_config` table with activity/race config
-4. [ ] Push to git → triggers Vercel deploy
+4. [x] Push to git → triggers Vercel deploy
 5. [x] Smoke test: connect wallet → creatures auto-discovered
 6. [x] Full loop: train → create race (admin) → enter race → resolve → check results
 7. [ ] Multi-user test: two different wallets complete full loop concurrently
@@ -364,6 +363,46 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Rarity Base Stats Fix & Type System Update (2026-02-11)
+
+### Problem
+All creatures started with identical base stats regardless of rarity. The `computeBaseStats()` function correctly reads rarity tiers from `collections.base_stat_template`, but this DB field was never populated. Every creature fell through to the 60-point Common fallback.
+
+### Root Cause
+Database configuration gap — no migration or seed script ever set `collections.base_stat_template`. The code was correct; the data was missing.
+
+### Fix
+1. **`scripts/fix-base-stat-template.ts`** — Populates `collections.base_stat_template` with 9 rarity tiers:
+   - Common: 60, Uncommon: 70, Rare: 80, Masterwork: 85, Epic: 90, Relic: 95, Legendary: 100, Mythic: 110, Cyberium: 120
+2. **`scripts/recompute-base-stats.ts`** — Recomputes `creatures.base_stats` for all 460 creatures using corrected template
+3. **Rarity type system** — Added `masterwork` and `relic` to `Rarity` type, CSS variables, tailwind config, and all `rarityStyles` maps across 10 files
+4. **FAQ update** — Added clean rarity budget table with all 9 tiers, restored Common vs Epic example, added Masterwork/Relic/Cyberium to rarity badge list
+
+### Files Changed
+- `scripts/fix-base-stat-template.ts` — **NEW**: DB template population script
+- `scripts/recompute-base-stats.ts` — **NEW**: Base stats recomputation script
+- `src/index.css` — Added `--rarity-masterwork` and `--rarity-relic` CSS variables
+- `tailwind.config.ts` — Added `masterwork` and `relic` to rarity color map
+- `src/types/game.ts` — Added `'masterwork' | 'relic'` to `Rarity` type
+- `src/data/mockData.ts` — Same type + `getRarityColor` update
+- `src/lib/utils.ts` — Added entries in `getRarityColor`
+- `src/components/creatures/StatBar.tsx` — Added `rarityStyles` entries
+- `src/components/creatures/CreatureHeader.tsx` — Added `rarityStyles` entries
+- `src/components/races/ResultsTable.tsx` — Added `rarityStyles` entries
+- `src/components/races/RaceDetailsModal.tsx` — Added `rarityStyles` entries
+- `src/components/races/Podium.tsx` — Added `rarityStyles` entries
+- `src/pages/FAQ.tsx` — Rarity budget table, badges, restored example
+
+### Known Issue — Mobile Nav
+FAQ is not visible in the mobile bottom navigation bar. The `Navigation.tsx` mobile view only renders `navItems` (Dashboard, Train, Races, Leaderboard) but not `secondaryItems` (FAQ). Desktop sidebar shows it correctly at the bottom.
+
+### Next Steps — New Season
+1. End current season: `POST /api/v2/admin/seasons/end` with `{ seasonId: "<current>" }`
+2. Start new season: `POST /api/v2/admin/seasons/start` with `{ collectionId: "<cyberpets-collection-id>" }`
+3. All trained stats reset to 0, fatigue resets, sharpness to 50 — base stats (now correctly differentiated by rarity) persist
 
 ---
 

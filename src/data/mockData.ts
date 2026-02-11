@@ -1,7 +1,7 @@
 // Mock Data Layer for NFT Racing Training System
 // All data structures match expected API response shapes
 
-export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic' | 'cyberium';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'masterwork' | 'epic' | 'relic' | 'legendary' | 'mythic' | 'cyberium';
 
 export type RaceType = 'sprint' | 'distance' | 'technical' | 'mixed' | 'hazard';
 
@@ -478,7 +478,9 @@ export function getRarityColor(rarity: Rarity): string {
     common: 'rarity-common',
     uncommon: 'rarity-uncommon',
     rare: 'rarity-rare',
+    masterwork: 'rarity-masterwork',
     epic: 'rarity-epic',
+    relic: 'rarity-relic',
     legendary: 'rarity-legendary',
     mythic: 'rarity-mythic',
     cyberium: 'rarity-mythic', // uses holographic effect
