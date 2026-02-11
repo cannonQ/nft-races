@@ -110,6 +110,16 @@
 
   html {
     font-family: 'Inter', system-ui, sans-serif;
+    overflow-x: hidden;
+    scrollbar-gutter: auto;
+  }
+
+  /* Hide scrollbar — prevents it from consuming layout width and clipping fixed nav */
+  html {
+    scrollbar-width: none; /* Firefox */
+  }
+  ::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Edge */
   }
 
   body {

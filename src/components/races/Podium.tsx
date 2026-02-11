@@ -74,7 +74,7 @@ export function Podium({ results }: PodiumProps) {
             {/* Creature Card */}
             <div
               className={cn(
-                'cyber-card rounded-xl p-4 mb-2 text-center transition-all duration-300 min-w-[120px] md:min-w-[140px]',
+                'cyber-card rounded-xl p-3 md:p-4 mb-2 text-center transition-all duration-300 min-w-[100px] md:min-w-[140px]',
                 isCurrentUser && 'ring-2 ring-primary/50'
               )}
             >

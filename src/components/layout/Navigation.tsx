@@ -21,24 +21,24 @@ export function Navigation() {
   if (isMobile) {
     return (
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t border-sidebar-border">
-        <div className="flex items-center justify-around py-2">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path || 
+        <div className="grid grid-cols-5 py-2">
+          {[...navItems, ...secondaryItems].map((item) => {
+            const isActive = location.pathname === item.path ||
               location.pathname.startsWith(item.path + '/');
-            
+
             return (
               <NavLink
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  'flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all duration-200',
-                  isActive 
-                    ? 'text-primary' 
+                  'flex flex-col items-center gap-0.5 py-1 transition-all duration-200 overflow-hidden',
+                  isActive
+                    ? 'text-primary'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 <div className={cn(
-                  'relative p-2 rounded-lg transition-all duration-200',
+                  'relative p-1.5 rounded-lg transition-all duration-200',
                   isActive && 'bg-primary/10'
                 )}>
                   <item.icon className={cn(
@@ -49,7 +49,7 @@ export function Navigation() {
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary))]" />
                   )}
                 </div>
-                <span className="text-xs font-medium">{item.label}</span>
+                <span className="text-[10px] font-medium truncate w-full text-center">{item.label}</span>
               </NavLink>
             );
           })}

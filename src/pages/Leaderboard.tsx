@@ -41,7 +41,7 @@ export default function Leaderboard() {
             <Trophy className="w-5 h-5 text-race-sprint" />
             Season Leaders
           </h2>
-          <div className="cyber-card rounded-xl overflow-hidden">
+          <div className="cyber-card rounded-xl overflow-hidden overflow-x-auto">
             {/* Desktop Header */}
             <div className="hidden md:grid grid-cols-[3rem_2.5rem_1fr_5rem_8rem_5rem_5rem_3.5rem] gap-3 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
               <div className="text-center">Rank</div>

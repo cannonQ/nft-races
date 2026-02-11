@@ -366,6 +366,37 @@ PHASE 2 (Target — Smart Contracts)
 
 ---
 
+## Mobile Responsiveness & Code Splitting (2026-02-11)
+
+### Mobile Navigation — FAQ Added
+FAQ was inaccessible on mobile — the bottom nav only rendered the 4 primary `navItems`. Fixed by spreading `[...navItems, ...secondaryItems]` in the mobile render path, giving all 5 items equal space via `grid grid-cols-5`.
+
+### Mobile Responsiveness Fixes (375px audit)
+- **Dialog viewport safety** (`src/components/ui/dialog.tsx`) — Changed `w-full` to `w-[calc(100%-2rem)]` so modals don't clip on narrow phones. Single fix in base component applies to all modals.
+- **FAQ example cards** (`src/pages/FAQ.tsx`) — Changed `grid-cols-2` to `grid-cols-1 sm:grid-cols-2` so cards stack on phones <640px.
+- **Leaderboard table** (`src/pages/Leaderboard.tsx`) — Added `overflow-x-auto` to table container to prevent horizontal overflow.
+- **Podium sizing** (`src/components/races/Podium.tsx`) — Reduced `min-w-[120px]` to `min-w-[100px] md:min-w-[140px]` and `p-4` to `p-3 md:p-4`.
+
+### Scrollbar Clipping Fix
+Windows Chrome DevTools scrollbar was consuming ~17px of viewport width, clipping the fixed-position bottom nav on simulated mobile viewports. Hidden scrollbar entirely with `scrollbar-width: none` (Firefox) and `::-webkit-scrollbar { display: none }` (Chrome/Safari/Edge).
+
+### Route-Level Code Splitting
+All 10 page imports converted from static to `React.lazy()` with a `Suspense` fallback using the existing `Skeleton` component. Vite now produces per-route chunks:
+- **Before**: Single 879KB JS chunk (248KB gzipped)
+- **After**: Core bundle 324KB + CreatureProfile/Recharts 367KB loaded on demand
+- ~63% reduction in initial bundle size
+
+### Files Changed
+- `src/components/layout/Navigation.tsx` — FAQ in mobile nav, `grid-cols-5` layout, overflow-hidden on items
+- `src/App.tsx` — `React.lazy()` imports, `Suspense` wrapper with `PageLoader` fallback
+- `src/components/ui/dialog.tsx` — `w-[calc(100%-2rem)]` viewport safety
+- `src/pages/FAQ.tsx` — Responsive grid `grid-cols-1 sm:grid-cols-2`
+- `src/pages/Leaderboard.tsx` — `overflow-x-auto` on table container
+- `src/components/races/Podium.tsx` — Reduced min-widths and padding for mobile
+- `src/index.css` — `overflow-x: hidden`, hidden scrollbar CSS
+
+---
+
 ## Rarity Base Stats Fix & Type System Update (2026-02-11)
 
 ### Problem
@@ -395,9 +426,6 @@ Database configuration gap — no migration or seed script ever set `collections
 - `src/components/races/RaceDetailsModal.tsx` — Added `rarityStyles` entries
 - `src/components/races/Podium.tsx` — Added `rarityStyles` entries
 - `src/pages/FAQ.tsx` — Rarity budget table, badges, restored example
-
-### Known Issue — Mobile Nav
-FAQ is not visible in the mobile bottom navigation bar. The `Navigation.tsx` mobile view only renders `navItems` (Dashboard, Train, Races, Leaderboard) but not `secondaryItems` (FAQ). Desktop sidebar shows it correctly at the bottom.
 
 ### Next Steps — New Season
 1. End current season: `POST /api/v2/admin/seasons/end` with `{ seasonId: "<current>" }`

@@ -159,7 +159,7 @@ export default function FAQ() {
           <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
             Example: Common vs Epic
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Common Example */}
             <div className="rounded-lg border border-border/50 overflow-hidden">
               <div className="bg-muted/30 px-3 py-2 flex items-center justify-between">
