@@ -286,8 +286,15 @@ export default function Train() {
         {trainError && (
           <div className="cyber-card rounded-lg p-4 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-destructive" />
-              <p className="text-sm text-destructive">{trainError}</p>
+              <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+              <div className="text-sm">
+                <p className="text-destructive">{trainError}</p>
+                {trainError.toLowerCase().includes('cooldown') && (
+                  <Link to="/faq" className="text-muted-foreground hover:text-primary transition-colors underline underline-offset-2">
+                    Learn more about cooldowns and training in the FAQ
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         )}

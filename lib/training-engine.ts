@@ -247,11 +247,13 @@ export async function validateTrainingAction(
       const now = Date.now();
 
       if (lastAction + cooldownMs > now) {
-        const remainingMin = Math.ceil((lastAction + cooldownMs - now) / (60 * 1000));
-        const readyAt = new Date(lastAction + cooldownMs);
+        const remainingMs = lastAction + cooldownMs - now;
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const minutes = Math.ceil((remainingMs % (1000 * 60 * 60)) / (60 * 1000));
+        const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
         return {
           valid: false,
-          reason: `Cooldown: ${remainingMin} minutes remaining. Next action at ${readyAt.toISOString()}`,
+          reason: `Cooldown active — ${timeStr} remaining`,
         };
       }
     }
