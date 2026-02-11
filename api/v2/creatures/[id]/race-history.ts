@@ -27,24 +27,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .limit(50);
 
     if (error) {
-      console.error('race-history query error:', error);
+      console.error('race-history entries query error:', error);
       return res.status(500).json({ error: 'Failed to fetch race history' });
     }
 
-    // Fetch race details separately to avoid FK join issues
-    const raceIds = [...new Set((entries ?? []).map((e: any) => e.race_id))];
-    let raceLookup: Record<string, any> = {};
-    if (raceIds.length > 0) {
-      const { data: races } = await supabase
+    if (!entries || entries.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // Fetch race details — query each race individually to avoid .in() issues
+    const raceIds = [...new Set(entries.map((e: any) => e.race_id))];
+    const raceLookup: Record<string, any> = {};
+
+    for (const raceId of raceIds) {
+      const { data: race, error: raceErr } = await supabase
         .from('season_races')
         .select('id, name, race_type, status, updated_at')
-        .in('id', raceIds);
-      for (const r of races ?? []) {
-        raceLookup[r.id] = r;
+        .eq('id', raceId)
+        .single();
+
+      if (raceErr) {
+        console.error(`race lookup failed for ${raceId}:`, raceErr);
+        continue;
+      }
+      if (race) {
+        raceLookup[race.id] = race;
       }
     }
 
-    const result = (entries ?? []).map((entry: any) => {
+    const result = entries.map((entry: any) => {
       const race = raceLookup[entry.race_id];
       return {
         raceId: entry.race_id,
