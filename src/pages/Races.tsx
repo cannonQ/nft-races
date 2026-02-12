@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Trophy, Calendar, AlertCircle } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -27,6 +27,13 @@ export default function Races() {
   const openRaces = races?.filter(r => r.status === 'open') || [];
   const runningRaces = races?.filter(r => r.status === 'running') || [];
   const resolvedRaces = races?.filter(r => r.status === 'resolved' || r.status === 'locked') || [];
+
+  const handleRaceExpired = useCallback((_race: Race) => {
+    // Small delay to let server-side resolution complete
+    setTimeout(() => {
+      refetchRaces();
+    }, 2000);
+  }, [refetchRaces]);
 
   const handleEnterRace = (race: Race) => {
     setSelectedRace(race);
@@ -144,7 +151,7 @@ export default function Races() {
                       className="animate-slide-up"
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
-                      <RaceCard race={race} onEnter={handleEnterRace} onViewDetails={handleViewDetails} />
+                      <RaceCard race={race} onEnter={handleEnterRace} onViewDetails={handleViewDetails} onExpired={handleRaceExpired} />
                     </div>
                   ))}
                 </div>

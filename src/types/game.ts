@@ -98,6 +98,7 @@ export interface Race {
   entryCount: number;
   entryDeadline: string;
   status: RaceStatus;
+  autoResolve?: boolean;
 }
 
 // Score breakdown for race results

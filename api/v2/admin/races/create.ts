@@ -20,6 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       entryFeeNanoerg,
       seasonId,
       collectionId,
+      autoResolve,
     } = req.body ?? {};
 
     if (!name || !raceType || !entryDeadline) {
@@ -59,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         max_entries: maxEntries,
         entry_deadline: entryDeadline,
         status: 'open',
+        auto_resolve: autoResolve ?? true,
         season_id: activeSeasonId,
         collection_id: activeCollectionId,
       })
@@ -79,6 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         maxEntries: race.max_entries,
         entryDeadline: race.entry_deadline,
         status: race.status,
+        autoResolve: race.auto_resolve ?? true,
       },
     });
   } catch (err) {

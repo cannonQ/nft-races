@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../_lib/supabase.js';
 import { getActiveSeason } from '../../_lib/helpers.js';
 import { nanoErgToErg } from '../../_lib/constants.js';
+import { resolveRace } from '../../_lib/resolve-race.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -14,7 +15,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json([]);
     }
 
-    // Fetch open/upcoming races and recently resolved races (last 7 days)
+    // Auto-resolve any expired open races with auto_resolve enabled
+    const now = new Date().toISOString();
+    const { data: expiredRaces } = await supabase
+      .from('season_races')
+      .select('id')
+      .eq('season_id', season.id)
+      .eq('status', 'open')
+      .eq('auto_resolve', true)
+      .lt('entry_deadline', now);
+
+    if (expiredRaces && expiredRaces.length > 0) {
+      for (const expired of expiredRaces) {
+        try {
+          const result = await resolveRace(expired.id);
+          console.log(`Auto-resolved race ${expired.id}:`, result.success ? 'OK' : result.reason);
+        } catch (err) {
+          console.error(`Failed to auto-resolve race ${expired.id}:`, err);
+        }
+      }
+    }
+
+    // Fetch open/upcoming races and recently resolved races
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const [openResult, resolvedResult, cancelledResult] = await Promise.all([
@@ -50,6 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         entryCount: race.season_race_entries?.[0]?.count ?? 0,
         entryDeadline: race.entry_deadline,
         status: race.status,
+        autoResolve: race.auto_resolve ?? true,
       };
     }
 

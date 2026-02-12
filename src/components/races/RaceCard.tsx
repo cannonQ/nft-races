@@ -9,6 +9,7 @@ interface RaceCardProps {
   race: Race;
   onEnter: (race: Race) => void;
   onViewDetails: (race: Race) => void;
+  onExpired?: (race: Race) => void;
 }
 
 const typeColors: Record<RaceType, { bg: string; text: string; border: string }> = {
@@ -27,7 +28,7 @@ const typeLabels: Record<RaceType, string> = {
   hazard: 'Hazard',
 };
 
-export function RaceCard({ race, onEnter, onViewDetails }: RaceCardProps) {
+export function RaceCard({ race, onEnter, onViewDetails, onExpired }: RaceCardProps) {
   const [timeLeft, setTimeLeft] = useState(formatCountdown(race.entryDeadline));
   const typeStyle = typeColors[race.raceType];
   const isFull = race.entryCount >= race.maxEntries;
@@ -35,11 +36,34 @@ export function RaceCard({ race, onEnter, onViewDetails }: RaceCardProps) {
   const entryPercent = (race.entryCount / race.maxEntries) * 100;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft(formatCountdown(race.entryDeadline));
-    }, 60000);
-    return () => clearInterval(timer);
-  }, [race.entryDeadline]);
+    let timerId: ReturnType<typeof setTimeout>;
+
+    const tick = () => {
+      const newTimeLeft = formatCountdown(race.entryDeadline);
+      setTimeLeft(newTimeLeft);
+
+      if (newTimeLeft === 'Ready!') {
+        if (onExpired) onExpired(race);
+        return; // Stop ticking once expired
+      }
+
+      // Speed up polling near deadline: 10s when < 2min, else 60s
+      const diff = new Date(race.entryDeadline).getTime() - Date.now();
+      const interval = diff <= 120000 ? 10000 : 60000;
+      timerId = setTimeout(tick, interval);
+    };
+
+    // Initial check — if already expired on mount, notify immediately
+    const diff = new Date(race.entryDeadline).getTime() - Date.now();
+    if (diff <= 0) {
+      if (onExpired) onExpired(race);
+    } else {
+      const interval = diff <= 120000 ? 10000 : 60000;
+      timerId = setTimeout(tick, interval);
+    }
+
+    return () => clearTimeout(timerId);
+  }, [race.entryDeadline, onExpired, race]);
 
   return (
     <div 

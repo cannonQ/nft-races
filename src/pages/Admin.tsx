@@ -50,6 +50,7 @@ export default function Admin() {
   const [raceType, setRaceType] = useState<string>('sprint');
   const [deadlineMinutes, setDeadlineMinutes] = useState(60);
   const [maxEntries, setMaxEntries] = useState(8);
+  const [autoResolve, setAutoResolve] = useState(true);
   const [creating, setCreating] = useState(false);
 
   // Resolving state
@@ -65,6 +66,7 @@ export default function Admin() {
   const [editType, setEditType] = useState('');
   const [editDeadline, setEditDeadline] = useState('');
   const [editMaxEntries, setEditMaxEntries] = useState(8);
+  const [editAutoResolve, setEditAutoResolve] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const adminFetch = useCallback(async (url: string, options: RequestInit = {}) => {
@@ -255,6 +257,7 @@ export default function Admin() {
           raceType,
           entryDeadline: deadline,
           maxEntries,
+          autoResolve,
         }),
       });
       const data = await res.json();
@@ -333,6 +336,7 @@ export default function Admin() {
       `${dl.getFullYear()}-${pad(dl.getMonth() + 1)}-${pad(dl.getDate())}T${pad(dl.getHours())}:${pad(dl.getMinutes())}`
     );
     setEditMaxEntries(race.maxEntries);
+    setEditAutoResolve(race.autoResolve ?? true);
   };
 
   const cancelEditing = () => {
@@ -351,6 +355,7 @@ export default function Admin() {
           raceType: editType,
           entryDeadline: new Date(editDeadline).toISOString(),
           maxEntries: editMaxEntries,
+          autoResolve: editAutoResolve,
         }),
       });
       const data = await res.json();
@@ -723,6 +728,15 @@ export default function Admin() {
                 />
               </div>
             </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoResolve}
+                onChange={e => setAutoResolve(e.target.checked)}
+                className="w-4 h-4 rounded border-border bg-background accent-primary"
+              />
+              <span className="text-sm text-muted-foreground">Auto-resolve when deadline passes</span>
+            </label>
             <Button
               onClick={handleCreateRace}
               disabled={creating || !raceName.trim()}
@@ -796,6 +810,15 @@ export default function Admin() {
                             />
                           </div>
                         </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editAutoResolve}
+                            onChange={e => setEditAutoResolve(e.target.checked)}
+                            className="w-4 h-4 rounded border-border bg-background accent-primary"
+                          />
+                          <span className="text-xs text-muted-foreground">Auto-resolve when deadline passes</span>
+                        </label>
                         <div className="flex gap-2">
                           <Button size="sm" onClick={handleSaveRace} disabled={saving} className="glow-cyan">
                             <Save className="w-3.5 h-3.5 mr-1.5" />
@@ -821,6 +844,9 @@ export default function Admin() {
                             <span className="uppercase">{race.raceType}</span>
                             <span>{race.entryCount}/{race.maxEntries} entries</span>
                             <span>Deadline: {new Date(race.entryDeadline).toLocaleString()}</span>
+                            {race.autoResolve !== false && (
+                              <span className="text-primary/70">auto-resolve</span>
+                            )}
                           </div>
                         </div>
                         <div className="flex gap-2 items-center">
