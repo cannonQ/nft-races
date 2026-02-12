@@ -98,7 +98,13 @@ export function useRegisterCreature(): MutationResponse<RegisterCreatureResponse
     setError(null);
 
     try {
-      const authHeaders = await createAuthHeaders(walletAddress, 'register');
+      // Auth headers require Nautilus signing — skip for ErgoPay (server verifies via Explorer API)
+      let authHeaders: Record<string, string> = {};
+      try {
+        authHeaders = await createAuthHeaders(walletAddress, 'register');
+      } catch {
+        // ErgoPay or signing unavailable — proceed without auth headers
+      }
       const response = await fetch(`${API_BASE}/creatures/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
