@@ -6,6 +6,7 @@ import { CreatureWithStats, Rarity } from '@/types/game';
 import { RewardBadges } from './RewardBadges';
 import { CooldownTimer } from './CooldownTimer';
 import { ActionsDisplay } from '../training/ActionsDisplay';
+import { PetImage } from './PetImage';
 import { cn } from '@/lib/utils';
 
 interface CreatureHeaderProps {
@@ -51,11 +52,12 @@ export function CreatureHeader({ creature }: CreatureHeaderProps) {
       )}>
         <div className="flex flex-col md:flex-row md:items-center gap-4">
           {/* NFT Image */}
-          {creature.imageUrl ? (
-            <img
+          {creature.imageUrl || creature.fallbackImageUrl ? (
+            <PetImage
               src={creature.imageUrl}
+              fallbackSrc={creature.fallbackImageUrl}
               alt={creature.name}
-              className="w-20 h-20 rounded-xl object-cover shrink-0"
+              className="w-20 h-20 rounded-xl shrink-0"
             />
           ) : (
             <div className={cn(

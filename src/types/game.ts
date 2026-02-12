@@ -58,6 +58,7 @@ export interface CreatureWithStats {
   totalRaces: number;
   totalEarnings: number;
   imageUrl?: string;
+  fallbackImageUrl?: string;
 }
 
 // Training activity types
@@ -189,6 +190,7 @@ export interface LeaderboardEntry {
   tokenId: string;
   rarity: Rarity;
   imageUrl?: string;
+  fallbackImageUrl?: string;
   ownerAddress: string;
   wins: number;
   places: number;

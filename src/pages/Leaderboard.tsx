@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { RarityBadge } from '@/components/creatures/StatBar';
+import { PetImage } from '@/components/creatures/PetImage';
 
 function truncateAddress(addr: string): string {
   if (addr.length <= 15) return addr;
@@ -95,11 +96,12 @@ export default function Leaderboard() {
 
                         {/* Image */}
                         <div>
-                          {entry.imageUrl ? (
-                            <img
+                          {entry.imageUrl || entry.fallbackImageUrl ? (
+                            <PetImage
                               src={entry.imageUrl}
+                              fallbackSrc={entry.fallbackImageUrl}
                               alt={entry.creatureName}
-                              className="w-8 h-8 rounded-md object-cover"
+                              className="w-8 h-8 rounded-md"
                             />
                           ) : (
                             <div className="w-8 h-8 rounded-md bg-muted/50" />
@@ -170,8 +172,8 @@ export default function Leaderboard() {
                           )}
                         </div>
                         <div>
-                          {entry.imageUrl ? (
-                            <img src={entry.imageUrl} alt="" className="w-7 h-7 rounded object-cover" />
+                          {entry.imageUrl || entry.fallbackImageUrl ? (
+                            <PetImage src={entry.imageUrl} fallbackSrc={entry.fallbackImageUrl} alt="" className="w-7 h-7 rounded" />
                           ) : (
                             <div className="w-7 h-7 rounded bg-muted/50" />
                           )}

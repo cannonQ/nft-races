@@ -6,6 +6,7 @@ import { StatBar, ConditionGauge, RarityBadge } from './StatBar';
 import { CooldownTimer } from './CooldownTimer';
 import { RewardBadges } from './RewardBadges';
 import { ActionsDisplay } from '../training/ActionsDisplay';
+import { PetImage } from './PetImage';
 import { cn } from '@/lib/utils';
 
 interface CreatureCardProps {
@@ -34,13 +35,12 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
         to={`/creatures/${creature.id}`}
         className="flex items-start gap-3 group"
       >
-        {creature.imageUrl && (
-          <img
-            src={creature.imageUrl}
-            alt={creature.name}
-            className="w-14 h-14 rounded-lg object-cover shrink-0"
-          />
-        )}
+        <PetImage
+          src={creature.imageUrl}
+          fallbackSrc={creature.fallbackImageUrl}
+          alt={creature.name}
+          className="w-14 h-14 rounded-lg shrink-0"
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <div className="flex flex-col gap-1">

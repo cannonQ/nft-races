@@ -33,6 +33,13 @@ export function getCreatureImageUrl(metadata: any): string | undefined {
     : undefined;
 }
 
+/** Build the fallback CyberPet image URL from cyberversewiki.com. */
+export function getCreatureFallbackImageUrl(metadata: any): string | undefined {
+  return metadata?.number
+    ? `https://www.cyberversewiki.com/img/cyberpets/${metadata.number}.png`
+    : undefined;
+}
+
 /** Get ISO string for start of today in UTC */
 export function getUtcMidnightToday(): string {
   const d = new Date();
@@ -172,5 +179,6 @@ export function computeCreatureResponse(
       badges: prestigeRow?.badges ?? [],
     },
     imageUrl: getCreatureImageUrl(creatureRow.metadata),
+    fallbackImageUrl: getCreatureFallbackImageUrl(creatureRow.metadata),
   };
 }

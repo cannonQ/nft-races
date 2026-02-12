@@ -152,6 +152,13 @@ export function getImageUrl(tokenId: string, petNumber: number): string {
 }
 
 /**
+ * Get fallback image URL from cyberversewiki.com
+ */
+export function getFallbackImageUrl(petNumber: number): string {
+  return `https://www.cyberversewiki.com/img/cyberpets/${petNumber}.png`;
+}
+
+/**
  * Get full CyberPet info for a token ID
  */
 export function getCyberPetInfo(tokenId: string): CyberPetInfo | null {

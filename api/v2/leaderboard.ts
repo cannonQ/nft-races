@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../_lib/supabase.js';
-import { getActiveSeason, getCreatureDisplayName, getCreatureImageUrl } from '../_lib/helpers.js';
+import { getActiveSeason, getCreatureDisplayName, getCreatureImageUrl, getCreatureFallbackImageUrl } from '../_lib/helpers.js';
 import { nanoErgToErg } from '../_lib/constants.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -62,6 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tokenId: row.creatures?.token_id ?? '',
       rarity: row.creatures?.rarity ?? 'common',
       imageUrl: getCreatureImageUrl(row.creatures?.metadata),
+      fallbackImageUrl: getCreatureFallbackImageUrl(row.creatures?.metadata),
       ownerAddress: row.owner_address,
       wins: row.wins ?? 0,
       places: row.places ?? 0,

@@ -16,6 +16,7 @@ import { TrainingResultModal } from '@/components/training/TrainingResultModal';
 import { BoostBanner } from '@/components/training/BoostBanner';
 import { ActionsDisplay } from '@/components/training/ActionsDisplay';
 import { RewardBadges } from '@/components/creatures/RewardBadges';
+import { PetImage } from '@/components/creatures/PetImage';
 import { TrainingLog } from '@/components/creatures/TrainingLog';
 
 export default function Train() {
@@ -106,13 +107,12 @@ export default function Train() {
                       ${hasRewards ? 'ring-1 ring-primary/30' : ''}`}
                   >
                     <div className="flex items-center gap-3">
-                      {c.imageUrl && (
-                        <img
-                          src={c.imageUrl}
-                          alt={c.name}
-                          className="w-12 h-12 rounded-lg object-cover shrink-0"
-                        />
-                      )}
+                      <PetImage
+                        src={c.imageUrl}
+                        fallbackSrc={c.fallbackImageUrl}
+                        alt={c.name}
+                        className="w-12 h-12 rounded-lg shrink-0"
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <h3 className="font-display text-lg font-semibold text-foreground">
