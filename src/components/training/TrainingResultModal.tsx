@@ -228,6 +228,24 @@ export function TrainingResultModal({
                     </span>
                     <span className="text-accent font-mono text-sm">+{secondaryGain}</span>
                   </div>
+
+                  {/* Animated bar */}
+                  <div className="mt-3 h-3 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-1000 ease-out',
+                        activity.secondaryStat === 'speed' && 'bg-stat-speed',
+                        activity.secondaryStat === 'stamina' && 'bg-stat-stamina',
+                        activity.secondaryStat === 'accel' && 'bg-stat-acceleration',
+                        activity.secondaryStat === 'agility' && 'bg-stat-agility',
+                        activity.secondaryStat === 'heart' && 'bg-stat-heart',
+                        activity.secondaryStat === 'focus' && 'bg-stat-focus',
+                      )}
+                      style={{
+                        width: showAnimation ? `${newSecondary}%` : `${oldSecondary}%`,
+                      }}
+                    />
+                  </div>
                 </div>
               )}
             </div>

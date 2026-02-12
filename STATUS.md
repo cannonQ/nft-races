@@ -26,6 +26,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 - FAQ page with comprehensive game mechanics guide
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
 - **Credit ledger (shadow billing)** — Tracks theoretical training fees, race entry fees, and payouts per wallet (preparation for Phase 2 on-chain fees)
+- **Image caching proxy** — Pet images served via `/api/v2/img/[number]` with Vercel CDN edge caching (1yr immutable), fallback to cyberversewiki.com
 
 ### Open Items
 - [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Shadow-tracked in credit ledger. On-chain enforcement deferred to Phase 2 (requires treasury address + Nautilus `sign_tx()`).
@@ -64,6 +65,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | 9 | `GET /api/v2/creatures/:id/race-history` | `api/v2/creatures/[id]/race-history.ts` | Race entries for a creature |
 | 10 | `GET /api/v2/wallet/:address/ledger` | `api/v2/wallet/[address]/ledger.ts` | Credit ledger (fees, payouts, balance) |
 | 11 | `GET /api/v2/ergopay/status/:sessionId` | `api/v2/ergopay/status/[sessionId].ts` | Poll ErgoPay session status |
+| 12 | `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | Image caching proxy (ergexplorer → cyberversewiki fallback, 1yr CDN cache) |
 
 ### Public POST Endpoints (User Actions)
 
@@ -373,6 +375,56 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Image Caching Proxy & Fallback (2026-02-12)
+
+### Problem
+CyberPet images were loaded directly from `api.ergexplorer.com/nftcache/` — an external service that frequently returns 404s (as seen in the screenshot for pet #146). Broken images degraded the UI experience.
+
+### Solution: Three-Layer Resilience
+1. **Caching proxy** (`/api/v2/img/[number]`) — All image URLs now point to our own domain. The proxy tries ergexplorer first, falls back to cyberversewiki.com, and returns the image with `Cache-Control: public, max-age=31536000, immutable`. Vercel's CDN caches at the edge globally.
+2. **Client-side fallback** — New `<PetImage>` component tries the proxy URL; on `onError`, swaps to `cyberversewiki.com` directly.
+3. **External cache** — Lexy (cyberversewiki.com) hosts pre-cached images for all pets at `https://www.cyberversewiki.com/img/cyberpets/{number}.png`.
+
+### Performance Benefits
+- **CDN edge caching**: After first load, images served from Vercel's 300+ PoPs — no origin hit
+- **No cross-origin overhead**: Same-domain requests eliminate extra DNS lookups, TLS handshakes, CORS
+- **Immutable browser cache**: Once loaded, pet images cached locally for 1 year
+- **Invisible failover**: If ergexplorer is slow/down, proxy falls through to cyberversewiki before returning to client
+
+### New Endpoint
+
+| Endpoint | File | Purpose |
+|----------|------|---------|
+| `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | Image caching proxy — tries ergexplorer, falls back to cyberversewiki, returns with 1yr immutable cache |
+
+### Files Changed
+- `api/v2/img/[number].ts` — **NEW**: Image proxy endpoint
+- `api/_lib/helpers.ts` — `getCreatureImageUrl()` now returns `/api/v2/img/{number}` (proxy), added `getCreatureFallbackImageUrl()` (cyberversewiki direct)
+- `api/v2/leaderboard.ts` — Added `fallbackImageUrl` to response
+- `lib/cyberpets/index.ts` — `getImageUrl()` updated to proxy, added `getFallbackImageUrl()`
+- `src/types/game.ts` — Added `fallbackImageUrl?` to `CreatureWithStats` and `LeaderboardEntry`
+- `src/components/creatures/PetImage.tsx` — **NEW**: Reusable image component with `onError` fallback
+- `src/components/creatures/CreatureCard.tsx` — Uses `<PetImage>`
+- `src/components/creatures/CreatureHeader.tsx` — Uses `<PetImage>`
+- `src/components/training/CreatureTrainHeader.tsx` — Uses `<PetImage>`
+- `src/pages/Train.tsx` — Uses `<PetImage>`
+- `src/pages/Leaderboard.tsx` — Uses `<PetImage>` (both podium + table)
+
+---
+
+## Training Result Modal — Secondary Stat Bar (2026-02-12)
+
+### Problem
+The training result modal showed an animated progress bar for the primary stat gain but not the secondary stat. Only the number animation appeared for the secondary stat (e.g., Focus showed `17.9 → 22.89 +4.99` with no bar).
+
+### Fix
+Added the same animated bar to the secondary stat section in `TrainingResultModal.tsx`. Uses the same `transition-all duration-1000 ease-out` animation and stat-colored background.
+
+### Files Changed
+- `src/components/training/TrainingResultModal.tsx` — Added animated bar to secondary stat display
 
 ---
 
