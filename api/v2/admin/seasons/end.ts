@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { requireAdmin } from '../../../_lib/auth.js';
 import { nanoErgToErg } from '../../../_lib/constants.js';
+import { recordLedgerEntry } from '../../../_lib/credit-ledger.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -112,6 +113,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
       }
+    }
+
+    // 4b. Shadow billing: record season payouts (fire-and-forget)
+    for (const p of payouts) {
+      recordLedgerEntry({
+        ownerAddress: p.ownerAddress,
+        txType: 'season_payout',
+        amountNanoerg: p.amount,
+        creatureId: p.creatureId,
+        seasonId,
+        memo: `Season payout: ${p.pool} pool`,
+      });
     }
 
     // 5. Update prestige for each creature that participated

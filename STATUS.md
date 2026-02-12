@@ -1,13 +1,13 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-11
+**Date:** 2026-02-12
 **Phase:** 1 (DB + API — Launch Day)
 
 ---
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 18 API endpoints built, all frontend hooks wired, admin page for race management. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
+Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 22 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
@@ -19,14 +19,17 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 - Race results with full score breakdown (stat contributions, modifiers, luck)
 - Leaderboard, creature profile, race history pages functional
 - Admin page (`/admin`) for creating, editing, resolving, and reopening races
+- **Auto-resolve**: Expired races resolve lazily on next page load (per-race `auto_resolve` flag, default true)
 - Cancelled races visible in admin with reopen capability
 - Resolve confirmation dialog prevents accidental race cancellation
 - On-chain NFT ownership verification on all mutation endpoints (train, race entry)
 - FAQ page with comprehensive game mechanics guide
+- **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
+- **Credit ledger (shadow billing)** — Tracks theoretical training fees, race entry fees, and payouts per wallet (preparation for Phase 2 on-chain fees)
 
 ### Open Items
-- [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Not yet implemented. Requires treasury address. When added, Nautilus `sign_tx()` will show ERG amount (better UX than current no-cost flow).
-- [ ] **Race entry fee** — Same pattern as training cost. Entry fee stored in `season_races.entry_fee_nanoerg`.
+- [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Shadow-tracked in credit ledger. On-chain enforcement deferred to Phase 2 (requires treasury address + Nautilus `sign_tx()`).
+- [ ] **Race entry fee** — Same pattern as training cost. Entry fee stored in `season_races.entry_fee_nanoerg`. Shadow-tracked in credit ledger.
 - [ ] **Vercel deployment** — Push to deploy. Env vars should already be set.
 
 ### Infrastructure
@@ -37,7 +40,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | Backend | Vercel Serverless Functions (`api/`) | All 14 endpoints + admin |
 | Database | Supabase (PostgreSQL) | Schema live, Season 1 created |
 | Blockchain | Ergo (Explorer API for ownership verification) | Integrated — single-call balance fetch |
-| Wallet | Nautilus (EIP-12 dApp connector) | Connect, address, balance |
+| Wallet | Nautilus (EIP-12) + ErgoPay (EIP-20) | Desktop + mobile wallet connect |
 | Auth | On-chain NFT ownership via Explorer API | No wallet signing in Phase 1; native UTXO auth in Phase 2 |
 | Verification | ergo-lib-wasm-nodejs (server-side) | Available for future signing needs |
 | Deployment | Vercel (framework: vite) | Local dev tested |
@@ -54,11 +57,13 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | 2 | `GET /api/v2/creatures/by-wallet/:address` | `api/v2/creatures/by-wallet/[address].ts` | All creatures for a wallet (batch queries) |
 | 3 | `GET /api/v2/creatures/:id` | `api/v2/creatures/[id]/index.ts` | Single creature with computed stats |
 | 4 | `GET /api/v2/creatures/:id/training-log` | `api/v2/creatures/[id]/training-log.ts` | Training history (last 50) |
-| 5 | `GET /api/v2/races` | `api/v2/races/index.ts` | Open + recently resolved races |
+| 5 | `GET /api/v2/races` | `api/v2/races/index.ts` | Open + recently resolved races (auto-resolves expired races) |
 | 6 | `GET /api/v2/races/:id/results` | `api/v2/races/[id]/results.ts` | Race results with score breakdown |
 | 7 | `GET /api/v2/leaderboard` | `api/v2/leaderboard.ts` | Season standings (optional `?season=`) |
 | 8 | `GET /api/v2/config` | `api/v2/config.ts` | Public game config (activities, race type weights) |
 | 9 | `GET /api/v2/creatures/:id/race-history` | `api/v2/creatures/[id]/race-history.ts` | Race entries for a creature |
+| 10 | `GET /api/v2/wallet/:address/ledger` | `api/v2/wallet/[address]/ledger.ts` | Credit ledger (fees, payouts, balance) |
+| 11 | `GET /api/v2/ergopay/status/:sessionId` | `api/v2/ergopay/status/[sessionId].ts` | Poll ErgoPay session status |
 
 ### Public POST Endpoints (User Actions)
 
@@ -67,17 +72,18 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | 10 | `POST /api/v2/creatures/register` | `api/v2/creatures/register.ts` | Register NFT — verifies on-chain ownership |
 | 11 | `POST /api/v2/train` | `api/v2/train.ts` | Train creature — validates cooldowns, applies gains |
 | 12 | `POST /api/v2/races/:id/enter` | `api/v2/races/[id]/enter.ts` | Enter race — snapshots stats, validates limits |
+| 13 | `POST /api/v2/ergopay/init` | `api/v2/ergopay/init.ts` | Create ErgoPay session, return ergopay:// URL |
 
 ### Admin POST Endpoints (Bearer token auth)
 
 | # | Endpoint | File | Purpose |
 |---|----------|------|---------|
-| 13 | `POST /api/v2/admin/seasons/start` | `api/v2/admin/seasons/start.ts` | Start new season, init creature stats |
-| 14 | `POST /api/v2/admin/seasons/end` | `api/v2/admin/seasons/end.ts` | End season, compute payouts, update prestige |
-| 15 | `POST /api/v2/admin/races/create` | `api/v2/admin/races/create.ts` | Create a new race |
-| 16 | `POST /api/v2/admin/races/resolve` | `api/v2/admin/races/resolve.ts` | Resolve race — deterministic results from Ergo block hash |
-| 17 | `POST /api/v2/admin/races/update` | `api/v2/admin/races/update.ts` | Edit open race (name, type, deadline, max entries) |
-| 18 | `POST /api/v2/admin/races/reopen` | `api/v2/admin/races/reopen.ts` | Reopen cancelled race (sets status back to open) |
+| 14 | `POST /api/v2/admin/seasons/start` | `api/v2/admin/seasons/start.ts` | Start new season, init creature stats |
+| 15 | `POST /api/v2/admin/seasons/end` | `api/v2/admin/seasons/end.ts` | End season, compute payouts, update prestige |
+| 16 | `POST /api/v2/admin/races/create` | `api/v2/admin/races/create.ts` | Create a new race |
+| 17 | `POST /api/v2/admin/races/resolve` | `api/v2/admin/races/resolve.ts` | Resolve race — deterministic results from Ergo block hash |
+| 18 | `POST /api/v2/admin/races/update` | `api/v2/admin/races/update.ts` | Edit open race (name, type, deadline, max entries) |
+| 19 | `POST /api/v2/admin/races/reopen` | `api/v2/admin/races/reopen.ts` | Reopen cancelled race (sets status back to open) |
 
 ### Utility Endpoints
 
@@ -85,6 +91,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 |----------|------|---------|
 | `GET /api/health` | `api/health.ts` | Health check |
 | `GET /api/v2/collections` | `api/v2/collections.ts` | List collections |
+| `GET /api/v2/ergopay/connect/:sessionId/:address` | `api/v2/ergopay/connect/[sessionId]/[address].ts` | ErgoPay wallet callback (called by mobile wallet) |
 
 ### Shared Server Libraries
 
@@ -96,6 +103,8 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | `api/_lib/constants.ts` | Activity display map, reward labels, nanoErg conversion |
 | `api/_lib/cyberpets.ts` | CyberPet JSON loader, trait parser, base stat computation |
 | `api/_lib/register-creature.ts` | Shared creature registration (used by register endpoint + auto-discovery) |
+| `api/_lib/resolve-race.ts` | Shared race resolution logic (used by admin endpoint + auto-resolve in GET /races) |
+| `api/_lib/credit-ledger.ts` | Credit ledger helper — records training fees, race fees, payouts |
 
 ### Frontend Hooks (all wired to real API)
 
@@ -113,6 +122,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | `useEnterRace` | `POST /api/v2/races/:id/enter` | Mutation |
 | `useGameConfig` | `GET /api/v2/config` | Query |
 | `useRaceHistory` | `GET /api/v2/creatures/:id/race-history` | Query |
+| `useWalletLedger` | `GET /api/v2/wallet/:address/ledger` | Query |
 
 ---
 
@@ -237,7 +247,7 @@ The basic game loop (wallet → discover → train → race → results) is conf
 | **Prize distribution** | DB ledger (manual payout) | Contract auto-creates payout output boxes |
 | **Leaderboard** | `season_leaderboard` table | AVL tree or extended creature tree |
 | **Cooldowns** | `last_action_at` timestamps (6h / 180 blocks) | `HEIGHT >= lastHeight + 180` blocks |
-| **Fee collection** | Not yet implemented | User TX includes fee output natively |
+| **Fee collection** | Shadow-tracked in `credit_ledger` (no ERG moves yet) | User TX includes fee output natively |
 
 ### Phase 2 Vision: Everything On-Chain, DB = Read Cache
 
@@ -265,7 +275,7 @@ These are the actual values enforced in the working codebase. Subject to tuning 
 | **Final race score** | `weighted × fatigueMod × sharpnessMod × (1 + rngMod)` | `computeRaceResult()` |
 | **Race prize split** | 50% / 30% / 20% (configurable via `game_config`) | `prize_distribution` default |
 | **Race rewards** | 1st: +1 bonus action, 2nd: +50% boost, 3rd: +25% boost, 4th+: +10% boost | `getRaceRewardBoost()` |
-| **Training cost** | 0.01 ERG (planned, not yet enforced) | Architecture spec |
+| **Training cost** | 0.01 ERG (shadow-tracked in credit ledger, not yet on-chain) | `TRAINING_FEE_NANOERG` in `constants.ts` |
 | **Race entry fee** | Configurable per-race (`entry_fee_nanoerg` column) | `season_races` table |
 | **Alpha testing mode** | `ALPHA_TESTING = true` — cooldown and daily limits disabled | `validateTrainingAction()` |
 
@@ -310,7 +320,7 @@ PHASE 2 (Target — Smart Contracts)
 | **POST /creatures/register** | **No contract needed** — NFT ownership is native. Creature exists if the wallet holds the token. Base stats derived from on-chain metadata (packed-data box). | DB insert → AVL tree insert (first training TX auto-registers) |
 | **POST /train** | **Training Contract** — User builds TX: sends 0.01 ERG to pool box + AVL proof of stat update + optional boost reward box inputs. Contract validates: cooldown (`HEIGHT >= lastAction + 180`), 2 actions/day limit, diminishing returns (`gain = base × (1 - current/80)`), per-stat cap (80), total cap (300), fatigue cost. Boost reward inputs consumed in same TX. | Server validation → ErgoScript validation. Same formulas. |
 | **POST /races/:id/enter** | **Race Entry Contract** — User builds TX: sends entry fee to race box + snapshot stats from AVL read. Contract validates: ownership, not already entered, race not full. | Snapshot stored in race box registers instead of DB. |
-| **POST /admin/races/resolve** | **Race Resolution Contract** — Anyone can trigger (no admin needed). Contract reads `CONTEXT.headers(0).id` for block hash RNG seed. Computes scores identically. Creates boost reward output boxes for 2nd–4th+ and bonus action marker for 1st. Distributes prize pool (50/30/20 split). | Admin trigger → permissionless. Payouts + boost rewards are TX outputs, not DB entries. |
+| **POST /admin/races/resolve** | **Race Resolution Contract** — Anyone can trigger (no admin needed). Contract reads `CONTEXT.headers(0).id` for block hash RNG seed. Computes scores identically. Creates boost reward output boxes for 2nd–4th+ and bonus action marker for 1st. Distributes prize pool (50/30/20 split). | Phase 1: lazy auto-resolve on page load (wall-clock time). Phase 2: permissionless, block-height trigger. Payouts + boost rewards are TX outputs, not DB entries. |
 | **POST /admin/seasons/start** | **Season Contract** — New season box created with: AVL tree digest (all stats zeroed), prize pool = 0, end height. | Admin action → scheduled or governance vote. |
 | **POST /admin/seasons/end** | **Season Payout Contract** — Triggered when `HEIGHT >= season_end_height`. Reads leaderboard from AVL tree. Creates payout output boxes. | Admin trigger → automated by block height. |
 | **GET /seasons/current** | **TX Builder reads season box** from chain. Indexed in DB for fast frontend reads. | API reads DB → API reads chain-synced DB. |
@@ -332,7 +342,7 @@ PHASE 2 (Target — Smart Contracts)
 | **Prize distribution** | Race prizes: 50/30/20% of entry pool (from `game_config`) | SC creates output boxes automatically | Configurable per-race via `game_config.prize_distribution` |
 | **Boost rewards** | `boost_rewards` table — discrete rows with block height expiry (2160 blocks ≈ 3 days) | Actual Ergo boxes (reward tokens) with `HEIGHT` expiry in contract | UTXO model: select which boosts to spend per training action |
 | **Cooldowns** | `last_action_at` timestamps (6 hours between regular actions) | `HEIGHT >= lastHeight + 180` (180 blocks ≈ 6h) | Bonus actions bypass cooldown. Block height more reliable than timestamps |
-| **Fee collection** | Not yet implemented (planned: 0.01 ERG per training action) | User TX includes fee output natively | Self-enforcing via contract |
+| **Fee collection** | Shadow-tracked in `credit_ledger` table (0.01 ERG per training, per-race entry fees, payouts) | User TX includes fee output natively | Credit ledger data informs Phase 2 fee calibration |
 | **Auth** | On-chain NFT ownership verified via Explorer API (no wallet signing in Phase 1) | TX signature = auth (native to UTXO model) | Phase 1 checks balance endpoint; Phase 2 is native UTXO ownership |
 | **Leaderboard** | `season_leaderboard` table | Separate AVL tree or extended creature tree | Indexed off-chain for fast reads |
 | **Training log** | `training_log` table (with `bonus_action` flag, `boosted` flag) | On-chain TX history | Indexed by scanner for frontend display |
@@ -363,6 +373,138 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Race Auto-Resolve (2026-02-11)
+
+### Problem
+Races stayed in `open` status after their entry deadline passed, requiring an admin to manually resolve them via the admin dashboard. Players saw "Ready!" on expired races with no automatic resolution.
+
+### Solution
+Lazy auto-resolution: when any user loads the Races page (`GET /api/v2/races`), the server checks for expired open races with `auto_resolve = true` and resolves them inline before returning results. The first visitor after a deadline pays 2-3s of latency; subsequent visitors see the race already resolved.
+
+### Changes
+- **`api/_lib/resolve-race.ts`** — **NEW**: Extracted 235-line resolve logic from admin endpoint into shared `resolveRace(raceId)` function. Concurrency-safe lock via conditional `UPDATE ... WHERE status = 'open'`.
+- **`api/v2/admin/races/resolve.ts`** — Refactored to thin wrapper (~30 lines) calling shared function
+- **`api/v2/races/index.ts`** — Added auto-resolve check before returning race list
+- **`api/v2/admin/races/create.ts`** — Accepts `autoResolve` param (default true)
+- **`api/v2/admin/races/update.ts`** — Accepts `autoResolve` param
+- **`src/pages/Admin.tsx`** — Auto-resolve checkbox on create/edit forms, badge on open races
+- **`src/components/races/RaceCard.tsx`** — `onExpired` callback when countdown hits zero, 10s polling near deadline
+- **`src/pages/Races.tsx`** — Refetches races 2s after a card expires
+- **`src/types/game.ts`** — Added `autoResolve` to `Race` interface
+
+### DB Migration
+```sql
+ALTER TABLE season_races ADD COLUMN auto_resolve BOOLEAN NOT NULL DEFAULT true;
+```
+
+### Phase 2 Note
+The `auto_resolve` column carries forward unchanged. Off-chain bot will query `WHERE auto_resolve = true AND resolve_at_height <= current_height` instead of wall-clock time.
+
+---
+
+## Credit Ledger — Shadow Billing (2026-02-12)
+
+### Overview
+Tracks theoretical ERG fees and payouts per wallet without moving real ERG. Every training action, race entry, race payout, and season payout records a ledger entry with type, amount (nanoErg), and optional metadata. This provides:
+1. **Usage data** — How much each player would owe/earn under real fees (informs Phase 2 fee calibration)
+2. **Audit trail** — Full history of all billable actions per wallet
+3. **Balance computation** — Running credit balance = payouts received - fees incurred
+
+### Ledger Entry Types
+| Type | Amount | When |
+|------|--------|------|
+| `training_fee` | -10,000,000 nanoErg (-0.01 ERG) | Every training action |
+| `race_entry_fee` | -`entry_fee_nanoerg` (per race) | Every race entry |
+| `race_payout` | +prize pool share | Race resolution (1st/2nd/3rd) |
+| `season_payout` | +season prize share | Season end |
+
+### DB Migration (`migrations/007_credit_ledger.sql`)
+```sql
+CREATE TABLE credit_ledger (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  wallet_address  TEXT NOT NULL,
+  entry_type      TEXT NOT NULL,
+  amount_nanoerg  BIGINT NOT NULL,
+  creature_id     UUID REFERENCES creatures(id),
+  race_id         UUID REFERENCES season_races(id),
+  season_id       UUID REFERENCES seasons(id),
+  metadata        JSONB DEFAULT '{}',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_credit_ledger_wallet ON credit_ledger(wallet_address);
+CREATE INDEX idx_credit_ledger_type ON credit_ledger(entry_type);
+```
+
+### API
+- `GET /api/v2/wallet/:address/ledger` — Returns entries array + computed balance (sum of all amounts)
+
+### Files Changed
+- `api/_lib/constants.ts` — Added `TRAINING_FEE_NANOERG = 10_000_000`
+- `api/_lib/credit-ledger.ts` — **NEW**: `recordLedgerEntry()` helper
+- `api/v2/train.ts` — Records `training_fee` entry on each training action
+- `api/v2/races/[id]/enter.ts` — Records `race_entry_fee` entry on race entry
+- `api/_lib/resolve-race.ts` — Records `race_payout` entries for prize winners
+- `api/v2/admin/seasons/end.ts` — Records `season_payout` entries
+- `api/v2/wallet/[address]/ledger.ts` — **NEW**: Wallet ledger endpoint
+- `src/api/useWalletLedger.ts` — **NEW**: Frontend hook
+- `src/types/game.ts` — Added `LedgerEntry`, `WalletLedger` types
+
+### Phase 2 Note
+Credit ledger entries map directly to on-chain TX fees. When real ERG transactions are enforced, the ledger becomes a read cache indexed from chain TXs. Historical shadow data provides fee calibration benchmarks.
+
+---
+
+## ErgoPay Mobile Wallet Integration (2026-02-12)
+
+### Overview
+Added ErgoPay (EIP-20) as a second wallet connection method alongside Nautilus. Mobile users scan a QR code or tap a deep link to connect their Ergo wallet. The flow uses a self-hosted `#P2PK_ADDRESS#` replacement pattern — no dependency on external services.
+
+### How It Works
+1. Frontend calls `POST /api/v2/ergopay/init` → creates session in DB, returns `ergopay://` URL
+2. QR code / deep link shown to user containing: `ergopay://{host}/api/v2/ergopay/connect/{sessionId}/#P2PK_ADDRESS#`
+3. Mobile wallet strips `ergopay://`, adds `https://`, replaces `#P2PK_ADDRESS#` with real address, calls GET
+4. Backend stores address in session row
+5. Frontend polls `GET /api/v2/ergopay/status/{sessionId}` every 2s until `connected` or `expired`
+6. On connect: address saved to localStorage as `{ type: 'ergopay', address: '9...' }`, trusted on reconnect
+
+### Capability Differences
+| Capability | Nautilus | ErgoPay |
+|-----------|---------|---------|
+| Get address | Yes | Yes (via session) |
+| Query balance | Yes | No |
+| Sign messages | Yes | No |
+| Submit transactions | Yes | No |
+| Reconnect | Auto (extension API) | localStorage trust |
+
+ErgoPay users can browse, train (server-verified), and enter free races. Paid transactions (Phase 2) will require Nautilus or an ErgoPay payment flow extension.
+
+### DB Migration (`migrations/008_ergopay_sessions.sql`)
+```sql
+CREATE TABLE ergopay_sessions (
+  id         TEXT PRIMARY KEY,
+  address    TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '5 minutes')
+);
+CREATE INDEX idx_ergopay_sessions_expires ON ergopay_sessions(expires_at);
+```
+
+### Environment Variables
+- `ERGOPAY_HOST` — Production: `nft-races.vercel.app`. Falls back to `VERCEL_URL` then `localhost:3000`.
+- Must be set via `vercel env add` for each environment (Development, Preview, Production).
+
+### Files Changed
+- `api/v2/ergopay/init.ts` — **NEW**: Create session + return ergopay:// URL
+- `api/v2/ergopay/connect/[sessionId]/[address].ts` — **NEW**: Wallet callback (stores address)
+- `api/v2/ergopay/status/[sessionId].ts` — **NEW**: Session polling endpoint
+- `src/lib/ergo/ergopay.ts` — **NEW**: Frontend helpers (initSession, pollStatus, isMobile)
+- `src/context/WalletContext.tsx` — Dual wallet type (`nautilus` | `ergopay`), capability flags, ErgoPay connect/poll/cancel, localStorage migration
+- `src/components/layout/WalletConnect.tsx` — Wallet selection dialog (Nautilus vs ErgoPay), QR code display, polling status UI
+- `src/api/useCreatures.ts` — Auth headers wrapped in try/catch (graceful skip for ErgoPay)
+- `package.json` — Added `qrcode.react` dependency
 
 ---
 

@@ -5,6 +5,7 @@
 import { supabase } from './supabase.js';
 import { getLatestErgoBlock } from './helpers.js';
 import { nanoErgToErg, positionToRewardLabel } from './constants.js';
+import { recordLedgerEntry } from './credit-ledger.js';
 import {
   computeRaceResult,
   applyRaceRewards,
@@ -178,6 +179,20 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
         payout_nanoerg: payoutNanoerg,
       })
       .eq('id', entryRow.id);
+
+    // Shadow billing: record per-race payout (only when entry fees > 0)
+    if (payoutNanoerg > 0) {
+      recordLedgerEntry({
+        ownerAddress: entryRow.owner_address,
+        txType: 'race_payout',
+        amountNanoerg: payoutNanoerg,
+        creatureId: result.creatureId,
+        raceId,
+        seasonId: race.season_id,
+        raceEntryId: entryRow.id,
+        memo: `Race payout: ${positionToRewardLabel(result.position)}`,
+      });
+    }
   }
 
   // 10. Apply race reward boosts (bonus actions, discrete boost rewards)

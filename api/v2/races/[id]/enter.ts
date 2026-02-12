@@ -3,6 +3,7 @@ import { supabase } from '../../../_lib/supabase.js';
 import { getUtcMidnightToday } from '../../../_lib/helpers.js';
 import { applyConditionDecay } from '../../../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../../../lib/ergo/server.js';
+import { recordLedgerEntry } from '../../../_lib/credit-ledger.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -144,6 +145,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (insertErr || !entry) {
       console.error('Race entry insert error:', insertErr);
       return res.status(500).json({ error: 'Failed to create race entry', detail: insertErr?.message });
+    }
+
+    // 8b. Shadow billing: record race entry fee (fire-and-forget)
+    const entryFeeNanoerg = race.entry_fee_nanoerg ?? 0;
+    if (entryFeeNanoerg > 0) {
+      recordLedgerEntry({
+        ownerAddress: walletAddress,
+        txType: 'race_entry_fee',
+        amountNanoerg: -entryFeeNanoerg,
+        creatureId,
+        raceId,
+        seasonId: race.season_id,
+        raceEntryId: entry.id,
+        memo: `Race entry: ${race.name}`,
+      });
     }
 
     // 9. Update creature_stats: last_race_at and race_count

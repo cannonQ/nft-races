@@ -16,6 +16,9 @@ export function positionToRewardLabel(position: number): string {
   return '+10% Boost';
 }
 
+/** Training cost in nanoERG (0.01 ERG) */
+export const TRAINING_FEE_NANOERG = 10_000_000;
+
 /** Convert nanoERG to ERG */
 export function nanoErgToErg(nanoErg: number): number {
   return nanoErg / 1_000_000_000;

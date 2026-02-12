@@ -8,6 +8,8 @@ import {
   STAT_KEYS,
 } from '../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../lib/ergo/server.js';
+import { recordLedgerEntry } from '../_lib/credit-ledger.js';
+import { TRAINING_FEE_NANOERG } from '../_lib/constants.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -171,6 +173,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Non-fatal — boosts were validated, training is committed
       }
     }
+
+    // 10c. Shadow billing: record training fee (fire-and-forget)
+    recordLedgerEntry({
+      ownerAddress: walletAddress,
+      txType: 'training_fee',
+      amountNanoerg: -TRAINING_FEE_NANOERG,
+      creatureId,
+      seasonId: season.id,
+      trainingLogId: logRow.id,
+      memo: `Training: ${activity}`,
+    });
 
     // 11. Update creature_stats (only after log is safely persisted)
     const newBonusActions = isBonusAction

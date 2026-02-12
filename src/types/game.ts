@@ -219,6 +219,31 @@ export interface RegisterCreatureResponse {
   creature: CreatureWithStats;
 }
 
+// Credit ledger entry (shadow billing)
+export interface LedgerEntry {
+  id: string;
+  txType: string;
+  amountNanoerg: number;
+  amountErg: number;
+  balanceAfterNanoerg: number;
+  creatureId: string | null;
+  raceId: string | null;
+  seasonId: string | null;
+  memo: string | null;
+  createdAt: string;
+}
+
+// Wallet ledger summary
+export interface WalletLedger {
+  balance: number;
+  balanceErg: number;
+  totalSpent: number;
+  totalSpentErg: number;
+  totalEarned: number;
+  totalEarnedErg: number;
+  entries: LedgerEntry[];
+}
+
 // Generic API response wrapper
 export interface ApiResponse<T> {
   data: T | null;
