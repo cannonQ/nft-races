@@ -26,10 +26,10 @@ export function getCreatureDisplayName(metadata: any, fallbackName: string): str
   return fallbackName;
 }
 
-/** Build the standard CyberPet image URL from the token number. */
+/** Build the CyberPet image URL via our caching proxy. */
 export function getCreatureImageUrl(metadata: any): string | undefined {
   return metadata?.number
-    ? `https://api.ergexplorer.com/nftcache/QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw_${metadata.number}.png.png`
+    ? `/api/v2/img/${metadata.number}`
     : undefined;
 }
 

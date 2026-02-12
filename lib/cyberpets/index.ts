@@ -144,11 +144,10 @@ export function calculateRacingScore(traits: CyberPetTraits): number {
 const CYBERPETS_IPFS_CID = 'QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw';
 
 /**
- * Get image URL for a CyberPet
- * Format: https://api.ergexplorer.com/nftcache/{ipfs_cid}_{number}.png.png
+ * Get image URL for a CyberPet via caching proxy
  */
 export function getImageUrl(tokenId: string, petNumber: number): string {
-  return `https://api.ergexplorer.com/nftcache/${CYBERPETS_IPFS_CID}_${petNumber}.png.png`;
+  return `/api/v2/img/${petNumber}`;
 }
 
 /**
