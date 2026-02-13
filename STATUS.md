@@ -11,6 +11,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
+- Ergo Mobile wallet connect/disconnect with auto-reconnect
 - **Auto-discovery**: CyberPets in wallet are detected on-chain and auto-registered to DB (no manual registration needed)
 - Dashboard displays owned CyberPets with NFT images, stale ownership auto-cleaned
 - Training calls real API: stat gains, diminishing returns, actions counter (2/day), cooldown enforcement
