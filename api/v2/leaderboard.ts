@@ -55,6 +55,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Batch-fetch display names for all owners
+    const ownerAddresses = [...new Set((data ?? []).map((r: any) => r.owner_address as string))];
+    let displayNames: Record<string, string> = {};
+    if (ownerAddresses.length > 0) {
+      const { data: profiles } = await supabase
+        .from('wallet_profiles')
+        .select('address, display_name')
+        .in('address', ownerAddresses);
+      if (profiles) {
+        for (const p of profiles) {
+          displayNames[p.address] = p.display_name;
+        }
+      }
+    }
+
     const result = (data ?? []).map((row: any, index: number) => ({
       rank: index + 1,
       creatureId: row.creature_id,
@@ -64,6 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       imageUrl: getCreatureImageUrl(row.creatures?.metadata),
       fallbackImageUrl: getCreatureFallbackImageUrl(row.creatures?.metadata),
       ownerAddress: row.owner_address,
+      ownerDisplayName: displayNames[row.owner_address] ?? null,
       wins: row.wins ?? 0,
       places: row.places ?? 0,
       shows: row.shows ?? 0,

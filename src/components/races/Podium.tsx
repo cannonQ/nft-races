@@ -1,6 +1,7 @@
 import { Trophy, Medal, Award } from 'lucide-react';
 import { RaceEntry, Rarity } from '@/types/game';
 import { useWallet } from '@/context/WalletContext';
+import { truncateAddress } from '@/lib/ergo/client';
 import { cn } from '@/lib/utils';
 
 interface PodiumProps {
@@ -95,8 +96,11 @@ export function Podium({ results }: PodiumProps) {
               >
                 {result.rarity}
               </p>
-              <p className="text-xs text-muted-foreground font-mono mt-2">
-                {result.ownerAddress}
+              <p className={cn(
+                'text-xs text-muted-foreground mt-2 truncate max-w-[120px] md:max-w-[130px]',
+                !result.ownerDisplayName && 'font-mono'
+              )}>
+                {result.ownerDisplayName || truncateAddress(result.ownerAddress)}
               </p>
               {isCurrentUser && (
                 <span className="text-[10px] text-primary/70">(You)</span>

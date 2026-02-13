@@ -123,6 +123,7 @@ export interface RaceEntry {
   rarity: Rarity;
   ownerId: string;
   ownerAddress: string;
+  ownerDisplayName: string | null;
   performanceScore: number;
   payout: number;
   reward: string; // "+1 Action" | "+50% Boost" | "+25% Boost" | "+10% Boost"
@@ -192,6 +193,7 @@ export interface LeaderboardEntry {
   imageUrl?: string;
   fallbackImageUrl?: string;
   ownerAddress: string;
+  ownerDisplayName: string | null;
   wins: number;
   places: number;
   shows: number;
@@ -256,6 +258,12 @@ export interface WalletLedger {
   racesEntered: number;
   creatureSpending: CreatureSpending[];
   entries: LedgerEntry[];
+}
+
+// Wallet profile (display name)
+export interface WalletProfile {
+  address: string;
+  displayName: string | null;
 }
 
 // Generic API response wrapper

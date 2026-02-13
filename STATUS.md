@@ -1,6 +1,6 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-12
+**Date:** 2026-02-13
 **Phase:** 1 (DB + API — Launch Day)
 
 ---
@@ -26,8 +26,10 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 - On-chain NFT ownership verification on all mutation endpoints (train, race entry)
 - FAQ page with comprehensive game mechanics guide
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
-- **Credit ledger (shadow billing)** — Tracks theoretical training fees, race entry fees, and payouts per wallet (preparation for Phase 2 on-chain fees)
+- **Credit ledger (shadow billing)** — Tracks theoretical training fees, race entry fees, and season payouts per wallet (preparation for Phase 2 on-chain fees)
+- **Gamified investment display** — Dashboard summary card, per-creature investment card, and `/wallet` ledger page showing ERG burned vs prize pool
 - **Image caching proxy** — Pet images served via `/api/v2/img/[number]` with Vercel CDN edge caching (1yr immutable), fallback to cyberversewiki.com
+- **Wallet display names** — Users can set a friendly name (e.g. "Andrius") via wallet dropdown. Shown on leaderboard, race podium, and race results instead of truncated address. Names are unique (case-insensitive), 2-20 chars. Purely off-chain (stored in `wallet_profiles` table) — zero impact on Phase 2 smart contracts
 
 ### Open Items
 - [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Shadow-tracked in credit ledger. On-chain enforcement deferred to Phase 2 (requires treasury address + Nautilus `sign_tx()`).
@@ -65,7 +67,8 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | 8 | `GET /api/v2/config` | `api/v2/config.ts` | Public game config (activities, race type weights) |
 | 9 | `GET /api/v2/creatures/:id/race-history` | `api/v2/creatures/[id]/race-history.ts` | Race entries for a creature |
 | 10 | `GET /api/v2/wallet/:address/ledger` | `api/v2/wallet/[address]/ledger.ts` | Credit ledger (fees, payouts, balance) |
-| 11 | `GET /api/v2/ergopay/status/:sessionId` | `api/v2/ergopay/status/[sessionId].ts` | Poll ErgoPay session status |
+| 11 | `GET /api/v2/wallet/:address/profile` | `api/v2/wallet/[address]/profile.ts` | Wallet display name (get or set via PUT) |
+| 12 | `GET /api/v2/ergopay/status/:sessionId` | `api/v2/ergopay/status/[sessionId].ts` | Poll ErgoPay session status |
 | 12 | `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | Image caching proxy (ergexplorer → cyberversewiki fallback, 1yr CDN cache) |
 
 ### Public POST Endpoints (User Actions)
@@ -126,6 +129,8 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | `useGameConfig` | `GET /api/v2/config` | Query |
 | `useRaceHistory` | `GET /api/v2/creatures/:id/race-history` | Query |
 | `useWalletLedger` | `GET /api/v2/wallet/:address/ledger` | Query |
+| `useWalletProfile` | `GET /api/v2/wallet/:address/profile` | Query |
+| `useUpdateWalletProfile` | `PUT /api/v2/wallet/:address/profile` | Mutation |
 
 ---
 
@@ -221,7 +226,7 @@ The basic game loop (wallet → discover → train → race → results) is conf
 4. [x] Push to git → triggers Vercel deploy
 5. [x] Smoke test: connect wallet → creatures auto-discovered
 6. [x] Full loop: train → create race (admin) → enter race → resolve → check results
-7. [ ] Multi-user test: two different wallets complete full loop concurrently
+7. [x] Multi-user test: two different wallets complete full loop concurrently
 
 ---
 
@@ -379,6 +384,45 @@ PHASE 2 (Target — Smart Contracts)
 
 ---
 
+## Wallet Display Names (2026-02-13)
+
+### Overview
+Users can set a friendly display name for their wallet (e.g. "Andrius") that appears on the leaderboard, race podium, and race results instead of a truncated wallet address. Names are unique (case-insensitive), 2-20 characters. The wallet button is now a dropdown with "Set Display Name" and "Disconnect" options.
+
+### DB Migration (`migrations/009_wallet_profiles.sql`)
+```sql
+CREATE TABLE wallet_profiles (
+  address       TEXT PRIMARY KEY,
+  display_name  TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_wallet_profiles_display_name_lower
+  ON wallet_profiles (LOWER(display_name));
+```
+
+### API
+- `GET /api/v2/wallet/:address/profile` — Returns `{ address, displayName }` (null if not set)
+- `PUT /api/v2/wallet/:address/profile` — Set/clear display name. Body: `{ walletAddress, displayName }`. Returns 409 if name taken.
+- Leaderboard + race results APIs batch-fetch display names and include `ownerDisplayName` in responses
+
+### Files Changed
+- `migrations/009_wallet_profiles.sql` — **NEW**: Wallet profiles table with unique name index
+- `api/v2/wallet/[address]/profile.ts` — **NEW**: GET/PUT endpoint for display names
+- `api/v2/leaderboard.ts` — Batch-fetches display names, returns `ownerDisplayName`
+- `api/v2/races/[id]/results.ts` — Same enrichment for race results
+- `src/types/game.ts` — Added `ownerDisplayName` to `LeaderboardEntry` and `RaceEntry`, added `WalletProfile` type
+- `src/api/useWalletProfile.ts` — **NEW**: `useWalletProfile()` query + `useUpdateWalletProfile()` mutation
+- `src/api/index.ts` — Exported new hooks + type
+- `src/components/layout/WalletConnect.tsx` — Connected state is now a dropdown menu with name display, edit dialog, disconnect
+- `src/pages/Leaderboard.tsx` — Owner column shows display name (regular font) or truncated address (mono font)
+- `src/components/races/Podium.tsx` — Shows display name or truncated address (was showing full raw address)
+
+### Phase 2 Compatibility
+Wallet display names are purely off-chain — stored in `wallet_profiles` table, never referenced by smart contracts. The off-chain indexer can `LEFT JOIN wallet_profiles` to enrich API responses. TX builder constructs transactions by address only. Zero impact on contract design, AVL trees, or on-chain state.
+
+---
+
 ## Image Caching Proxy & Fallback (2026-02-12)
 
 ### Problem
@@ -471,7 +515,6 @@ Tracks theoretical ERG fees and payouts per wallet without moving real ERG. Ever
 |------|--------|------|
 | `training_fee` | -10,000,000 nanoErg (-0.01 ERG) | Every training action |
 | `race_entry_fee` | -`entry_fee_nanoerg` (per race) | Every race entry |
-| `race_payout` | +prize pool share | Race resolution (1st/2nd/3rd) |
 | `season_payout` | +season prize share | Season end |
 
 ### DB Migration (`migrations/007_credit_ledger.sql`)
@@ -499,14 +542,67 @@ CREATE INDEX idx_credit_ledger_type ON credit_ledger(entry_type);
 - `api/_lib/credit-ledger.ts` — **NEW**: `recordLedgerEntry()` helper
 - `api/v2/train.ts` — Records `training_fee` entry on each training action
 - `api/v2/races/[id]/enter.ts` — Records `race_entry_fee` entry on race entry
-- `api/_lib/resolve-race.ts` — Records `race_payout` entries for prize winners
 - `api/v2/admin/seasons/end.ts` — Records `season_payout` entries
 - `api/v2/wallet/[address]/ledger.ts` — **NEW**: Wallet ledger endpoint
 - `src/api/useWalletLedger.ts` — **NEW**: Frontend hook
 - `src/types/game.ts` — Added `LedgerEntry`, `WalletLedger` types
 
 ### Phase 2 Note
-Credit ledger entries map directly to on-chain TX fees. When real ERG transactions are enforced, the ledger becomes a read cache indexed from chain TXs. Historical shadow data provides fee calibration benchmarks.
+Credit ledger entries map directly to on-chain TX fees. When real ERG transactions are enforced, the ledger becomes a read cache indexed from chain TXs. Historical shadow data provides fee calibration benchmarks. Per-race payouts are intentionally excluded — individual races award boosts only; ERG payouts happen at season end via `season_payout` entries.
+
+**On-chain TX structure (Phase 2):** Each game action has its own contract. Outputs use registers for scanner identification:
+- R4: action type (`"training"`, `"race_entry"`, `"season_payout"`)
+- R5: creature token ID
+- R6: context (activity hash, race ID, or pool type)
+
+Scanner monitors contract addresses, reads registers, inserts into `credit_ledger` with `shadow=false` + `ergo_tx_id`. Frontend/API stay identical — only data ingestion changes.
+
+---
+
+## Gamified Investment Display (2026-02-12)
+
+### Overview
+Three display surfaces show spending framed as investment: dashboard header, creature profile card, and a dedicated wallet ledger page. Uses the credit ledger data to show "you've burned X ERG fueling your pets, here's the pool you're competing for."
+
+### Dashboard — Investment Summary
+`src/components/dashboard/InvestmentSummary.tsx` — Compact card between page header and creature grid:
+- Left: total ERG burned + session/race counts
+- Right: season prize pool
+- Links to `/wallet` for full details
+- Only renders when wallet connected and has ledger activity
+
+### Creature Profile — Investment Card
+`src/components/creatures/CreatureInvestment.tsx` — Per-creature card between stats overview and race history:
+- Training vs race entry spending breakdown
+- W-P-S record from `creature.prestige`
+- Filters ledger entries by `creatureId` client-side
+
+### Wallet Ledger Page (`/wallet`)
+`src/pages/WalletLedger.tsx` — Full transaction history:
+- Summary cards: ERG Burned, Prize Pool, Activity (training + races count)
+- Scrollable transaction list with date, memo, color-coded amounts (red debits, green credits)
+- Accessible from "Ledger" link in sidebar/bottom nav
+
+### Enhanced Wallet Ledger Endpoint
+`api/v2/wallet/[address]/ledger.ts` — Added season context:
+- `seasonPrizePoolErg` from active season's `prize_pool_nanoerg`
+- `trainingCount` and `racesEntered` counts
+- `creatureSpending[]` — per-creature spending breakdown (grouped debits by `creature_id`)
+
+### Files Changed
+- `api/v2/wallet/[address]/ledger.ts` — Enhanced with season context + per-creature breakdown
+- `src/components/dashboard/InvestmentSummary.tsx` — **NEW**: Dashboard summary card
+- `src/components/creatures/CreatureInvestment.tsx` — **NEW**: Creature profile investment card
+- `src/pages/WalletLedger.tsx` — **NEW**: Full wallet ledger page
+- `src/pages/Dashboard.tsx` — Added `<InvestmentSummary />` above creature grid
+- `src/pages/CreatureProfile.tsx` — Added `<CreatureInvestment />` between stats and race history
+- `src/App.tsx` — Added `/wallet` route
+- `src/components/layout/Navigation.tsx` — Added "Ledger" nav link (Wallet icon), mobile nav `grid-cols-6`
+- `src/types/game.ts` — Added `LedgerEntry`, `WalletLedger`, `CreatureSpending` types
+- `src/api/index.ts` — Exported `useWalletLedger`
+
+### Phase 2 Reusability
+**100% reusable:** All frontend components, hooks, API endpoint, types, and `credit_ledger` table schema carry forward unchanged. Only change: chain scanner populates `credit_ledger` with `shadow=false` + `ergo_tx_id` instead of API `recordLedgerEntry()` calls. Frontend reads the same ledger API regardless of data source.
 
 ---
 
@@ -564,7 +660,7 @@ CREATE INDEX idx_ergopay_sessions_expires ON ergopay_sessions(expires_at);
 ## Mobile Responsiveness & Code Splitting (2026-02-11)
 
 ### Mobile Navigation — FAQ Added
-FAQ was inaccessible on mobile — the bottom nav only rendered the 4 primary `navItems`. Fixed by spreading `[...navItems, ...secondaryItems]` in the mobile render path, giving all 5 items equal space via `grid grid-cols-5`.
+FAQ was inaccessible on mobile — the bottom nav only rendered the 4 primary `navItems`. Fixed by spreading `[...navItems, ...secondaryItems]` in the mobile render path, giving all 6 items (4 primary + Ledger + FAQ) equal space via `grid grid-cols-6`.
 
 ### Mobile Responsiveness Fixes (375px audit)
 - **Dialog viewport safety** (`src/components/ui/dialog.tsx`) — Changed `w-full` to `w-[calc(100%-2rem)]` so modals don't clip on narrow phones. Single fix in base component applies to all modals.
@@ -582,7 +678,7 @@ All 10 page imports converted from static to `React.lazy()` with a `Suspense` fa
 - ~63% reduction in initial bundle size
 
 ### Files Changed
-- `src/components/layout/Navigation.tsx` — FAQ in mobile nav, `grid-cols-5` layout, overflow-hidden on items
+- `src/components/layout/Navigation.tsx` — FAQ + Ledger in mobile nav, `grid-cols-6` layout, overflow-hidden on items
 - `src/App.tsx` — `React.lazy()` imports, `Suspense` wrapper with `PageLoader` fallback
 - `src/components/ui/dialog.tsx` — `w-[calc(100%-2rem)]` viewport safety
 - `src/pages/FAQ.tsx` — Responsive grid `grid-cols-1 sm:grid-cols-2`

@@ -60,6 +60,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       0,
     );
 
+    // Batch-fetch display names for all owners in this race
+    const ownerAddresses = [...new Set((entries ?? []).map((e: any) => e.owner_address as string))];
+    let displayNames: Record<string, string> = {};
+    if (ownerAddresses.length > 0) {
+      const { data: profiles } = await supabase
+        .from('wallet_profiles')
+        .select('address, display_name')
+        .in('address', ownerAddresses);
+      if (profiles) {
+        for (const p of profiles) {
+          displayNames[p.address] = p.display_name;
+        }
+      }
+    }
+
     const mappedEntries = (entries ?? []).map((entry: any) => {
       // Build breakdown from snapshot data if available
       let breakdown = null;
@@ -114,6 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         rarity: entry.creatures?.rarity ?? 'common',
         ownerId: entry.owner_address,
         ownerAddress: entry.owner_address,
+        ownerDisplayName: displayNames[entry.owner_address] ?? null,
         performanceScore: entry.performance_score ?? 0,
         payout: nanoErgToErg(entry.payout_nanoerg ?? 0),
         reward: positionToRewardLabel(entry.finish_position ?? 99),

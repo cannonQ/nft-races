@@ -128,9 +128,15 @@ export default function Leaderboard() {
 
                         {/* Owner */}
                         <div>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {truncateAddress(entry.ownerAddress)}
-                          </p>
+                          {entry.ownerDisplayName ? (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {entry.ownerDisplayName}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {truncateAddress(entry.ownerAddress)}
+                            </p>
+                          )}
                         </div>
 
                         {/* W/P/S */}

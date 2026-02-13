@@ -36,6 +36,9 @@ export { useGameConfig } from './useGameConfig';
 // Wallet Ledger
 export { useWalletLedger } from './useWalletLedger';
 
+// Wallet Profile (display name)
+export { useWalletProfile, useUpdateWalletProfile } from './useWalletProfile';
+
 // Race History (creature profile)
 export { useRaceHistory } from './useRaceHistory';
 
@@ -57,6 +60,7 @@ export type {
   RegisterCreatureResponse,
   LedgerEntry,
   WalletLedger,
+  WalletProfile,
   CreatureSpending,
   ApiResponse,
   MutationResponse,

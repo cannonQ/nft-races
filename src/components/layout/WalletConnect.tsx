@@ -1,6 +1,8 @@
-import { Wallet, Loader2, AlertCircle, Smartphone, Monitor, X } from 'lucide-react';
+import { useState } from 'react';
+import { Wallet, Loader2, AlertCircle, Smartphone, Monitor, X, User, LogOut } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -8,7 +10,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useWallet } from '@/context/WalletContext';
+import { useWalletProfile, useUpdateWalletProfile } from '@/api';
 import { truncateAddress } from '@/lib/ergo/client';
 import { isMobileDevice } from '@/lib/ergo/ergopay';
 
@@ -34,6 +44,31 @@ export function WalletConnect() {
   } = useWallet();
 
   const isMobile = isMobileDevice();
+  const { data: profile, refetch: refetchProfile } = useWalletProfile(address);
+  const { mutate: updateProfile, loading: savingName, error: saveError } = useUpdateWalletProfile();
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  const displayName = profile?.displayName ?? null;
+
+  const handleSaveName = async () => {
+    if (!address) return;
+    setNameError(null);
+    try {
+      await updateProfile(address, nameInput.trim() || null);
+      refetchProfile();
+      setShowNameDialog(false);
+    } catch (err) {
+      setNameError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const openNameDialog = () => {
+    setNameInput(displayName ?? '');
+    setNameError(null);
+    setShowNameDialog(true);
+  };
 
   // State: Loading / Connecting
   if (loading && !ergoPaySession) {
@@ -66,19 +101,123 @@ export function WalletConnect() {
   // State: Connected
   if (connected && address) {
     return (
-      <Button
-        onClick={() => disconnect()}
-        variant="outline"
-        className="font-mono text-sm border-primary/50 hover:border-primary bg-primary/10 text-primary glow-cyan transition-all duration-300"
-        title={`${address}\n${walletType === 'ergopay' ? 'ErgoPay' : 'Nautilus'} — Click to disconnect`}
-      >
-        {walletType === 'ergopay' ? (
-          <Smartphone className="w-4 h-4 mr-2" />
-        ) : (
-          <Wallet className="w-4 h-4 mr-2" />
-        )}
-        {truncateAddress(address)}
-      </Button>
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              className="text-sm border-primary/50 hover:border-primary bg-primary/10 text-primary glow-cyan transition-all duration-300 max-w-[200px]"
+              title={`${address}\n${walletType === 'ergopay' ? 'ErgoPay' : 'Nautilus'}`}
+            >
+              {walletType === 'ergopay' ? (
+                <Smartphone className="w-4 h-4 mr-2 flex-shrink-0" />
+              ) : (
+                <Wallet className="w-4 h-4 mr-2 flex-shrink-0" />
+              )}
+              <span className="truncate">
+                {displayName || truncateAddress(address)}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {displayName && (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground font-mono">
+                {truncateAddress(address)}
+              </div>
+            )}
+            <DropdownMenuItem onClick={openNameDialog}>
+              <User className="w-4 h-4 mr-2" />
+              {displayName ? 'Edit Display Name' : 'Set Display Name'}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => disconnect()}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Disconnect
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Display Name Dialog */}
+        <Dialog open={showNameDialog} onOpenChange={setShowNameDialog}>
+          <DialogContent className="border-primary/30 bg-background sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{displayName ? 'Edit Display Name' : 'Set Display Name'}</DialogTitle>
+              <DialogDescription>
+                Choose a name that others will see on the leaderboard instead of your wallet address.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 mt-2">
+              <div>
+                <Input
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="Enter a display name"
+                  maxLength={20}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && nameInput.trim()) handleSaveName();
+                  }}
+                />
+                <div className="flex justify-between mt-1.5">
+                  <p className="text-xs text-muted-foreground">
+                    2-20 characters. Letters, digits, spaces, hyphens.
+                  </p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {nameInput.length}/20
+                  </p>
+                </div>
+              </div>
+              {(nameError || saveError) && (
+                <p className="text-sm text-destructive">
+                  {nameError || saveError?.message}
+                </p>
+              )}
+              <div className="flex gap-2 justify-end">
+                {displayName && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      setNameError(null);
+                      try {
+                        await updateProfile(address, null);
+                        refetchProfile();
+                        setShowNameDialog(false);
+                      } catch (err) {
+                        setNameError(err instanceof Error ? err.message : 'Failed to clear');
+                      }
+                    }}
+                    disabled={savingName}
+                    className="text-muted-foreground"
+                  >
+                    Clear Name
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowNameDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveName}
+                  disabled={savingName || !nameInput.trim() || nameInput.trim().length < 2}
+                >
+                  {savingName ? (
+                    <>
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 
