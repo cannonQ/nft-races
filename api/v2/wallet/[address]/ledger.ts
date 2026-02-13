@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { nanoErgToErg } from '../../../_lib/constants.js';
 import { getWalletBalance } from '../../../_lib/credit-ledger.js';
+import { getActiveSeason } from '../../../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -53,6 +54,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (sum: number, r: any) => sum + r.amount_nanoerg, 0
     );
 
+    // Season context: prize pool + counts
+    const season = await getActiveSeason();
+    const seasonPrizePoolNanoerg = season?.prize_pool_nanoerg ?? 0;
+
+    // Count training sessions and race entries from ledger
+    const { data: allDebits } = await supabase
+      .from('credit_ledger')
+      .select('tx_type, creature_id, amount_nanoerg')
+      .eq('owner_address', address)
+      .lt('amount_nanoerg', 0);
+
+    const trainingCount = (allDebits ?? []).filter((d: any) => d.tx_type === 'training_fee').length;
+    const racesEntered = (allDebits ?? []).filter((d: any) => d.tx_type === 'race_entry_fee').length;
+
+    // Per-creature spending breakdown
+    const creatureMap: Record<string, number> = {};
+    for (const d of allDebits ?? []) {
+      if (d.creature_id) {
+        creatureMap[d.creature_id] = (creatureMap[d.creature_id] ?? 0) + Math.abs(d.amount_nanoerg);
+      }
+    }
+    const creatureSpending = Object.entries(creatureMap).map(([creatureId, spentNanoerg]) => ({
+      creatureId,
+      spentNanoerg,
+      spentErg: nanoErgToErg(spentNanoerg),
+    }));
+
     return res.status(200).json({
       balance,
       balanceErg: nanoErgToErg(balance),
@@ -60,6 +88,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalSpentErg: nanoErgToErg(totalSpent),
       totalEarned,
       totalEarnedErg: nanoErgToErg(totalEarned),
+      seasonPrizePoolNanoerg,
+      seasonPrizePoolErg: nanoErgToErg(seasonPrizePoolNanoerg),
+      trainingCount,
+      racesEntered,
+      creatureSpending,
       entries: (entries ?? []).map((e: any) => ({
         id: e.id,
         txType: e.tx_type,

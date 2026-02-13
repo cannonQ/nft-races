@@ -33,6 +33,9 @@ export { useLeaderboard } from './useLeaderboard';
 // Game Config
 export { useGameConfig } from './useGameConfig';
 
+// Wallet Ledger
+export { useWalletLedger } from './useWalletLedger';
+
 // Race History (creature profile)
 export { useRaceHistory } from './useRaceHistory';
 
@@ -52,6 +55,9 @@ export type {
   LeaderboardEntry,
   EnterRaceResponse,
   RegisterCreatureResponse,
+  LedgerEntry,
+  WalletLedger,
+  CreatureSpending,
   ApiResponse,
   MutationResponse,
 } from '@/types/game';

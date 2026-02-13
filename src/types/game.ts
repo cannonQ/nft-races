@@ -235,6 +235,13 @@ export interface LedgerEntry {
   createdAt: string;
 }
 
+// Per-creature spending breakdown
+export interface CreatureSpending {
+  creatureId: string;
+  spentNanoerg: number;
+  spentErg: number;
+}
+
 // Wallet ledger summary
 export interface WalletLedger {
   balance: number;
@@ -243,6 +250,11 @@ export interface WalletLedger {
   totalSpentErg: number;
   totalEarned: number;
   totalEarnedErg: number;
+  seasonPrizePoolNanoerg: number;
+  seasonPrizePoolErg: number;
+  trainingCount: number;
+  racesEntered: number;
+  creatureSpending: CreatureSpending[];
   entries: LedgerEntry[];
 }
 

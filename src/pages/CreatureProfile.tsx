@@ -8,16 +8,20 @@ import { StatsRadarChart } from '@/components/creatures/StatsRadarChart';
 import { ConditionGauges } from '@/components/creatures/ConditionGauges';
 import { RaceHistory } from '@/components/creatures/RaceHistory';
 import { TrainingLog } from '@/components/creatures/TrainingLog';
-import { useCreature, useTrainingLog, useRaceHistory } from '@/api';
+import { CreatureInvestment } from '@/components/creatures/CreatureInvestment';
+import { useCreature, useTrainingLog, useRaceHistory, useWalletLedger } from '@/api';
+import { useWallet } from '@/context/WalletContext';
 import { StatBlock, StatType } from '@/types/game';
 import { fmtStat } from '@/lib/utils';
 
 export default function CreatureProfile() {
   const { creatureId } = useParams<{ creatureId: string }>();
   
+  const { address } = useWallet();
   const { data: creature, loading: creatureLoading } = useCreature(creatureId || null);
   const { data: trainingLogs, loading: logsLoading } = useTrainingLog(creatureId || null);
   const { data: raceHistory, loading: racesLoading } = useRaceHistory(creatureId || null);
+  const { data: ledger } = useWalletLedger(address);
 
   if (creatureLoading) {
     return (
@@ -118,6 +122,8 @@ export default function CreatureProfile() {
             </div>
           </div>
         </div>
+
+        <CreatureInvestment creature={creature} ledger={ledger} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div>
