@@ -26,8 +26,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const season = await getActiveSeason();
 
-    // Fetch stats and prestige in parallel
-    const [statsResult, prestigeResult] = await Promise.all([
+    // Fetch stats, prestige, and current season leaderboard in parallel
+    const [statsResult, prestigeResult, leaderboardResult] = await Promise.all([
       season
         ? supabase
             .from('creature_stats')
@@ -41,6 +41,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select('*')
         .eq('creature_id', id)
         .single(),
+      season
+        ? supabase
+            .from('season_leaderboard')
+            .select('*')
+            .eq('creature_id', id)
+            .eq('season_id', season.id)
+            .single()
+        : { data: null },
     ]);
 
     const regularActionsToday = season && statsResult.data
@@ -67,6 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       prestigeResult.data ?? null,
       regularActionsToday,
       availableBoosts,
+      leaderboardResult.data ?? null,
     );
 
     return res.status(200).json(result);

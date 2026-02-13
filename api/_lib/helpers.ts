@@ -93,6 +93,7 @@ export async function countRegularActionsToday(
  * Assemble a CreatureWithStats response object from DB rows.
  * @param regularActionsToday — count of NON-bonus training actions today.
  * @param boostRewards — available (unspent, unexpired) boost_rewards rows.
+ * @param leaderboardRow — current season's season_leaderboard row (W/P/S, races, earnings).
  */
 export function computeCreatureResponse(
   creatureRow: Record<string, any>,
@@ -100,6 +101,7 @@ export function computeCreatureResponse(
   prestigeRow: Record<string, any> | null,
   regularActionsToday: number,
   boostRewards: any[] = [],
+  leaderboardRow: Record<string, any> | null = null,
 ) {
   const trainedStats = {
     speed: statsRow?.speed ?? 0,
@@ -168,14 +170,16 @@ export function computeCreatureResponse(
     lastRaceAt: statsRow?.last_race_at ?? null,
     actionCount: statsRow?.action_count ?? 0,
     raceCount: statsRow?.race_count ?? 0,
-    totalRaces: prestigeRow?.lifetime_races ?? statsRow?.race_count ?? 0,
-    totalEarnings: nanoErgToErg(prestigeRow?.lifetime_earnings_nanoerg ?? 0),
+    totalRaces: (prestigeRow?.lifetime_races ?? 0) + (leaderboardRow?.races_entered ?? 0),
+    totalEarnings: nanoErgToErg(
+      (prestigeRow?.lifetime_earnings_nanoerg ?? 0) + (leaderboardRow?.total_earnings_nanoerg ?? 0)
+    ),
     prestige: {
       tier: prestigeRow?.total_seasons ?? 0,
-      lifetimeWins: prestigeRow?.lifetime_wins ?? 0,
-      lifetimePlaces: prestigeRow?.lifetime_places ?? 0,
-      lifetimeShows: prestigeRow?.lifetime_shows ?? 0,
-      lifetimeRaces: prestigeRow?.lifetime_races ?? 0,
+      lifetimeWins: (prestigeRow?.lifetime_wins ?? 0) + (leaderboardRow?.wins ?? 0),
+      lifetimePlaces: (prestigeRow?.lifetime_places ?? 0) + (leaderboardRow?.places ?? 0),
+      lifetimeShows: (prestigeRow?.lifetime_shows ?? 0) + (leaderboardRow?.shows ?? 0),
+      lifetimeRaces: (prestigeRow?.lifetime_races ?? 0) + (leaderboardRow?.races_entered ?? 0),
       badges: prestigeRow?.badges ?? [],
     },
     imageUrl: getCreatureImageUrl(creatureRow.metadata),

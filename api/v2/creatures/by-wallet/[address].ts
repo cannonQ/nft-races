@@ -133,7 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 9. Batch fetch creature_stats, prestige, training logs, and boost rewards
     const creatureIds = ownedCreatures.map((c: any) => c.id);
 
-    const [statsResult, prestigeResult, logsResult, boostsResult] = await Promise.all([
+    const [statsResult, prestigeResult, logsResult, boostsResult, leaderboardResult] = await Promise.all([
       season
         ? supabase
             .from('creature_stats')
@@ -163,6 +163,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .is('spent_at', null)
             .gt('expires_at_height', currentBlockHeight)
         : { data: [] },
+      season
+        ? supabase
+            .from('season_leaderboard')
+            .select('*')
+            .eq('season_id', season.id)
+            .in('creature_id', creatureIds)
+        : { data: [] },
     ]);
 
     const statsMap = new Map<string, any>();
@@ -188,13 +195,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       boostsMap.set(b.creature_id, arr);
     }
 
+    const leaderboardMap = new Map<string, any>();
+    for (const lb of (leaderboardResult.data ?? [])) {
+      leaderboardMap.set(lb.creature_id, lb);
+    }
+
     // 10. Assemble responses
     const result = ownedCreatures.map((creature: any) => {
       const stats = statsMap.get(creature.id) ?? null;
       const prestige = prestigeMap.get(creature.id) ?? null;
       const actionsToday = actionCountMap.get(creature.id) ?? 0;
       const boosts = boostsMap.get(creature.id) ?? [];
-      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts);
+      const leaderboard = leaderboardMap.get(creature.id) ?? null;
+      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts, leaderboard);
     });
 
     return res.status(200).json(result);
