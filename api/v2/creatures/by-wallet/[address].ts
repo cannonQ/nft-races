@@ -148,7 +148,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       season
         ? supabase
             .from('training_log')
-            .select('creature_id')
+            .select('creature_id, created_at')
             .in('creature_id', creatureIds)
             .eq('season_id', season.id)
             .eq('bonus_action', false)
@@ -183,9 +183,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const actionCountMap = new Map<string, number>();
+    const lastRegularActionMap = new Map<string, string>();
     for (const log of (logsResult.data ?? [])) {
       const current = actionCountMap.get(log.creature_id) ?? 0;
       actionCountMap.set(log.creature_id, current + 1);
+      // Track most recent regular action (logs are not ordered, so compare)
+      const prev = lastRegularActionMap.get(log.creature_id);
+      if (!prev || log.created_at > prev) {
+        lastRegularActionMap.set(log.creature_id, log.created_at);
+      }
     }
 
     const boostsMap = new Map<string, any[]>();
@@ -207,7 +213,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const actionsToday = actionCountMap.get(creature.id) ?? 0;
       const boosts = boostsMap.get(creature.id) ?? [];
       const leaderboard = leaderboardMap.get(creature.id) ?? null;
-      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts, leaderboard);
+      const lastRegularAction = lastRegularActionMap.get(creature.id) ?? null;
+      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts, leaderboard, undefined, lastRegularAction);
     });
 
     return res.status(200).json(result);

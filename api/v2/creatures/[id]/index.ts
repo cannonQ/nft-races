@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
-import { getActiveSeason, getLatestErgoBlock, countRegularActionsToday, computeCreatureResponse } from '../../../_lib/helpers.js';
+import { getActiveSeason, getLatestErgoBlock, countRegularActionsToday, getLastRegularActionAt, computeCreatureResponse } from '../../../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -51,9 +51,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         : { data: null },
     ]);
 
-    const regularActionsToday = season && statsResult.data
-      ? await countRegularActionsToday(id, season.id)
-      : 0;
+    const [regularActionsToday, lastRegularActionAt] = season && statsResult.data
+      ? await Promise.all([
+          countRegularActionsToday(id, season.id),
+          getLastRegularActionAt(id, season.id),
+        ])
+      : [0, null];
 
     // Fetch available (unspent + unexpired) boost rewards
     let availableBoosts: any[] = [];
@@ -76,6 +79,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       regularActionsToday,
       availableBoosts,
       leaderboardResult.data ?? null,
+      undefined,
+      lastRegularActionAt,
     );
 
     return res.status(200).json(result);

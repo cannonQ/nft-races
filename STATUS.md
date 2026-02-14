@@ -105,7 +105,7 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 |------|---------|
 | `api/_lib/supabase.ts` | Supabase service client |
 | `api/_lib/auth.ts` | Admin `CRON_SECRET` bearer token guard |
-| `api/_lib/helpers.ts` | `getActiveSeason()`, `getLatestErgoBlock()`, `computeCreatureResponse()`, `countRegularActionsToday()` |
+| `api/_lib/helpers.ts` | `getActiveSeason()`, `getLatestErgoBlock()`, `computeCreatureResponse()`, `countRegularActionsToday()`, `getLastRegularActionAt()` |
 | `api/_lib/constants.ts` | Activity display map, reward labels, nanoErg conversion |
 | `api/_lib/cyberpets.ts` | CyberPet JSON loader, trait parser, base stat computation |
 | `api/_lib/register-creature.ts` | Shared creature registration (used by register endpoint + auto-discovery) |
@@ -381,6 +381,28 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Bonus Action Cooldown Bug Fix (2026-02-13)
+
+### Problem
+After using a bonus action (earned from 1st place), the remaining 2 regular daily actions were blocked by a false cooldown timer. The dashboard and creature screens showed "Cooldown active — 5h 59m remaining" even though the player had never used a regular action that day.
+
+### Root Cause
+Bonus actions bypass cooldown for themselves, but the training endpoint still set `last_action_at = now` on the `creature_stats` row. When the next regular action was attempted, the cooldown check in `validateTrainingAction()` saw the recent `last_action_at` timestamp (from the bonus action) and blocked it. The same logic in `computeCreatureResponse()` caused the frontend to display a false cooldown timer.
+
+### Fix
+Cooldown checks now query `training_log` for the most recent **regular** (non-bonus) action instead of using `stats.last_action_at` (which includes bonus actions). `last_action_at` continues to update for all actions (needed for condition decay timing).
+
+### Files Changed
+- `lib/training-engine.ts` — `validateTrainingAction()` cooldown check queries `training_log` for last regular action instead of `stats.last_action_at`
+- `api/_lib/helpers.ts` — Added `getLastRegularActionAt()` helper; `computeCreatureResponse()` accepts `lastRegularActionAt` param for cooldown display
+- `api/v2/creatures/[id]/index.ts` — Fetches and passes `lastRegularActionAt`
+- `api/v2/creatures/by-wallet/[address].ts` — Derives last regular action timestamp from existing training_log query (no extra DB call)
+
+### Phase 2 Compatibility
+On-chain equivalent: two separate registers — `lastRegularActionHeight` (for cooldown enforcement) and `lastActionHeight` (for condition decay). Contract checks `HEIGHT >= lastRegularActionHeight + 180` for cooldown, ignoring bonus action height.
 
 ---
 

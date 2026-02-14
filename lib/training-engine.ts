@@ -241,9 +241,22 @@ export async function validateTrainingAction(
     }
 
     // 4. Cooldown: 6 hours between regular actions.
-    if (!ALPHA_TESTING && stats.last_action_at) {
+    //    Check last regular (non-bonus) action from training_log, not last_action_at
+    //    which includes bonus actions. Bonus actions set last_action_at (for condition
+    //    decay timing) but should NOT trigger cooldown for subsequent regular actions.
+    const { data: lastRegularAction } = await supabase
+      .from('training_log')
+      .select('created_at')
+      .eq('creature_id', creatureId)
+      .eq('season_id', seasonId)
+      .eq('bonus_action', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!ALPHA_TESTING && lastRegularAction) {
       const cooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
-      const lastAction = new Date(stats.last_action_at).getTime();
+      const lastAction = new Date(lastRegularAction.created_at).getTime();
       const now = Date.now();
 
       if (lastAction + cooldownMs > now) {
