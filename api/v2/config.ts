@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../_lib/supabase.js';
+import { getGameConfig } from '../_lib/config.js';
 
 /**
  * GET /api/v2/config
  * Returns public game configuration: activity definitions and race type weights.
+ * Accepts optional ?collectionId= to return collection-specific merged config.
  * Used by frontend to show accurate projected training gains.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -12,22 +13,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { data: gameConfig, error } = await supabase
-      .from('game_config')
-      .select('config')
-      .limit(1)
-      .single();
-
-    if (error || !gameConfig) {
-      return res.status(500).json({ error: 'Failed to load game config' });
-    }
-
-    const config = gameConfig.config ?? {};
+    const collectionId = req.query.collectionId as string | undefined;
+    const config = await getGameConfig(collectionId);
 
     return res.status(200).json({
       activities: config.activities ?? {},
       raceTypeWeights: config.race_type_weights ?? {},
       prizeDistribution: config.prize_distribution ?? [0.50, 0.30, 0.20],
+      perStatCap: config.per_stat_cap ?? 80,
+      totalStatCap: config.total_stat_cap ?? 300,
+      baseActions: config.base_actions ?? 2,
+      cooldownHours: config.cooldown_hours ?? 6,
     });
   } catch (err) {
     console.error('GET /api/v2/config error:', err);

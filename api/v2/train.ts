@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../_lib/supabase.js';
-import { getActiveSeason, getLatestErgoBlock } from '../_lib/helpers.js';
+import { getActiveSeason, getLatestErgoBlock, getOrCreateCreatureStats } from '../_lib/helpers.js';
+import { getGameConfig } from '../_lib/config.js';
 import {
   validateTrainingAction,
   computeTrainingGains,
@@ -23,10 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. Verify creature exists
+    // 1. Verify creature exists (include collection_id for config resolution)
     const { data: creature, error: creatureErr } = await supabase
       .from('creatures')
-      .select('id, owner_address, token_id')
+      .select('id, owner_address, token_id, collection_id')
       .eq('id', creatureId)
       .single();
 
@@ -55,34 +56,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq('id', creatureId);
     }
 
-    // 2. Get active season
-    const season = await getActiveSeason();
+    // 2. Get active season for this creature's collection
+    const season = await getActiveSeason(creature.collection_id);
     if (!season) {
-      return res.status(400).json({ error: 'No active season' });
+      return res.status(400).json({ error: 'No active season for this collection' });
     }
 
-    // 3. Validate training action (daily limits, cooldown, etc.)
-    const validation = await validateTrainingAction(creatureId, season.id, supabase);
+    // 3. Load merged game config (global + collection overrides)
+    const mergedConfig = await getGameConfig(creature.collection_id);
+    if (!mergedConfig) {
+      return res.status(500).json({ error: 'Failed to load game config' });
+    }
+
+    // 4. Ensure creature has stats for this season (lazy init)
+    const creatureStats = await getOrCreateCreatureStats(creatureId, season.id);
+    if (!creatureStats) {
+      return res.status(400).json({ error: 'Failed to load creature stats for this season' });
+    }
+
+    // 5. Validate training action (daily limits, cooldown — uses config for caps)
+    const validation = await validateTrainingAction(creatureId, season.id, supabase, mergedConfig);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.reason });
     }
 
-    // 4. Load game config
-    const { data: gameConfig, error: configErr } = await supabase
-      .from('game_config')
-      .select('*')
-      .limit(1)
-      .single();
-
-    if (configErr || !gameConfig) {
-      return res.status(500).json({ error: 'Failed to load game config' });
-    }
-
-    // 5. Compute training gains
+    // 6. Compute training gains
     const currentStats = validation.stats!;
-    const gains = computeTrainingGains(activity, currentStats, gameConfig.config);
+    const gains = computeTrainingGains(activity, currentStats, mergedConfig);
 
-    // 6. Validate + apply discrete boost rewards (if any selected)
+    // 7. Validate + apply discrete boost rewards (if any selected)
     const selectedBoostIds: string[] = Array.isArray(boostRewardIds) ? boostRewardIds : [];
     let totalBoostMultiplier = 0;
     let boostUsed = false;
@@ -120,11 +122,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 7. Compute new stat values
+    // 8. Compute new stat values
+    const perStatCap = mergedConfig.per_stat_cap ?? 80;
     const newStats = { ...currentStats };
     for (const key of STAT_KEYS) {
       if (gains.statChanges[key] !== undefined) {
-        newStats[key] = Math.round(Math.min(80, newStats[key] + gains.statChanges[key]!) * 100) / 100;
+        newStats[key] = Math.round(Math.min(perStatCap, newStats[key] + gains.statChanges[key]!) * 100) / 100;
       }
     }
 
@@ -209,10 +212,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to update creature stats' });
     }
 
-    // 12. Compute actions remaining
+    // 13. Compute actions remaining
     //     Bonus actions (remaining after this one) + regular actions left today.
-    const BASE_ACTIONS = 2;
-    const COOLDOWN_HOURS = 6;
+    const BASE_ACTIONS = mergedConfig.base_actions ?? 2;
+    const COOLDOWN_HOURS = mergedConfig.cooldown_hours ?? 6;
 
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);

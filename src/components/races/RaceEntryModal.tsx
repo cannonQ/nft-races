@@ -38,7 +38,10 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm }: RaceEntr
 
   if (!race) return null;
 
-  const creatureList = creatures || [];
+  // Filter creatures to only show those matching the race's collection
+  const creatureList = (creatures || []).filter(
+    c => !race.collectionId || c.collectionId === race.collectionId
+  );
 
   const toggleCreature = (id: string) => {
     setSelected(prev => {
@@ -179,7 +182,9 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm }: RaceEntr
 
           {!loading && creatureList.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
-              No creatures available. Register an NFT to enter races.
+              {race.collectionName
+                ? `You don't own any ${race.collectionName} NFTs. This race requires ${race.collectionName} creatures.`
+                : 'No creatures available. Register an NFT to enter races.'}
             </div>
           )}
         </div>

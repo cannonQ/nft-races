@@ -70,7 +70,7 @@ export function CreatureTrainHeader({ creature }: CreatureTrainHeaderProps) {
                   <span className="font-mono text-accent">{creature.prestige.lifetimeWins}</span> Wins
                 </span>
                 <span>
-                  <span className="font-mono text-primary">${creature.totalEarnings.toLocaleString()}</span> Earned
+                  <span className="font-mono text-primary">{creature.totalEarnings.toLocaleString()} ERG</span> Earned
                 </span>
               </div>
             </div>

@@ -5,8 +5,10 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { useCreature, useCreaturesByWallet, useTrain, useTrainingLog, useGameConfig } from '@/api';
+import { useCreature, useCreaturesByWallet, useTrain, useTrainingLog, useGameConfig, useCollections } from '@/api';
 import { useWallet } from '@/context/WalletContext';
+import { useCollectionFilter } from '@/hooks/useCollectionFilter';
+import { CollectionFilter } from '@/components/ui/CollectionFilter';
 import { trainingActivities as defaultActivities } from '@/data/trainingActivities';
 import { TrainingActivity, TrainResponse, Activity, StatBlock, StatType } from '@/types/game';
 import { CreatureTrainHeader } from '@/components/training/CreatureTrainHeader';
@@ -36,6 +38,8 @@ export default function Train() {
 
   const { data: creature, loading: creatureLoading, refetch: refetchCreature } = useCreature(creatureId || null);
   const { data: userCreatures, loading: creaturesLoading } = useCreaturesByWallet(address);
+  const { data: collections } = useCollections();
+  const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
   const { data: trainingLogs, loading: logsLoading, refetch: refetchLogs } = useTrainingLog(creatureId || null);
   const { data: gameConfig } = useGameConfig();
   const train = useTrain();
@@ -78,6 +82,13 @@ export default function Train() {
             Select a creature to begin training
           </p>
 
+          <CollectionFilter
+            collections={collections || []}
+            active={activeCollections}
+            onToggle={toggleCollection}
+            className="mb-4"
+          />
+
           {creaturesLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[1, 2].map((i) => (
@@ -93,7 +104,7 @@ export default function Train() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {userCreatures.map((c) => {
+              {userCreatures.filter((c) => matchesCollection(c.collectionId)).map((c) => {
                 // TEMPORARY: Cooldown disabled for alpha testing
                 // const isOnCooldown = c.cooldownEndsAt && new Date(c.cooldownEndsAt) > new Date();
                 const isOnCooldown = false;

@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
-import { getActiveSeason, getLatestErgoBlock, getUtcMidnightToday, computeCreatureResponse } from '../../../_lib/helpers.js';
-import { isCyberPet } from '../../../_lib/cyberpets.js';
+import { getActiveSeasons, getLatestErgoBlock, getUtcMidnightToday, computeCreatureResponse } from '../../../_lib/helpers.js';
+import { getCollectionLoaders, getLoaderBySlug } from '../../../_lib/collections/registry.js';
+import type { CollectionLoader } from '../../../_lib/collections/types.js';
 import { fetchAddressBalanceWithFallback } from '../../../../lib/ergo/server.js';
 import { registerCreature } from '../../../_lib/register-creature.js';
 
@@ -16,21 +17,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const season = await getActiveSeason();
+    // 1. Fetch active seasons (one per collection) and all collections from DB
+    const [seasons, { data: dbCollections }] = await Promise.all([
+      getActiveSeasons(),
+      supabase.from('collections').select('id, name, base_stat_template, trait_mapping'),
+    ]);
 
-    // 1. Fetch ALL tokens in wallet from Explorer (single API call)
+    // Build lookup: collectionId → season
+    const seasonByCollectionId = new Map<string, any>();
+    for (const s of seasons) {
+      seasonByCollectionId.set(s.collection_id, s);
+    }
+
+    const hasAnySeason = seasons.length > 0;
+
+    // 2. Fetch ALL tokens in wallet from Explorer (single API call)
     const balance = await fetchAddressBalanceWithFallback(address);
     if (!balance) {
       return res.status(200).json([]);
     }
 
-    // 2. Filter to CyberPets held on-chain
-    const onChainCyberPets = balance.tokens.filter(
-      t => t.amount > 0 && isCyberPet(t.tokenId)
-    );
-    const onChainTokenIds = onChainCyberPets.map(t => t.tokenId);
+    // 3. Identify which wallet tokens belong to which collections (via loaders)
+    const walletTokens = balance.tokens.filter(t => t.amount > 0);
+    const matchedTokens: Array<{
+      tokenId: string;
+      collectionId: string;
+      loader: CollectionLoader;
+      dbCollection: any;
+    }> = [];
 
-    // 3. If wallet holds no CyberPets, clear stale DB entries and return empty
+    for (const col of (dbCollections ?? [])) {
+      const loader = getLoaderBySlug(col.name);
+      if (!loader) continue;
+
+      for (const t of walletTokens) {
+        if (loader.isToken(t.tokenId)) {
+          matchedTokens.push({
+            tokenId: t.tokenId,
+            collectionId: col.id,
+            loader,
+            dbCollection: col,
+          });
+        }
+      }
+    }
+
+    const onChainTokenIds = matchedTokens.map(m => m.tokenId);
+
+    // 4. If wallet holds no recognized NFTs, clear stale DB entries and return empty
     if (onChainTokenIds.length === 0) {
       await supabase
         .from('creatures')
@@ -39,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json([]);
     }
 
-    // 4. Fetch DB creatures matching these token IDs (regardless of owner_address)
+    // 5. Fetch DB creatures matching these token IDs (regardless of owner_address)
     const { data: dbCreatures } = await supabase
       .from('creatures')
       .select('*')
@@ -49,43 +83,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (dbCreatures ?? []).map((c: any) => [c.token_id, c])
     );
 
-    // 5. Auto-register missing creatures
-    if (season) {
-      const missingTokenIds = onChainTokenIds.filter(id => !dbByTokenId.has(id));
+    // 6. Auto-register missing creatures (for any collection with an active season)
+    if (hasAnySeason) {
+      const missingTokens = matchedTokens.filter(m => !dbByTokenId.has(m.tokenId));
 
-      if (missingTokenIds.length > 0) {
-        const { data: collection } = await supabase
-          .from('collections')
-          .select('id, base_stat_template, trait_mapping')
-          .eq('name', 'CyberPets')
-          .single();
+      for (const missing of missingTokens) {
+        // Only auto-register if the collection has an active season
+        const season = seasonByCollectionId.get(missing.collectionId);
+        if (!season) continue;
 
-        if (collection) {
-          for (const tokenId of missingTokenIds) {
-            const result = await registerCreature(
-              tokenId,
-              address,
-              collection.id,
-              collection.base_stat_template ?? {},
-              collection.trait_mapping ?? {},
-              season.id,
-            );
-            if (result.success && result.creatureId) {
-              const { data: newCreature } = await supabase
-                .from('creatures')
-                .select('*')
-                .eq('id', result.creatureId)
-                .single();
-              if (newCreature) {
-                dbByTokenId.set(tokenId, newCreature);
-              }
-            }
+        const result = await registerCreature(
+          missing.tokenId,
+          address,
+          missing.collectionId,
+          missing.dbCollection.base_stat_template ?? {},
+          missing.dbCollection.trait_mapping ?? {},
+          missing.loader,
+        );
+        if (result.success && result.creatureId) {
+          const { data: newCreature } = await supabase
+            .from('creatures')
+            .select('*')
+            .eq('id', result.creatureId)
+            .single();
+          if (newCreature) {
+            dbByTokenId.set(missing.tokenId, newCreature);
           }
         }
       }
     }
 
-    // 6. Update ownership for creatures with wrong/null owner_address (re-claim)
+    // 7. Update ownership for creatures with wrong/null owner_address (re-claim)
     const ownedCreatures: any[] = [];
     for (const tokenId of onChainTokenIds) {
       const creature = dbByTokenId.get(tokenId);
@@ -101,7 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 7. Clear stale ownership for creatures this wallet used to own but no longer holds
+    // 8. Clear stale ownership for creatures this wallet used to own but no longer holds
     const ownedTokenIdSet = new Set(onChainTokenIds);
     const { data: formerlyOwned } = await supabase
       .from('creatures')
@@ -123,51 +151,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json([]);
     }
 
-    // 8. Get current block height for boost expiry filtering
+    // 9. Get current block height for boost expiry filtering
     let currentBlockHeight = 0;
-    if (season) {
+    if (hasAnySeason) {
       const { height } = await getLatestErgoBlock();
       currentBlockHeight = height;
     }
 
-    // 9. Batch fetch creature_stats, prestige, training logs, and boost rewards
+    // 10. Batch fetch creature_stats, prestige, training logs, boost rewards, leaderboard
+    //     across ALL active seasons (each creature uses its collection's season)
     const creatureIds = ownedCreatures.map((c: any) => c.id);
+    const allSeasonIds = seasons.map((s: any) => s.id);
 
     const [statsResult, prestigeResult, logsResult, boostsResult, leaderboardResult] = await Promise.all([
-      season
+      allSeasonIds.length > 0
         ? supabase
             .from('creature_stats')
             .select('*')
-            .eq('season_id', season.id)
+            .in('season_id', allSeasonIds)
             .in('creature_id', creatureIds)
         : { data: [] },
       supabase
         .from('prestige')
         .select('*')
         .in('creature_id', creatureIds),
-      season
+      allSeasonIds.length > 0
         ? supabase
             .from('training_log')
             .select('creature_id, created_at')
             .in('creature_id', creatureIds)
-            .eq('season_id', season.id)
+            .in('season_id', allSeasonIds)
             .eq('bonus_action', false)
             .gte('created_at', getUtcMidnightToday())
         : { data: [] },
-      season
+      allSeasonIds.length > 0
         ? supabase
             .from('boost_rewards')
             .select('*')
             .in('creature_id', creatureIds)
-            .eq('season_id', season.id)
+            .in('season_id', allSeasonIds)
             .is('spent_at', null)
             .gt('expires_at_height', currentBlockHeight)
         : { data: [] },
-      season
+      allSeasonIds.length > 0
         ? supabase
             .from('season_leaderboard')
             .select('*')
-            .eq('season_id', season.id)
+            .in('season_id', allSeasonIds)
             .in('creature_id', creatureIds)
         : { data: [] },
     ]);
@@ -206,7 +236,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       leaderboardMap.set(lb.creature_id, lb);
     }
 
-    // 10. Assemble responses
+    // Build loader lookup by collection name for image/name resolution
+    const loadersByCollectionId = new Map<string, CollectionLoader>();
+    for (const col of (dbCollections ?? [])) {
+      const loader = getLoaderBySlug(col.name);
+      if (loader) loadersByCollectionId.set(col.id, loader);
+    }
+
+    // 11. Assemble responses
     const result = ownedCreatures.map((creature: any) => {
       const stats = statsMap.get(creature.id) ?? null;
       const prestige = prestigeMap.get(creature.id) ?? null;
@@ -214,7 +251,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const boosts = boostsMap.get(creature.id) ?? [];
       const leaderboard = leaderboardMap.get(creature.id) ?? null;
       const lastRegularAction = lastRegularActionMap.get(creature.id) ?? null;
-      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts, leaderboard, undefined, lastRegularAction);
+      const loader = loadersByCollectionId.get(creature.collection_id);
+      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts, leaderboard, loader, lastRegularAction);
     });
 
     return res.status(200).json(result);

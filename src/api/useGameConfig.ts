@@ -14,13 +14,18 @@ export interface GameConfig {
   activities: Record<string, ActivityConfig>;
   raceTypeWeights: Record<string, Record<string, number>>;
   prizeDistribution: number[];
+  perStatCap?: number;
+  totalStatCap?: number;
+  baseActions?: number;
+  cooldownHours?: number;
 }
 
 /**
  * Fetch public game configuration (activity definitions, race type weights).
- * GET ${API_BASE}/config
+ * Optionally pass collectionId for collection-specific overrides.
+ * GET ${API_BASE}/config?collectionId=...
  */
-export function useGameConfig(): ApiResponse<GameConfig> {
+export function useGameConfig(collectionId?: string): ApiResponse<GameConfig> {
   const [data, setData] = useState<GameConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -30,7 +35,10 @@ export function useGameConfig(): ApiResponse<GameConfig> {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/config`);
+      const url = collectionId
+        ? `${API_BASE}/config?collectionId=${collectionId}`
+        : `${API_BASE}/config`;
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -41,7 +49,7 @@ export function useGameConfig(): ApiResponse<GameConfig> {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [collectionId]);
 
   useEffect(() => {
     fetchData();

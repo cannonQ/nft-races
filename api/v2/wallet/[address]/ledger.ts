@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { nanoErgToErg } from '../../../_lib/constants.js';
 import { getWalletBalance } from '../../../_lib/credit-ledger.js';
-import { getActiveSeason } from '../../../_lib/helpers.js';
+import { getActiveSeasons } from '../../../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -54,9 +54,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (sum: number, r: any) => sum + r.amount_nanoerg, 0
     );
 
-    // Season context: prize pool + counts
-    const season = await getActiveSeason();
-    const seasonPrizePoolNanoerg = season?.prize_pool_nanoerg ?? 0;
+    // Season context: per-collection prize pools
+    const seasons = await getActiveSeasons();
+    const prizePools = seasons.map((s: any) => ({
+      collectionId: s.collection_id,
+      collectionName: s.collections?.name ?? 'Unknown',
+      prizePoolNanoerg: s.prize_pool_nanoerg ?? 0,
+      prizePoolErg: nanoErgToErg(s.prize_pool_nanoerg ?? 0),
+    }));
+
+    // Build season_id → collection lookup for entry-level collection context
+    const seasonCollectionMap: Record<string, { collectionId: string; collectionName: string }> = {};
+    for (const s of seasons) {
+      seasonCollectionMap[s.id] = {
+        collectionId: s.collection_id,
+        collectionName: s.collections?.name ?? 'Unknown',
+      };
+    }
+    // Backward compat: single combined prize pool
+    const seasonPrizePoolNanoerg = seasons.reduce(
+      (sum: number, s: any) => sum + (s.prize_pool_nanoerg ?? 0), 0
+    );
 
     // Count training sessions and race entries from ledger
     const { data: allDebits } = await supabase
@@ -90,21 +108,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalEarnedErg: nanoErgToErg(totalEarned),
       seasonPrizePoolNanoerg,
       seasonPrizePoolErg: nanoErgToErg(seasonPrizePoolNanoerg),
+      prizePools,
       trainingCount,
       racesEntered,
       creatureSpending,
-      entries: (entries ?? []).map((e: any) => ({
-        id: e.id,
-        txType: e.tx_type,
-        amountNanoerg: e.amount_nanoerg,
-        amountErg: nanoErgToErg(e.amount_nanoerg),
-        balanceAfterNanoerg: e.balance_after_nanoerg,
-        creatureId: e.creature_id,
-        raceId: e.race_id,
-        seasonId: e.season_id,
-        memo: e.memo,
-        createdAt: e.created_at,
-      })),
+      entries: (entries ?? []).map((e: any) => {
+        const col = e.season_id ? seasonCollectionMap[e.season_id] : undefined;
+        return {
+          id: e.id,
+          txType: e.tx_type,
+          amountNanoerg: e.amount_nanoerg,
+          amountErg: nanoErgToErg(e.amount_nanoerg),
+          balanceAfterNanoerg: e.balance_after_nanoerg,
+          creatureId: e.creature_id,
+          raceId: e.race_id,
+          seasonId: e.season_id,
+          collectionId: col?.collectionId ?? null,
+          collectionName: col?.collectionName ?? null,
+          memo: e.memo,
+          createdAt: e.created_at,
+        };
+      }),
     });
   } catch (err) {
     console.error('GET /api/v2/wallet/[address]/ledger error:', err);

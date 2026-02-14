@@ -1,35 +1,37 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-13
+**Date:** 2026-02-14
 **Phase:** 1 (DB + API — Launch Day)
 
 ---
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover CyberPets → train → enter races → view results. All 22 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). FAQ page explains all game mechanics. Currently in multi-user alpha testing.
+Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 23 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
 - Ergo Mobile wallet connect/disconnect with auto-reconnect
-- **Auto-discovery**: CyberPets in wallet are detected on-chain and auto-registered to DB (no manual registration needed)
-- Dashboard displays owned CyberPets with NFT images, stale ownership auto-cleaned
-- Training calls real API: stat gains, diminishing returns, actions counter (2/day), cooldown enforcement
+- **Multi-collection support**: CyberPets + Aneta Angels (4406 tokens) with independent seasons, leaderboards, and stat systems
+- **Auto-discovery**: NFTs in wallet are detected on-chain and auto-registered to DB across all supported collections
+- Dashboard displays owned creatures with NFT images, collection filter pills, stale ownership auto-cleaned
+- Training calls real API: stat gains, diminishing returns, actions counter (2/day), cooldown enforcement, per-collection config
 - Discrete boost rewards: earned from races, selectable at training time, block-height expiry
-- Race entry calls real API with on-chain ownership verification
+- Race entry calls real API with on-chain ownership verification + collection guard (can only enter collection-matched races)
 - Race results with full score breakdown (stat contributions, modifiers, luck)
-- Leaderboard, creature profile, race history pages functional
-- Admin page (`/admin`) for creating, editing, resolving, and reopening races
+- Leaderboard (collection-aware, per-season), creature profile, race history pages functional
+- Admin page (`/admin`) for creating, editing, resolving, and reopening races — collection selector for race/season creation
 - **Auto-resolve**: Expired races resolve lazily on next page load (per-race `auto_resolve` flag, default true)
 - Cancelled races visible in admin with reopen capability
 - Resolve confirmation dialog prevents accidental race cancellation
 - On-chain NFT ownership verification on all mutation endpoints (train, race entry)
-- FAQ page with comprehensive game mechanics guide
+- FAQ page with per-collection game mechanics guide (CyberPets / Aneta Angels pill selector, collection-specific base stats, rarity tiers, trait mapping, examples)
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
 - **Credit ledger (shadow billing)** — Tracks theoretical training fees, race entry fees, and season payouts per wallet (preparation for Phase 2 on-chain fees)
 - **Gamified investment display** — Dashboard summary card, per-creature investment card, and `/wallet` ledger page showing ERG burned vs prize pool
-- **Image caching proxy** — Pet images served via `/api/v2/img/[number]` with Vercel CDN edge caching (1yr immutable), fallback to cyberversewiki.com
+- **Image caching proxy** — CyberPets via `/api/v2/img/[number]` with Vercel CDN edge caching; Aneta Angels via IPFS gateway (primary) + ergexplorer nftcache (fallback)
 - **Wallet display names** — Users can set a friendly name (e.g. "Andrius") via wallet dropdown. Shown on leaderboard, race podium, and race results instead of truncated address. Names are unique (case-insensitive), 2-20 chars. Purely off-chain (stored in `wallet_profiles` table) — zero impact on Phase 2 smart contracts
+- **Collection filter UI** — Reusable toggle pill component on Dashboard, Races, Leaderboard, Wallet Ledger, and Training pages. Wallet Ledger filter is fully wired: summary cards (Burned, Prize Pool, Activity) and transaction history all update per collection. Ledger entries include `collectionId`/`collectionName` derived from `season_id` join.
 
 ### Open Items
 - [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Shadow-tracked in credit ledger. On-chain enforcement deferred to Phase 2 (requires treasury address + Nautilus `sign_tx()`).
@@ -107,7 +109,12 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | `api/_lib/auth.ts` | Admin `CRON_SECRET` bearer token guard |
 | `api/_lib/helpers.ts` | `getActiveSeason()`, `getLatestErgoBlock()`, `computeCreatureResponse()`, `countRegularActionsToday()`, `getLastRegularActionAt()` |
 | `api/_lib/constants.ts` | Activity display map, reward labels, nanoErg conversion |
-| `api/_lib/cyberpets.ts` | CyberPet JSON loader, trait parser, base stat computation |
+| `api/_lib/cyberpets.ts` | CyberPet JSON loader, trait parser, base stat computation (legacy — see also `collections/cyberpets.ts`) |
+| `api/_lib/collections/types.ts` | `CollectionLoader` interface, `TokenEntry`, `Stats`, `StatName` types |
+| `api/_lib/collections/registry.ts` | Collection loader registry — maps collection names to loaders |
+| `api/_lib/collections/cyberpets.ts` | CyberPets collection loader (description-based trait parsing, IPFS proxy images) |
+| `api/_lib/collections/aneta-angels.ts` | Aneta Angels collection loader (4406 tokens, normalized score distribution, IPFS images) |
+| `api/_lib/config.ts` | Per-collection game config resolution (deep merge overrides from `collections.game_config_overrides`) |
 | `api/_lib/register-creature.ts` | Shared creature registration (used by register endpoint + auto-discovery) |
 | `api/_lib/resolve-race.ts` | Shared race resolution logic (used by admin endpoint + auto-resolve in GET /races) |
 | `api/_lib/credit-ledger.ts` | Credit ledger helper — records training fees, race fees, payouts |
@@ -131,6 +138,8 @@ Full game loop is operational: wallet connect → auto-discover CyberPets → tr
 | `useWalletLedger` | `GET /api/v2/wallet/:address/ledger` | Query |
 | `useWalletProfile` | `GET /api/v2/wallet/:address/profile` | Query |
 | `useUpdateWalletProfile` | `PUT /api/v2/wallet/:address/profile` | Mutation |
+| `useCollections` | `GET /api/v2/collections` | Query |
+| `useSeasons` | `GET /api/v2/seasons/current` | Query (array) |
 
 ---
 
@@ -381,6 +390,80 @@ PHASE 2 (Target — Smart Contracts)
 | 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
 | 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
 | 8 | Open-source frontend + TX builder | Post-launch |
+
+---
+
+## Multi-Collection Architecture (2026-02-14)
+
+### Overview
+The platform now supports multiple NFT collections racing independently. Each collection has its own season, leaderboard, stat system, trait-to-stat mapping, and image resolution chain. The architecture is designed so adding a new collection requires only: one loader module, one DB row, and a JSON trait data file.
+
+### Collections Supported
+| Collection | Tokens | Rarity Tiers | Stat Budget Range | Image Source |
+|------------|--------|-------------|-------------------|--------------|
+| **CyberPets** | 460 | 9 (Common–Cyberium) | 60–120 | Proxy (`/api/v2/img/[n]`) → ergexplorer → cyberversewiki |
+| **Aneta Angels** | 4,406 | 6 (Common–Mythic) | 50–100 | IPFS gateway (primary) → ergexplorer nftcache (fallback) |
+
+### Backend Changes (Steps 1–11)
+- **Collection loader system** (`api/_lib/collections/`) — `CollectionLoader` interface with `isToken()`, `getToken()`, `parseTraits()`, `computeBaseStats()`, `buildMetadata()`, `getImageUrl()`, `getFallbackImageUrl()`, `getDisplayName()`, `getRarity()`
+- **Registry** (`api/_lib/collections/registry.ts`) — Maps collection names to loader instances, auto-detects collection for any token ID
+- **Per-collection game config** (`api/_lib/config.ts`) — Deep-merges `collections.game_config_overrides` over global `game_config`. Endpoint: `GET /api/v2/config?collectionId=`
+- **Multi-season support** — `GET /api/v2/seasons/current` returns array when multiple active seasons exist. Each season belongs to a collection via `collection_id` FK
+- **Auto-discovery** (`api/v2/creatures/by-wallet/[address].ts`) — Scans wallet tokens against all registered collections, not just CyberPets
+- **Race entry guard** — Validates creature's collection matches race's season collection
+- **Leaderboard** (`api/v2/leaderboard.ts`) — Accepts `?collectionId=` to resolve correct season
+- **Admin** — Collection selectors on race/season creation forms
+
+### Frontend Changes (Steps 12–16)
+
+#### Types & Hooks (Step 12)
+- `src/types/game.ts` — Added `collectionId?`, `collectionName?` to `Race` and `Season` interfaces; added `Collection` type
+- `src/api/useCollections.ts` — **NEW**: Fetches all collections from `GET /api/v2/collections`
+- `src/api/useSeasons.ts` — **NEW**: Fetches all active seasons (handles array/object response)
+- `src/api/useGameConfig.ts` — Accepts optional `collectionId` parameter
+
+#### CollectionFilter Component (Step 12)
+- `src/components/ui/CollectionFilter.tsx` — **NEW**: Reusable toggle pill buttons ("All" + per-collection). Auto-hides when ≤1 collection
+- `src/hooks/useCollectionFilter.ts` — **NEW**: State management hook (`active` set, `toggle()`, `matches()`)
+
+#### Race Lobby (Step 13)
+- `src/components/races/RaceCard.tsx` — Collection badge next to race type badge
+- `src/pages/Races.tsx` — CollectionFilter pills, race lists filtered by collection
+- `src/components/races/RaceEntryModal.tsx` — Creatures filtered by race's collection; collection-specific empty state
+
+#### Dashboard (Step 14)
+- `src/pages/Dashboard.tsx` — CollectionFilter pills, creature filtering, generic empty state ("No NFTs Found")
+
+#### Leaderboard (Step 14)
+- `src/pages/Leaderboard.tsx` — CollectionFilter pills, per-season leaderboard via collection→season mapping, collection badges on results
+
+#### Wallet Ledger (Step 15)
+- `api/v2/wallet/[address]/ledger.ts` — Each entry now includes `collectionId`/`collectionName` via `season_id` → `seasons.collection_id` join; `prizePools[]` array with per-collection prize pool data
+- `src/pages/WalletLedger.tsx` — CollectionFilter fully wired: summary cards (Burned, Prize Pool, Activity) recompute from filtered entries; transaction list filtered with collection badges per entry
+- `src/types/game.ts` — Added `collectionId`/`collectionName` to `LedgerEntry`; added `CollectionPrizePool` type and `prizePools` to `WalletLedger`
+
+#### Training Center
+- `src/pages/Train.tsx` — CollectionFilter pills on creature selection view, creatures filtered by collection
+
+#### FAQ (Per-Collection)
+- `src/pages/FAQ.tsx` — Collection pill selector (CyberPets default, no "All"). Collection-specific sections: The Basics, How Base Stats Are Created (trait mapping, rarity tiers, stat budgets, examples), Focus source, rarity badges. Shared sections: Stats, Training, Fatigue/Sharpness, Race Types, Scoring, Race Entries, Rewards, Seasons, Blockchain. Aneta Angels includes on-chain verification FAQ
+
+### Aneta Angels Data & DB (Step 16)
+- `scripts/convert-aneta-traits.ts` — Converts scored data to loader format (4406 tokens)
+- `data/ergo/aneta-angels/aneta_angel_traits.json` — Token data with traits, rarity, normalized scores, and IPFS URLs
+- `migrations/011_aneta_angels_collection.sql` — DB collection row with `base_stat_template` (6 tiers), `trait_mapping` (Wings→SPD, Body→STM, Face→HRT, Head→ACC, Background→AGI, Skin Tone→Focus)
+
+### Aneta Angels Image Resolution
+IPFS URLs pulled from Ergo blockchain R9 register (via local indexed node), stored in trait data as `ipfsUrl` field per token. Image chain:
+1. **Primary**: IPFS gateway URL (e.g. `http://ipfs.io/ipfs/Qm...`) — from `metadata.ipfsUrl`
+2. **Fallback**: ergexplorer nftcache (`https://api.ergexplorer.com/nftcache/{token_id}`) — via `PetImage` `onError`
+
+### DB Migrations
+- `migrations/010_game_config_overrides.sql` — Added `game_config_overrides` JSONB column to `collections` table
+- `migrations/011_aneta_angels_collection.sql` — Aneta Angels collection row
+
+### Phase 2 Compatibility
+Collection loaders, registry, and per-collection config are purely backend architecture. Smart contracts don't need collection awareness — each collection's creatures are distinguished by their token IDs in the AVL tree. The loader system will continue to run in the TX builder service for proof generation. Frontend collection filter is purely UI — no on-chain impact.
 
 ---
 

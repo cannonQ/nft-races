@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
-import { getUtcMidnightToday } from '../../../_lib/helpers.js';
+import { getUtcMidnightToday, getOrCreateCreatureStats } from '../../../_lib/helpers.js';
 import { applyConditionDecay } from '../../../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../../../lib/ergo/server.js';
 import { recordLedgerEntry } from '../../../_lib/credit-ledger.js';
@@ -18,10 +18,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. Verify creature exists
+    // 1. Verify creature exists (include collection_id for cross-mix guard)
     const { data: creature, error: creatureErr } = await supabase
       .from('creatures')
-      .select('id, token_id, owner_address, base_stats')
+      .select('id, token_id, owner_address, base_stats, collection_id')
       .eq('id', creatureId)
       .single();
 
@@ -49,10 +49,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq('id', creatureId);
     }
 
-    // 2. Verify race exists and is open
+    // 2. Verify race exists and is open (join season for collection guard)
     const { data: race, error: raceErr } = await supabase
       .from('season_races')
-      .select('*')
+      .select('*, seasons!inner(collection_id)')
       .eq('id', raceId)
       .single();
 
@@ -66,6 +66,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (new Date(race.entry_deadline) < new Date()) {
       return res.status(400).json({ error: 'Race entry deadline has passed' });
+    }
+
+    // 2b. Collection guard — prevent cross-collection race entry
+    const raceCollectionId = race.seasons?.collection_id;
+    if (raceCollectionId && creature.collection_id !== raceCollectionId) {
+      return res.status(400).json({
+        error: 'This creature cannot enter this race — collection mismatch',
+      });
     }
 
     // 3. Verify entry count < max_entries
@@ -90,16 +98,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Creature is already entered in this race' });
     }
 
-    // 5. Fetch creature_stats for this season
-    const { data: stats, error: statsErr } = await supabase
-      .from('creature_stats')
-      .select('*')
-      .eq('creature_id', creatureId)
-      .eq('season_id', race.season_id)
-      .single();
+    // 5. Fetch or lazily create creature_stats for this season
+    const stats = await getOrCreateCreatureStats(creatureId, race.season_id);
 
-    if (statsErr || !stats) {
-      return res.status(400).json({ error: 'Creature stats not found for this season' });
+    if (!stats) {
+      return res.status(400).json({ error: 'Failed to load creature stats for this season' });
     }
 
     // 6. Verify creature hasn't raced today (UTC)

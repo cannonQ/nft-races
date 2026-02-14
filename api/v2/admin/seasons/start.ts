@@ -68,81 +68,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to create season' });
     }
 
-    // Fetch all creatures in this collection
-    const { data: creatures, error: creaturesErr } = await supabase
+    // Lazy init: creature_stats rows are created on first interaction
+    // (training, race entry, profile view) via getOrCreateCreatureStats().
+    // This scales to any collection size — no batch init needed.
+    // For 450 CyberPets this was already slow (~900 DB calls).
+    // For 4400+ Aneta Angels it would guarantee a Vercel timeout.
+
+    // Count registered creatures for the response (informational only)
+    const { count: creatureCount } = await supabase
       .from('creatures')
-      .select('id')
+      .select('*', { count: 'exact', head: true })
       .eq('collection_id', collectionId);
-
-    if (creaturesErr) {
-      return res.status(500).json({ error: 'Failed to fetch creatures for collection' });
-    }
-
-    const creatureIds = (creatures ?? []).map((c: any) => c.id);
-
-    // Initialize creature_stats for all creatures (batch in chunks of 500)
-    if (creatureIds.length > 0) {
-      const statsInserts = creatureIds.map((creatureId: string) => ({
-        creature_id: creatureId,
-        season_id: season.id,
-        speed: 0,
-        stamina: 0,
-        accel: 0,
-        agility: 0,
-        heart: 0,
-        focus: 0,
-        fatigue: 0,
-        sharpness: 50,
-        bonus_actions: 0,
-        boost_multiplier: 0,
-        action_count: 0,
-        race_count: 0,
-      }));
-
-      for (let i = 0; i < statsInserts.length; i += 500) {
-        const chunk = statsInserts.slice(i, i + 500);
-        const { error: insertErr } = await supabase
-          .from('creature_stats')
-          .insert(chunk);
-        if (insertErr) {
-          console.error(`Failed to insert creature_stats chunk ${i}:`, insertErr);
-        }
-      }
-
-      // Increment prestige.total_seasons for each creature
-      for (let i = 0; i < creatureIds.length; i += 500) {
-        const chunk = creatureIds.slice(i, i + 500);
-        // Use individual updates since Supabase doesn't support increment on bulk IN
-        for (const cId of chunk) {
-          const { data: current } = await supabase
-            .from('prestige')
-            .select('total_seasons')
-            .eq('creature_id', cId)
-            .single();
-
-          if (current) {
-            await supabase
-              .from('prestige')
-              .update({ total_seasons: (current.total_seasons ?? 0) + 1 })
-              .eq('creature_id', cId);
-          } else {
-            // Create prestige row if it doesn't exist
-            await supabase
-              .from('prestige')
-              .insert({
-                creature_id: cId,
-                total_seasons: 1,
-                lifetime_wins: 0,
-                lifetime_places: 0,
-                lifetime_shows: 0,
-                lifetime_races: 0,
-                lifetime_earnings_nanoerg: 0,
-                badges: [],
-              });
-          }
-        }
-      }
-    }
 
     return res.status(200).json({
       success: true,
@@ -154,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         endDate: season.end_date,
         prizePool: nanoErgToErg(season.prize_pool_nanoerg ?? 0),
         status: season.status,
-        creaturesInitialized: creatureIds.length,
+        registeredCreatures: creatureCount ?? 0,
       },
     });
   } catch (err) {

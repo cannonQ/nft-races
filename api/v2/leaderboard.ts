@@ -10,10 +10,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let seasonId = req.query.season as string | undefined;
+    const collectionId = req.query.collectionId as string | undefined;
 
     // Default to active season if none specified
     if (!seasonId) {
-      const season = await getActiveSeason();
+      const season = await getActiveSeason(collectionId);
       if (!season) {
         return res.status(404).json({ error: 'No active season' });
       }

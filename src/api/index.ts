@@ -6,6 +6,10 @@ export { API_BASE } from './config';
 
 // Season
 export { useCurrentSeason } from './useCurrentSeason';
+export { useSeasons } from './useSeasons';
+
+// Collections
+export { useCollections } from './useCollections';
 
 // Creatures
 export { 
@@ -55,6 +59,7 @@ export type {
   TrainingLogEntry,
   TrainResponse,
   Season,
+  Collection,
   LeaderboardEntry,
   EnterRaceResponse,
   RegisterCreatureResponse,

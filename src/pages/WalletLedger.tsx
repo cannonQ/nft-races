@@ -3,13 +3,17 @@ import { ArrowLeft, Flame, Trophy, Flag } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useWalletLedger } from '@/api';
+import { CollectionFilter } from '@/components/ui/CollectionFilter';
+import { useWalletLedger, useCollections } from '@/api';
 import { useWallet } from '@/context/WalletContext';
+import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { cn } from '@/lib/utils';
 
 export default function WalletLedger() {
   const { address } = useWallet();
   const { data: ledger, loading } = useWalletLedger(address);
+  const { data: collections } = useCollections();
+  const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
 
   if (!address) {
     return (
@@ -41,6 +45,25 @@ export default function WalletLedger() {
 
   const hasActivity = ledger && (ledger.totalSpent > 0 || ledger.totalEarned > 0);
 
+  // Derive filtered stats from entries when a collection filter is active
+  const filteredEntries = ledger?.entries.filter((e) => matchesCollection(e.collectionId ?? undefined)) ?? [];
+  const isFiltered = activeCollections.size > 0;
+
+  const filteredSpentErg = isFiltered
+    ? filteredEntries.filter((e) => e.amountNanoerg < 0).reduce((sum, e) => sum + Math.abs(e.amountErg), 0)
+    : ledger?.totalSpentErg ?? 0;
+
+  const filteredPrizePoolErg = isFiltered
+    ? (ledger?.prizePools ?? []).filter((p) => activeCollections.has(p.collectionId)).reduce((sum, p) => sum + p.prizePoolErg, 0)
+    : ledger?.seasonPrizePoolErg ?? 0;
+
+  const filteredTraining = isFiltered
+    ? filteredEntries.filter((e) => e.txType === 'training_fee').length
+    : ledger?.trainingCount ?? 0;
+  const filteredRaces = isFiltered
+    ? filteredEntries.filter((e) => e.txType === 'race_entry_fee').length
+    : ledger?.racesEntered ?? 0;
+
   return (
     <MainLayout>
       <div className="max-w-4xl mx-auto space-y-6">
@@ -61,6 +84,12 @@ export default function WalletLedger() {
           </div>
         </div>
 
+        <CollectionFilter
+          collections={collections || []}
+          active={activeCollections}
+          onToggle={toggleCollection}
+        />
+
         {!hasActivity ? (
           <div className="cyber-card rounded-xl p-8 text-center">
             <p className="text-muted-foreground">No activity yet this season. Train or enter a race to get started.</p>
@@ -75,7 +104,7 @@ export default function WalletLedger() {
                   <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Burned</span>
                 </div>
                 <p className="font-mono text-2xl font-bold text-foreground">
-                  {ledger!.totalSpentErg.toFixed(2)}
+                  {filteredSpentErg.toFixed(2)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">ERG invested</p>
               </div>
@@ -86,7 +115,7 @@ export default function WalletLedger() {
                   <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Prize Pool</span>
                 </div>
                 <p className="font-mono text-2xl font-bold text-accent">
-                  {ledger!.seasonPrizePoolErg.toFixed(2)}
+                  {filteredPrizePoolErg.toFixed(2)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">ERG up for grabs</p>
               </div>
@@ -97,10 +126,10 @@ export default function WalletLedger() {
                   <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Activity</span>
                 </div>
                 <p className="font-mono text-2xl font-bold text-foreground">
-                  {ledger!.trainingCount + ledger!.racesEntered}
+                  {filteredTraining + filteredRaces}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {ledger!.trainingCount} training · {ledger!.racesEntered} races
+                  {filteredTraining} training · {filteredRaces} races
                 </p>
               </div>
             </div>
@@ -111,11 +140,10 @@ export default function WalletLedger() {
                 Transaction History
               </h2>
               <div className="space-y-1">
-                {ledger!.entries.map((entry) => {
+                {filteredEntries.map((entry) => {
                   const isDebit = entry.amountNanoerg < 0;
                   const date = new Date(entry.createdAt);
                   const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                  const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
                   return (
                     <div
@@ -129,6 +157,11 @@ export default function WalletLedger() {
                         <span className="text-sm text-foreground truncate">
                           {entry.memo || entry.txType}
                         </span>
+                        {entry.collectionName && (
+                          <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
+                            {entry.collectionName}
+                          </span>
+                        )}
                       </div>
                       <span
                         className={cn(

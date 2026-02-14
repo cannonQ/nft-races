@@ -1,9 +1,9 @@
 /**
  * Training Engine v2
- * Core training logic for the CyberPets seasonal training system.
+ * Core training logic for the seasonal training system.
  *
- * All tunable constants come from the game_config table (single row, id=1).
- * Stats: speed, stamina, accel, agility, heart, focus — each 0-80, total <= 300.
+ * All tunable constants come from game_config (global) merged with per-collection overrides.
+ * Caps/cooldown/actions can vary per collection via config param. Defaults: per-stat 80, total 300.
  */
 
 import { createHash } from 'crypto';
@@ -112,25 +112,28 @@ export function computeTrainingGains(
     throw new Error(`Unknown activity: ${activity}`);
   }
 
+  const perStatCap = config.per_stat_cap ?? PER_STAT_CAP;
+  const totalStatCap = config.total_stat_cap ?? TOTAL_STAT_CAP;
+
   const rawGains: Partial<Stats> = {};
 
   // Primary stat gain with diminishing returns
   const primaryCurrent = currentStats[activityDef.primary] ?? 0;
   rawGains[activityDef.primary] =
-    activityDef.primary_gain * (1 - primaryCurrent / PER_STAT_CAP);
+    activityDef.primary_gain * (1 - primaryCurrent / perStatCap);
 
   // Secondary stat gain with diminishing returns
   const secondaryCurrent = currentStats[activityDef.secondary] ?? 0;
   rawGains[activityDef.secondary] =
     (rawGains[activityDef.secondary] ?? 0) +
-    activityDef.secondary_gain * (1 - secondaryCurrent / PER_STAT_CAP);
+    activityDef.secondary_gain * (1 - secondaryCurrent / perStatCap);
 
   // Clamp each stat to per-stat cap
   for (const key of STAT_KEYS) {
     if (rawGains[key] !== undefined) {
       const newVal = (currentStats[key] ?? 0) + rawGains[key]!;
-      if (newVal > PER_STAT_CAP) {
-        rawGains[key] = Math.max(0, PER_STAT_CAP - (currentStats[key] ?? 0));
+      if (newVal > perStatCap) {
+        rawGains[key] = Math.max(0, perStatCap - (currentStats[key] ?? 0));
       }
     }
   }
@@ -139,8 +142,8 @@ export function computeTrainingGains(
   const currentTotal = STAT_KEYS.reduce((sum, k) => sum + (currentStats[k] ?? 0), 0);
   const gainsTotal = STAT_KEYS.reduce((sum, k) => sum + (rawGains[k] ?? 0), 0);
 
-  if (currentTotal + gainsTotal > TOTAL_STAT_CAP) {
-    const available = Math.max(0, TOTAL_STAT_CAP - currentTotal);
+  if (currentTotal + gainsTotal > totalStatCap) {
+    const available = Math.max(0, totalStatCap - currentTotal);
     if (gainsTotal > 0 && available > 0) {
       const scale = available / gainsTotal;
       for (const key of STAT_KEYS) {
@@ -184,6 +187,7 @@ export async function validateTrainingAction(
   creatureId: string,
   seasonId: string,
   supabase: SupabaseClient,
+  config?: Record<string, any>,
 ): Promise<ValidationResult> {
   // 1. Check season is active
   const { data: season, error: seasonErr } = await supabase
@@ -213,8 +217,8 @@ export async function validateTrainingAction(
 
   const ALPHA_TESTING = false;
 
-  const BASE_ACTIONS = 2;
-  const COOLDOWN_HOURS = 6;
+  const BASE_ACTIONS = config?.base_actions ?? 2;
+  const COOLDOWN_HOURS = config?.cooldown_hours ?? 6;
   const bonusActions = stats.bonus_actions ?? 0;
 
   // Bonus actions are consumed first, then regular daily actions.
@@ -356,6 +360,8 @@ export function computeRaceResult(
     throw new Error(`Unknown race type: ${raceType}`);
   }
 
+  const perStatCap = config.per_stat_cap ?? PER_STAT_CAP;
+
   const scored = entries.map((entry) => {
     // 1. Effective stats
     const effective: Stats = {} as Stats;
@@ -384,7 +390,7 @@ export function computeRaceResult(
     const rngValue = seedToFloat(rngSeed);
 
     // 7. Focus swing — compressed by focus stat
-    const focusSwing = 0.30 * (1 - effective.focus / (PER_STAT_CAP + entry.baseStats.focus));
+    const focusSwing = 0.30 * (1 - effective.focus / (perStatCap + entry.baseStats.focus));
 
     // 8. RNG modifier
     const rngMod = rngValue * focusSwing;
@@ -420,9 +426,20 @@ export function computeRaceResult(
 
 /**
  * Determine the reward boost values for a given race finish position.
- * 1st: bonus action, 2nd: +50% boost, 3rd: +25% boost, 4th+: +10% boost.
+ * Defaults: 1st: bonus action, 2nd: +50% boost, 3rd: +25% boost, 4th+: +10% boost.
+ * Per-collection overrides via config.race_reward_boosts.
  */
-export function getRaceRewardBoost(position: number): RaceRewardBoost {
+export function getRaceRewardBoost(position: number, config?: Record<string, any>): RaceRewardBoost {
+  const overrides = config?.race_reward_boosts;
+  if (overrides && overrides[String(position)]) {
+    const r = overrides[String(position)];
+    return {
+      bonus_actions: r.bonus_actions ?? 0,
+      boost_multiplier: r.boost_multiplier ?? 0,
+    };
+  }
+
+  // Default rewards
   if (position === 1) {
     return { bonus_actions: 1, boost_multiplier: 0 };
   } else if (position === 2) {
@@ -446,9 +463,12 @@ export async function applyRaceRewards(
   raceId: string,
   blockHeight: number,
   supabase: SupabaseClient,
+  config?: Record<string, any>,
 ): Promise<void> {
+  const boostExpiry = config?.boost_expiry_blocks ?? BOOST_EXPIRY_BLOCKS;
+
   for (const entry of results) {
-    const boost = getRaceRewardBoost(entry.position);
+    const boost = getRaceRewardBoost(entry.position, config);
 
     // Bonus actions still live on creature_stats
     if (boost.bonus_actions > 0) {
@@ -476,7 +496,7 @@ export async function applyRaceRewards(
         race_id: raceId,
         multiplier: boost.boost_multiplier,
         awarded_at_height: blockHeight,
-        expires_at_height: blockHeight + BOOST_EXPIRY_BLOCKS,
+        expires_at_height: blockHeight + boostExpiry,
       });
     }
   }

@@ -18,7 +18,7 @@ export default function Admin() {
 
   // Data
   const [races, setRaces] = useState<any[]>([]);
-  const [season, setSeason] = useState<any>(null);
+  const [activeSeasons, setActiveSeasons] = useState<any[]>([]);
   const [allSeasons, setAllSeasons] = useState<any[]>([]);
   const [collections, setCollections] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,6 +46,7 @@ export default function Admin() {
   const [endingSeason, setEndingSeason] = useState(false);
 
   // Create Race form
+  const [raceCollectionId, setRaceCollectionId] = useState('');
   const [raceName, setRaceName] = useState('');
   const [raceType, setRaceType] = useState<string>('sprint');
   const [deadlineMinutes, setDeadlineMinutes] = useState(60);
@@ -99,23 +100,22 @@ export default function Admin() {
         setRaces(Array.isArray(data) ? data : []);
       }
       if (seasonRes.ok) {
-        setSeason(await seasonRes.json());
+        const seasonData = await seasonRes.json();
+        // Handle both array and single-object responses
+        setActiveSeasons(Array.isArray(seasonData) ? seasonData : [seasonData]);
       } else {
-        setSeason(null);
+        setActiveSeasons([]);
       }
       if (collectionsRes.ok) {
         const cols = await collectionsRes.json();
         setCollections(Array.isArray(cols) ? cols : []);
-        if (cols.length > 0 && !seasonCollectionId) {
-          setSeasonCollectionId(cols[0].id);
-        }
       }
     } catch (_err) {
       // silently fail — toast will show if needed
     } finally {
       setLoading(false);
     }
-  }, [seasonCollectionId]);
+  }, []);
 
   // Load all seasons (admin-only endpoint)
   const loadSeasons = useCallback(async () => {
@@ -258,6 +258,7 @@ export default function Admin() {
           entryDeadline: deadline,
           maxEntries,
           autoResolve,
+          collectionId: raceCollectionId || undefined,
         }),
       });
       const data = await res.json();
@@ -425,220 +426,232 @@ export default function Admin() {
 
         {/* ═══════════ SEASON MANAGEMENT ═══════════ */}
 
-        {/* Active Season — edit inline or end */}
-        {season ? (
+        {/* Active Seasons — one per collection */}
+        {activeSeasons.length > 0 && (
           <Card className="cyber-card border-primary/30">
             <CardHeader>
               <CardTitle className="font-display text-lg flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-primary" />
-                Active Season
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {editingSeasonId === season.id ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Name</label>
-                      <input
-                        type="text"
-                        value={editSeasonName}
-                        onChange={e => setEditSeasonName(e.target.value)}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">End Date</label>
-                      <input
-                        type="datetime-local"
-                        value={editSeasonEndDate}
-                        onChange={e => setEditSeasonEndDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Prize Pool (ERG)</label>
-                      <input
-                        type="number"
-                        value={editSeasonPrizePool}
-                        onChange={e => setEditSeasonPrizePool(Number(e.target.value))}
-                        min={0}
-                        step={0.1}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Modifier Theme</label>
-                      <input
-                        type="text"
-                        value={editSeasonTheme}
-                        onChange={e => setEditSeasonTheme(e.target.value)}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs text-muted-foreground mb-1">Modifier Description</label>
-                      <input
-                        type="text"
-                        value={editSeasonDesc}
-                        onChange={e => setEditSeasonDesc(e.target.value)}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={handleSaveSeason} disabled={savingSeason} className="glow-cyan">
-                      <Save className="w-3.5 h-3.5 mr-1.5" />
-                      {savingSeason ? 'Saving...' : 'Save'}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingSeasonId(null)}>
-                      <X className="w-3.5 h-3.5 mr-1.5" />
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-foreground font-semibold text-lg">{season.name}</p>
-                      <p className="text-muted-foreground text-sm">Season {season.seasonNumber}</p>
-                    </div>
-                    <div className="text-right text-sm text-muted-foreground">
-                      <p>{season.collectionName}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {new Date(season.startDate).toLocaleDateString()} — {new Date(season.endDate).toLocaleDateString()}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Trophy className="w-3.5 h-3.5" />
-                      {season.prizePool} ERG pool
-                    </span>
-                    {season.modifier?.theme && season.modifier.theme !== 'standard' && (
-                      <span>Theme: {season.modifier.theme}</span>
-                    )}
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button size="sm" variant="ghost" onClick={() => startEditingSeason(season)}>
-                      <Pencil className="w-3.5 h-3.5 mr-1.5" />
-                      Edit
-                    </Button>
-                    {confirmEndSeasonId === season.id ? (
-                      <>
-                        <span className="text-xs text-yellow-400 self-center">This will cancel open races and compute payouts. Sure?</span>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleEndSeason(season.id)}
-                          disabled={endingSeason}
-                        >
-                          <Power className="w-3.5 h-3.5 mr-1.5" />
-                          {endingSeason ? 'Ending...' : 'Yes, End Season'}
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setConfirmEndSeasonId(null)}>No</Button>
-                      </>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setConfirmEndSeasonId(season.id)}
-                        disabled={endingSeason}
-                      >
-                        <Power className="w-3.5 h-3.5 mr-1.5" />
-                        End Season
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          /* No active season — show create form */
-          <Card className="cyber-card">
-            <CardHeader>
-              <CardTitle className="font-display text-lg flex items-center gap-2">
-                <Plus className="w-5 h-5" />
-                Start New Season
+                Active Seasons ({activeSeasons.length})
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Collection</label>
-                  <select
-                    value={seasonCollectionId}
-                    onChange={e => setSeasonCollectionId(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  >
-                    {collections.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+              {activeSeasons.map((season: any) => (
+                <div key={season.id} className="rounded-lg bg-muted/20 border border-border/50 p-4">
+                  {editingSeasonId === season.id ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Name</label>
+                          <input
+                            type="text"
+                            value={editSeasonName}
+                            onChange={e => setEditSeasonName(e.target.value)}
+                            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">End Date</label>
+                          <input
+                            type="datetime-local"
+                            value={editSeasonEndDate}
+                            onChange={e => setEditSeasonEndDate(e.target.value)}
+                            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Prize Pool (ERG)</label>
+                          <input
+                            type="number"
+                            value={editSeasonPrizePool}
+                            onChange={e => setEditSeasonPrizePool(Number(e.target.value))}
+                            min={0}
+                            step={0.1}
+                            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Modifier Theme</label>
+                          <input
+                            type="text"
+                            value={editSeasonTheme}
+                            onChange={e => setEditSeasonTheme(e.target.value)}
+                            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-muted-foreground mb-1">Modifier Description</label>
+                          <input
+                            type="text"
+                            value={editSeasonDesc}
+                            onChange={e => setEditSeasonDesc(e.target.value)}
+                            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleSaveSeason} disabled={savingSeason} className="glow-cyan">
+                          <Save className="w-3.5 h-3.5 mr-1.5" />
+                          {savingSeason ? 'Saving...' : 'Save'}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingSeasonId(null)}>
+                          <X className="w-3.5 h-3.5 mr-1.5" />
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-foreground font-semibold text-lg">{season.name}</p>
+                          <p className="text-muted-foreground text-sm">Season {season.seasonNumber}</p>
+                        </div>
+                        <div className="text-right text-sm text-muted-foreground">
+                          <p>{season.collectionName}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {new Date(season.startDate).toLocaleDateString()} — {new Date(season.endDate).toLocaleDateString()}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Trophy className="w-3.5 h-3.5" />
+                          {season.prizePool} ERG pool
+                        </span>
+                        {season.modifier?.theme && season.modifier.theme !== 'standard' && (
+                          <span>Theme: {season.modifier.theme}</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" variant="ghost" onClick={() => startEditingSeason(season)}>
+                          <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                          Edit
+                        </Button>
+                        {confirmEndSeasonId === season.id ? (
+                          <>
+                            <span className="text-xs text-yellow-400 self-center">This will cancel open races and compute payouts. Sure?</span>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleEndSeason(season.id)}
+                              disabled={endingSeason}
+                            >
+                              <Power className="w-3.5 h-3.5 mr-1.5" />
+                              {endingSeason ? 'Ending...' : 'Yes, End Season'}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setConfirmEndSeasonId(null)}>No</Button>
+                          </>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setConfirmEndSeasonId(season.id)}
+                            disabled={endingSeason}
+                          >
+                            <Power className="w-3.5 h-3.5 mr-1.5" />
+                            End Season
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Season Name (optional)</label>
-                  <input
-                    type="text"
-                    value={seasonName}
-                    onChange={e => setSeasonName(e.target.value)}
-                    placeholder="Auto: Season N"
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Duration (days)</label>
-                  <input
-                    type="number"
-                    value={seasonDuration}
-                    onChange={e => setSeasonDuration(Number(e.target.value))}
-                    min={1}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Prize Pool (ERG)</label>
-                  <input
-                    type="number"
-                    value={seasonPrizePool}
-                    onChange={e => setSeasonPrizePool(Number(e.target.value))}
-                    min={0}
-                    step={0.1}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Modifier Theme</label>
-                  <input
-                    type="text"
-                    value={seasonModifierTheme}
-                    onChange={e => setSeasonModifierTheme(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Modifier Description</label>
-                  <input
-                    type="text"
-                    value={seasonModifierDesc}
-                    onChange={e => setSeasonModifierDesc(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </div>
-              </div>
-              <Button
-                onClick={handleCreateSeason}
-                disabled={creatingSeason || !seasonCollectionId}
-                className="glow-cyan"
-              >
-                {creatingSeason ? 'Starting...' : 'Start Season'}
-              </Button>
+              ))}
             </CardContent>
           </Card>
         )}
+
+        {/* Start New Season — shown when any collection lacks an active season */}
+        {(() => {
+          const activeCollectionIds = new Set(activeSeasons.map((s: any) => s.collectionId));
+          const availableCollections = collections.filter((c: any) => !activeCollectionIds.has(c.id));
+          if (availableCollections.length === 0) return null;
+          return (
+            <Card className="cyber-card">
+              <CardHeader>
+                <CardTitle className="font-display text-lg flex items-center gap-2">
+                  <Plus className="w-5 h-5" />
+                  Start New Season
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Collection</label>
+                    <select
+                      value={seasonCollectionId}
+                      onChange={e => setSeasonCollectionId(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <option value="">Select collection...</option>
+                      {availableCollections.map((c: any) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Season Name (optional)</label>
+                    <input
+                      type="text"
+                      value={seasonName}
+                      onChange={e => setSeasonName(e.target.value)}
+                      placeholder="Auto: Season N"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Duration (days)</label>
+                    <input
+                      type="number"
+                      value={seasonDuration}
+                      onChange={e => setSeasonDuration(Number(e.target.value))}
+                      min={1}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Prize Pool (ERG)</label>
+                    <input
+                      type="number"
+                      value={seasonPrizePool}
+                      onChange={e => setSeasonPrizePool(Number(e.target.value))}
+                      min={0}
+                      step={0.1}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Modifier Theme</label>
+                    <input
+                      type="text"
+                      value={seasonModifierTheme}
+                      onChange={e => setSeasonModifierTheme(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Modifier Description</label>
+                    <input
+                      type="text"
+                      value={seasonModifierDesc}
+                      onChange={e => setSeasonModifierDesc(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleCreateSeason}
+                  disabled={creatingSeason || !seasonCollectionId}
+                  className="glow-cyan"
+                >
+                  {creatingSeason ? 'Starting...' : 'Start Season'}
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Past Seasons */}
         {allSeasons.filter(s => s.status === 'completed').length > 0 && (
@@ -684,6 +697,21 @@ export default function Admin() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeSeasons.length > 1 && (
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1">Collection</label>
+                  <select
+                    value={raceCollectionId}
+                    onChange={e => setRaceCollectionId(e.target.value)}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  >
+                    <option value="">All / Default</option>
+                    {activeSeasons.map((s: any) => (
+                      <option key={s.collectionId} value={s.collectionId}>{s.collectionName}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">Race Name</label>
                 <input
@@ -841,6 +869,9 @@ export default function Admin() {
                             {race.name}
                           </Link>
                           <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                            {race.collectionName && (
+                              <span className="text-primary/70">{race.collectionName}</span>
+                            )}
                             <span className="uppercase">{race.raceType}</span>
                             <span>{race.entryCount}/{race.maxEntries} entries</span>
                             <span>Deadline: {new Date(race.entryDeadline).toLocaleString()}</span>
@@ -916,6 +947,9 @@ export default function Admin() {
                     <div>
                       <span className="text-foreground font-semibold">{race.name}</span>
                       <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                        {race.collectionName && (
+                          <span className="text-primary/70">{race.collectionName}</span>
+                        )}
                         <span className="uppercase">{race.raceType}</span>
                         <span>{race.entryCount} entries</span>
                       </div>
@@ -959,6 +993,9 @@ export default function Admin() {
                       {race.name}
                     </Link>
                     <div className="flex gap-3 text-xs text-muted-foreground">
+                      {race.collectionName && (
+                        <span className="text-primary/70">{race.collectionName}</span>
+                      )}
                       <span className="uppercase">{race.raceType}</span>
                       <span>{race.entryCount} entries</span>
                     </div>

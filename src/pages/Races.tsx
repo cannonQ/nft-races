@@ -1,12 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Trophy, Calendar, AlertCircle } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { RaceCard } from '@/components/races/RaceCard';
 import { RaceEntryModal } from '@/components/races/RaceEntryModal';
 import { RaceDetailsModal } from '@/components/races/RaceDetailsModal';
-import { useRaces, useEnterRace } from '@/api';
+import { CollectionFilter } from '@/components/ui/CollectionFilter';
+import { useRaces, useEnterRace, useCollections } from '@/api';
 import { useWallet } from '@/context/WalletContext';
+import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { Race } from '@/types/game';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,11 +24,13 @@ export default function Races() {
   const { toast } = useToast();
   const { address } = useWallet();
   const { data: races, loading, refetch: refetchRaces } = useRaces();
+  const { data: collections } = useCollections();
   const enterRace = useEnterRace();
+  const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
 
-  const openRaces = races?.filter(r => r.status === 'open') || [];
-  const runningRaces = races?.filter(r => r.status === 'running') || [];
-  const resolvedRaces = races?.filter(r => r.status === 'resolved' || r.status === 'locked') || [];
+  const openRaces = useMemo(() => (races?.filter(r => r.status === 'open' && matchesCollection(r.collectionId)) || []), [races, matchesCollection]);
+  const runningRaces = useMemo(() => (races?.filter(r => r.status === 'running' && matchesCollection(r.collectionId)) || []), [races, matchesCollection]);
+  const resolvedRaces = useMemo(() => (races?.filter(r => (r.status === 'resolved' || r.status === 'locked') && matchesCollection(r.collectionId)) || []), [races, matchesCollection]);
 
   const handleRaceExpired = useCallback((_race: Race) => {
     // Small delay to let server-side resolution complete
@@ -90,6 +94,12 @@ export default function Races() {
             Enter races and compete for glory
           </p>
         </div>
+
+        <CollectionFilter
+          collections={collections || []}
+          active={activeCollections}
+          onToggle={toggleCollection}
+        />
 
         {entryError && (
           <div className="cyber-card rounded-lg p-4 border-destructive/30 bg-destructive/5">

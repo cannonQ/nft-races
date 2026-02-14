@@ -100,6 +100,8 @@ export interface Race {
   entryDeadline: string;
   status: RaceStatus;
   autoResolve?: boolean;
+  collectionId?: string;
+  collectionName?: string;
 }
 
 // Score breakdown for race results
@@ -173,14 +175,22 @@ export interface Season {
   id: string;
   name: string;
   seasonNumber: number;
-  modifier: { 
-    theme: string; 
-    description: string; 
+  collectionId?: string;
+  collectionName?: string;
+  modifier: {
+    theme: string;
+    description: string;
   };
   startDate: string;
   endDate: string;
   prizePool: number;
   status: 'upcoming' | 'active' | 'completed';
+}
+
+// Collection info
+export interface Collection {
+  id: string;
+  name: string;
 }
 
 // Leaderboard entry
@@ -233,6 +243,8 @@ export interface LedgerEntry {
   creatureId: string | null;
   raceId: string | null;
   seasonId: string | null;
+  collectionId: string | null;
+  collectionName: string | null;
   memo: string | null;
   createdAt: string;
 }
@@ -242,6 +254,14 @@ export interface CreatureSpending {
   creatureId: string;
   spentNanoerg: number;
   spentErg: number;
+}
+
+// Per-collection prize pool
+export interface CollectionPrizePool {
+  collectionId: string;
+  collectionName: string;
+  prizePoolNanoerg: number;
+  prizePoolErg: number;
 }
 
 // Wallet ledger summary
@@ -254,6 +274,7 @@ export interface WalletLedger {
   totalEarnedErg: number;
   seasonPrizePoolNanoerg: number;
   seasonPrizePoolErg: number;
+  prizePools: CollectionPrizePool[];
   trainingCount: number;
   racesEntered: number;
   creatureSpending: CreatureSpending[];

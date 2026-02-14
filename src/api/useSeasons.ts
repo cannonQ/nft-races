@@ -3,11 +3,12 @@ import { Season, ApiResponse } from '@/types/game';
 import { API_BASE } from './config';
 
 /**
- * Fetch current active season
+ * Fetch all active seasons (one per collection).
  * GET ${API_BASE}/seasons/current
+ * Returns array — handles both single-object and array responses from backend.
  */
-export function useCurrentSeason(): ApiResponse<Season> {
-  const [data, setData] = useState<Season | null>(null);
+export function useSeasons(): ApiResponse<Season[]> {
+  const [data, setData] = useState<Season[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -18,15 +19,20 @@ export function useCurrentSeason(): ApiResponse<Season> {
     try {
       const response = await fetch(`${API_BASE}/seasons/current`);
       if (!response.ok) {
+        // 404 = no active seasons — return empty array
+        if (response.status === 404) {
+          setData([]);
+          return;
+        }
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${response.status}`);
       }
       const result = await response.json();
-      // Backend returns array when multiple active seasons exist, single object when one
-      const season = Array.isArray(result) ? result[0] : result;
-      setData(season ?? null);
+      // Backend returns object if single season, array if multiple
+      const seasons: Season[] = Array.isArray(result) ? result : [result];
+      setData(seasons);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch season'));
+      setError(err instanceof Error ? err : new Error('Failed to fetch seasons'));
     } finally {
       setLoading(false);
     }

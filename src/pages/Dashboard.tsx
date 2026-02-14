@@ -1,14 +1,24 @@
+import { useMemo } from 'react';
 import { Search } from 'lucide-react';
-import { useCreaturesByWallet } from '@/api';
+import { useCreaturesByWallet, useCollections } from '@/api';
 import { useWallet } from '@/context/WalletContext';
+import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { CreatureCard } from '@/components/creatures/CreatureCard';
 import { InvestmentSummary } from '@/components/dashboard/InvestmentSummary';
+import { CollectionFilter } from '@/components/ui/CollectionFilter';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function Dashboard() {
   const { address } = useWallet();
   const { data: creatures, loading } = useCreaturesByWallet(address);
+  const { data: collections } = useCollections();
+  const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
+
+  const filteredCreatures = useMemo(
+    () => (creatures || []).filter(c => matchesCollection(c.collectionId)),
+    [creatures, matchesCollection]
+  );
 
   return (
     <MainLayout>
@@ -25,6 +35,13 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <CollectionFilter
+          collections={collections || []}
+          active={activeCollections}
+          onToggle={toggleCollection}
+          className="mb-4"
+        />
+
         <InvestmentSummary />
 
         {loading ? (
@@ -39,16 +56,22 @@ export default function Dashboard() {
               <Search className="w-10 h-10 text-primary" />
             </div>
             <h2 className="font-display text-xl font-semibold text-foreground mb-2">
-              No CyberPets Found
+              No NFTs Found
             </h2>
             <p className="text-muted-foreground max-w-md">
-              CyberPets in your wallet are detected automatically.
-              Make sure your Nautilus wallet contains CyberPets NFTs.
+              Supported NFTs in your wallet are detected automatically.
+              Make sure your wallet contains NFTs from a supported collection.
+            </p>
+          </div>
+        ) : filteredCreatures.length === 0 ? (
+          <div className="cyber-card rounded-xl p-8 text-center">
+            <p className="text-muted-foreground">
+              No creatures match the selected filter. Try selecting a different collection.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {creatures.map((creature, index) => (
+            {filteredCreatures.map((creature, index) => (
               <CreatureCard
                 key={creature.id}
                 creature={creature}

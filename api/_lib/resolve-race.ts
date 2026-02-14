@@ -4,6 +4,7 @@
  */
 import { supabase } from './supabase.js';
 import { getLatestErgoBlock } from './helpers.js';
+import { getGameConfig } from './config.js';
 import { nanoErgToErg, positionToRewardLabel } from './constants.js';
 import {
   computeRaceResult,
@@ -92,14 +93,11 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
     return { success: true, raceId, cancelled: true, reason: 'Fewer than 2 entries' };
   }
 
-  // 4. Load game_config for race type weights
-  const { data: gameConfig, error: configErr } = await supabase
-    .from('game_config')
-    .select('*')
-    .limit(1)
-    .single();
-
-  if (configErr || !gameConfig) {
+  // 4. Load merged game config (global + collection overrides)
+  let mergedConfig: Record<string, any>;
+  try {
+    mergedConfig = await getGameConfig(race.collection_id ?? undefined);
+  } catch {
     // Unlock the race so it can be retried
     await supabase
       .from('season_races')
@@ -153,12 +151,12 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
   });
 
   // 7. Compute race results
-  const raceResult = computeRaceResult(raceEntries, race.race_type, blockHash, gameConfig.config);
+  const raceResult = computeRaceResult(raceEntries, race.race_type, blockHash, mergedConfig);
 
   // 8. Compute prize payouts from entry fees
   const entryFee = race.entry_fee_nanoerg ?? 0;
   const totalPool = entryFee * entries.length;
-  const prizeDistribution: number[] = gameConfig.config?.prize_distribution ?? [0.50, 0.30, 0.20];
+  const prizeDistribution: number[] = mergedConfig.prize_distribution ?? [0.50, 0.30, 0.20];
 
   // 9. Update each entry with results
   for (const result of raceResult.results) {
@@ -182,7 +180,7 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
   }
 
   // 10. Apply race reward boosts (bonus actions, discrete boost rewards)
-  await applyRaceRewards(raceResult.results, race.season_id, raceId, blockHeight, supabase);
+  await applyRaceRewards(raceResult.results, race.season_id, raceId, blockHeight, supabase, mergedConfig);
 
   // 11. Update season_leaderboard for each participant
   for (const result of raceResult.results) {

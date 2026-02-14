@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Trophy, Medal, Award } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { useLeaderboard, useRaces } from '@/api';
+import { CollectionFilter } from '@/components/ui/CollectionFilter';
+import { useLeaderboard, useRaces, useCollections, useSeasons } from '@/api';
 import { useWallet } from '@/context/WalletContext';
+import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,13 +18,40 @@ function truncateAddress(addr: string): string {
 }
 
 export default function Leaderboard() {
-  const { data: leaderboard, loading } = useLeaderboard();
-  const { data: races } = useRaces();
+  const { data: collections } = useCollections();
+  const { data: seasons } = useSeasons();
+  const { active: activeCollections, toggle: toggleCollection } = useCollectionFilter();
   const { address } = useWallet();
 
-  const resolvedRaces = races?.filter(r => r.status === 'resolved' || r.status === 'locked') || [];
+  // Resolve the season for the leaderboard based on selected collection filter
+  const selectedSeasonId = useMemo(() => {
+    if (!seasons || seasons.length === 0) return undefined;
+    if (activeCollections.size === 1) {
+      const collectionId = [...activeCollections][0];
+      const season = seasons.find(s => s.collectionId === collectionId);
+      return season?.id;
+    }
+    return undefined;
+  }, [seasons, activeCollections]);
+
+  const { data: leaderboard, loading } = useLeaderboard(selectedSeasonId);
+  const { data: races } = useRaces();
+
+  const resolvedRaces = useMemo(() => {
+    const filtered = races?.filter(r => r.status === 'resolved' || r.status === 'locked') || [];
+    if (activeCollections.size === 0) return filtered;
+    return filtered.filter(r => r.collectionId && activeCollections.has(r.collectionId));
+  }, [races, activeCollections]);
 
   const isUserCreature = (ownerAddress: string) => ownerAddress === address;
+
+  const leaderboardTitle = useMemo(() => {
+    if (activeCollections.size === 1 && collections) {
+      const col = collections.find(c => activeCollections.has(c.id));
+      if (col) return `${col.name} Season Leaders`;
+    }
+    return 'Season Leaders';
+  }, [activeCollections, collections]);
 
   return (
     <MainLayout>
@@ -36,11 +66,17 @@ export default function Leaderboard() {
           </p>
         </div>
 
+        <CollectionFilter
+          collections={collections || []}
+          active={activeCollections}
+          onToggle={toggleCollection}
+        />
+
         {/* Season Leaders */}
         <section>
           <h2 className="font-display text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Trophy className="w-5 h-5 text-race-sprint" />
-            Season Leaders
+            {leaderboardTitle}
           </h2>
           <div className="cyber-card rounded-xl overflow-hidden overflow-x-auto">
             {/* Desktop Header */}
@@ -84,7 +120,6 @@ export default function Leaderboard() {
                           isUser ? 'bg-primary/10' : 'hover:bg-muted/30'
                         )}
                       >
-                        {/* Rank */}
                         <div className="text-center">
                           {entry.rank === 1 && <Trophy className="w-5 h-5 text-race-sprint mx-auto" />}
                           {entry.rank === 2 && <Medal className="w-5 h-5 text-muted-foreground mx-auto" />}
@@ -94,7 +129,6 @@ export default function Leaderboard() {
                           )}
                         </div>
 
-                        {/* Image */}
                         <div>
                           {entry.imageUrl || entry.fallbackImageUrl ? (
                             <PetImage
@@ -108,7 +142,6 @@ export default function Leaderboard() {
                           )}
                         </div>
 
-                        {/* Creature Name */}
                         <div>
                           <Link to={`/creatures/${entry.creatureId}`} className="block">
                             <p className={cn(
@@ -121,12 +154,10 @@ export default function Leaderboard() {
                           </Link>
                         </div>
 
-                        {/* Rarity */}
                         <div>
                           <RarityBadge rarity={entry.rarity} />
                         </div>
 
-                        {/* Owner */}
                         <div>
                           {entry.ownerDisplayName ? (
                             <p className="text-xs text-muted-foreground truncate">
@@ -139,21 +170,18 @@ export default function Leaderboard() {
                           )}
                         </div>
 
-                        {/* W/P/S */}
                         <div className="text-center">
                           <span className="font-mono text-sm text-foreground">
                             {entry.wins}/{entry.places}/{entry.shows}
                           </span>
                         </div>
 
-                        {/* Avg Score */}
                         <div className="text-center">
                           <span className="font-mono text-sm text-foreground">
                             {entry.avgScore > 0 ? entry.avgScore.toFixed(1) : '-'}
                           </span>
                         </div>
 
-                        {/* Races */}
                         <div className="text-right">
                           <span className="font-mono text-sm text-foreground">
                             {entry.racesEntered}
@@ -235,6 +263,14 @@ export default function Leaderboard() {
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-muted text-muted-foreground">
                             {race.raceType}
                           </span>
+                          {race.collectionName && (
+                            <>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-[10px] text-primary/70 font-semibold">
+                                {race.collectionName}
+                              </span>
+                            </>
+                          )}
                           <span className="text-muted-foreground">·</span>
                           <span className="text-xs text-muted-foreground font-mono">
                             {race.entryCount} entries

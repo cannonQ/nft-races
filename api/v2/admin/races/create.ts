@@ -27,15 +27,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'name, raceType, and entryDeadline are required' });
     }
 
-    // Get active season if not specified
+    // Get active season — use collectionId to find the right season when provided
     let activeSeasonId = seasonId;
     let activeCollectionId = collectionId;
     let entryFee = entryFeeNanoerg;
 
     if (!activeSeasonId) {
-      const season = await getActiveSeason();
+      // Pass collectionId to find the right season (required for multi-collection)
+      const season = await getActiveSeason(collectionId ?? undefined);
       if (!season) {
-        return res.status(400).json({ error: 'No active season found' });
+        return res.status(400).json({
+          error: collectionId
+            ? 'No active season found for this collection'
+            : 'No active season found. Specify a collectionId.',
+        });
       }
       activeSeasonId = season.id;
       activeCollectionId = activeCollectionId ?? season.collection_id;

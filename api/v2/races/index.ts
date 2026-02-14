@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../_lib/supabase.js';
-import { getActiveSeason } from '../../_lib/helpers.js';
+import { getActiveSeasons, getActiveSeason } from '../../_lib/helpers.js';
 import { nanoErgToErg } from '../../_lib/constants.js';
 import { resolveRace } from '../../_lib/resolve-race.js';
 
@@ -10,17 +10,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const season = await getActiveSeason();
-    if (!season) {
+    // Optional collection filter
+    const collectionIdFilter = req.query.collectionId as string | undefined;
+
+    // Fetch active seasons (one per collection, or filtered to one)
+    let seasons: any[];
+    if (collectionIdFilter) {
+      const s = await getActiveSeason(collectionIdFilter);
+      seasons = s ? [s] : [];
+    } else {
+      seasons = await getActiveSeasons();
+    }
+
+    if (seasons.length === 0) {
       return res.status(200).json([]);
     }
 
-    // Auto-resolve any expired open races with auto_resolve enabled
+    // Build lookup: seasonId → { collectionId, collectionName }
+    const seasonIds = seasons.map((s: any) => s.id);
+    const seasonMap = new Map<string, { collectionId: string; collectionName: string }>();
+    for (const s of seasons) {
+      seasonMap.set(s.id, {
+        collectionId: s.collection_id,
+        collectionName: s.collections?.name ?? 'Unknown',
+      });
+    }
+
+    // Auto-resolve any expired open races with auto_resolve enabled (across all active seasons)
     const now = new Date().toISOString();
     const { data: expiredRaces } = await supabase
       .from('season_races')
       .select('id')
-      .eq('season_id', season.id)
+      .in('season_id', seasonIds)
       .eq('status', 'open')
       .eq('auto_resolve', true)
       .lt('entry_deadline', now);
@@ -36,33 +57,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Fetch open/upcoming races and recently resolved races
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
+    // Fetch open/upcoming races and recently resolved races across all active seasons
     const [openResult, resolvedResult, cancelledResult] = await Promise.all([
       supabase
         .from('season_races')
         .select('*, season_race_entries(count)')
-        .eq('season_id', season.id)
+        .in('season_id', seasonIds)
         .in('status', ['open', 'upcoming'])
         .order('entry_deadline', { ascending: true }),
       supabase
         .from('season_races')
         .select('*, season_race_entries(count)')
-        .eq('season_id', season.id)
+        .in('season_id', seasonIds)
         .in('status', ['resolved', 'locked'])
         .order('created_at', { ascending: false })
         .limit(20),
       supabase
         .from('season_races')
         .select('*, season_race_entries(count)')
-        .eq('season_id', season.id)
+        .in('season_id', seasonIds)
         .eq('status', 'cancelled')
         .order('created_at', { ascending: false })
         .limit(20),
     ]);
 
     function mapRace(race: any) {
+      const seasonInfo = seasonMap.get(race.season_id);
       return {
         id: race.id,
         name: race.name,
@@ -73,6 +93,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         entryDeadline: race.entry_deadline,
         status: race.status,
         autoResolve: race.auto_resolve ?? true,
+        collectionId: seasonInfo?.collectionId ?? race.collection_id ?? null,
+        collectionName: seasonInfo?.collectionName ?? null,
       };
     }
 

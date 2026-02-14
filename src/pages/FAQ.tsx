@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import {
   Accordion,
@@ -6,6 +7,8 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
+
+type CollectionId = 'cyberpets' | 'aneta-angels';
 
 const statLabels = [
   { key: 'speed', label: 'Speed', abbr: 'SPD', color: 'text-race-sprint' },
@@ -25,6 +28,11 @@ function StatBadge({ abbr, color }: { abbr: string; color: string }) {
 }
 
 export default function FAQ() {
+  const [collection, setCollection] = useState<CollectionId>('cyberpets');
+  const isCyberPets = collection === 'cyberpets';
+  const collectionName = isCyberPets ? 'CyberPets' : 'Aneta Angels';
+  const creatureSingular = isCyberPets ? 'CyberPet' : 'angel';
+
   return (
     <MainLayout>
       <div className="max-w-3xl mx-auto space-y-8">
@@ -33,26 +41,65 @@ export default function FAQ() {
             How It Works
           </h1>
           <p className="text-muted-foreground">
-            Everything you need to know about training, racing, and boosting your CyberPets.
+            Everything you need to know about training, racing, and boosting your {collectionName}.
           </p>
+        </div>
+
+        {/* Collection Pills */}
+        <div className="flex items-center gap-2">
+          {(['cyberpets', 'aneta-angels'] as const).map((id) => {
+            const isActive = collection === id;
+            const label = id === 'cyberpets' ? 'CyberPets' : 'Aneta Angels';
+            return (
+              <button
+                key={id}
+                onClick={() => setCollection(id)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-semibold transition-all duration-200 border',
+                  isActive
+                    ? 'bg-primary/20 text-primary border-primary/50'
+                    : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30'
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Overview */}
         <div className="cyber-card rounded-xl p-6 space-y-3">
           <h2 className="font-display text-lg font-semibold text-foreground">The Basics</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            CyberPets Racing is a seasonal competitive game built on the Ergo blockchain.
-            You own CyberPet NFTs, train them to build stats, enter races to compete, and
-            earn rewards that make your pets even stronger. Each season resets trained stats,
-            so everyone starts fresh — but your NFT's base stats are permanent.
-          </p>
+          {isCyberPets ? (
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              CyberPets Racing is a seasonal competitive game built on the Ergo blockchain.
+              You own CyberPet NFTs, train them to build stats, enter races to compete, and
+              earn rewards that make your pets even stronger. Each season resets trained stats,
+              so everyone starts fresh — but your NFT's base stats are permanent.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Aneta Angels is a collection of 4,406 unique angel NFTs on the Ergo blockchain,
+                originally launched by the anetaBTC project and then RUGGED the community. 
+                This is an attempt to give some value back to the community. Each angel has 6 visual traits
+                that determine its rarity and racing stats — all derived mathematically from
+                on-chain trait scarcity.
+              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Train your angels to build stats, enter races to compete, and earn rewards.
+                Each season resets trained stats, so everyone starts fresh — but your NFT's
+                base stats are permanent and frozen on-chain (unlike Frosty and his ever-changing loyalties).
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Stats */}
         <div className="cyber-card rounded-xl p-6 space-y-4">
           <h2 className="font-display text-lg font-semibold text-foreground">The Six Stats</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Every CyberPet has six stats. <strong>Base stats</strong> come from your NFT's
+            Every {creatureSingular} has six stats. <strong>Base stats</strong> come from your NFT's
             on-chain traits and never change. <strong>Trained stats</strong> are earned through
             training and reset each season. Your <strong>effective stat</strong> is base + trained.
           </p>
@@ -80,151 +127,396 @@ export default function FAQ() {
           </p>
         </div>
 
-        {/* Base Stats Comparison */}
-        <div className="cyber-card rounded-xl p-6 space-y-4">
-          <h2 className="font-display text-lg font-semibold text-foreground">
-            How Base Stats Are Created
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Your NFT's on-chain traits determine its permanent base stats. Three factors matter:
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-              <p className="font-semibold text-foreground mb-1">Rarity</p>
-              <p className="text-muted-foreground">
-                Higher rarity = higher <strong>stat budget</strong>. A Common gets ~60 total
-                stat points distributed across 6 stats; an Epic gets ~90+.
-              </p>
+        {/* Base Stats — collection-specific */}
+        {isCyberPets ? (
+          <div className="cyber-card rounded-xl p-6 space-y-4">
+            <h2 className="font-display text-lg font-semibold text-foreground">
+              How Base Stats Are Created
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Your NFT's on-chain traits determine its permanent base stats. Three factors matter:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                <p className="font-semibold text-foreground mb-1">Rarity</p>
+                <p className="text-muted-foreground">
+                  Higher rarity = higher <strong>stat budget</strong>. A Common gets ~60 total
+                  stat points distributed across 6 stats; an Epic gets ~90+.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                <p className="font-semibold text-foreground mb-1">Body Parts</p>
+                <p className="text-muted-foreground">
+                  More body parts = bonus <StatBadge abbr="STM" color="text-race-distance" />.
+                  Each body part adds a small <strong>stamina</strong> bump.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                <p className="font-semibold text-foreground mb-1">Material Quality</p>
+                <p className="text-muted-foreground">
+                  Higher material (Cyberium {'>'} Diamond {'>'} Golden {'>'} Silver) = bonus <StatBadge abbr="FOC" color="text-primary" />.
+                  Better materials give a <strong>focus</strong> edge.
+                </p>
+              </div>
             </div>
-            <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-              <p className="font-semibold text-foreground mb-1">Body Parts</p>
-              <p className="text-muted-foreground">
-                More body parts = bonus <StatBadge abbr="STM" color="text-race-distance" />.
-                Each body part adds a small <strong>stamina</strong> bump.
-              </p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-              <p className="font-semibold text-foreground mb-1">Material Quality</p>
-              <p className="text-muted-foreground">
-                Higher material (Cyberium {'>'} Diamond {'>'} Golden {'>'} Silver) = bonus <StatBadge abbr="FOC" color="text-primary" />.
-                Better materials give a <strong>focus</strong> edge.
-              </p>
-            </div>
-          </div>
 
-          {/* Rarity stat budget table */}
-          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
-            Starting Stat Budgets by Rarity
-          </p>
-          <div className="rounded-lg border border-border/50 overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-muted/30 text-muted-foreground">
-                  <th className="text-left px-3 py-2 font-semibold">Rarity</th>
-                  <th className="text-right px-3 py-2 font-semibold">Stat Budget</th>
-                  <th className="text-right px-3 py-2 font-semibold">Avg / Stat</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/30">
-                {[
-                  { name: 'Common', total: 60, style: 'text-muted-foreground' },
-                  { name: 'Uncommon', total: 70, style: 'text-rarity-uncommon' },
-                  { name: 'Rare', total: 80, style: 'text-rarity-rare' },
-                  { name: 'Masterwork', total: 85, style: 'text-rarity-rare' },
-                  { name: 'Epic', total: 90, style: 'text-rarity-epic' },
-                  { name: 'Relic', total: 95, style: 'text-rarity-epic' },
-                  { name: 'Legendary', total: 100, style: 'text-rarity-legendary' },
-                  { name: 'Mythic', total: 110, style: 'text-rarity-mythic' },
-                  { name: 'Cyberium', total: 120, style: 'text-primary' },
-                ].map((r) => (
-                  <tr key={r.name}>
-                    <td className={cn('px-3 py-1.5 font-semibold', r.style)}>{r.name}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-foreground">{r.total}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">
-                      ~{(r.total / 6).toFixed(1)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Body parts and material quality shift points between stats (more parts = stamina
-            bonus, better material = focus bonus), but the total stays within the rarity budget.
-            Because the trained stat cap is the same for everyone (300), a Common can close the
-            gap through focused training and smart race-type selection.
-          </p>
-
-          {/* Side-by-side example */}
-          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
-            Example: Common vs Epic
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Common Example */}
+            {/* CyberPets rarity table */}
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
+              Starting Stat Budgets by Rarity
+            </p>
             <div className="rounded-lg border border-border/50 overflow-hidden">
-              <div className="bg-muted/30 px-3 py-2 flex items-center justify-between">
-                <span className="font-display text-sm font-semibold text-foreground">Quokka 1906</span>
-                <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
-                  Common
-                </span>
-              </div>
-              <div className="p-3 space-y-1.5 text-xs">
-                <p className="text-muted-foreground mb-2">
-                  Budget: ~60 · 8 parts · Silver material
-                </p>
-                {[
-                  { abbr: 'SPD', val: 9.2, color: 'text-race-sprint' },
-                  { abbr: 'STM', val: 13.2, color: 'text-race-distance' },
-                  { abbr: 'ACC', val: 9.2, color: 'text-race-technical' },
-                  { abbr: 'AGI', val: 9.2, color: 'text-race-mixed' },
-                  { abbr: 'HRT', val: 9.2, color: 'text-secondary' },
-                  { abbr: 'FOC', val: 9.7, color: 'text-primary' },
-                ].map((s) => (
-                  <div key={s.abbr} className="flex items-center gap-2">
-                    <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-muted-foreground/40" style={{ width: `${(s.val / 25) * 100}%` }} />
-                    </div>
-                    <span className="font-mono text-foreground w-8 text-right">{s.val}</span>
-                  </div>
-                ))}
-                <p className="font-mono text-muted-foreground text-right pt-1">Total: 59.7</p>
-              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/30 text-muted-foreground">
+                    <th className="text-left px-3 py-2 font-semibold">Rarity</th>
+                    <th className="text-right px-3 py-2 font-semibold">Stat Budget</th>
+                    <th className="text-right px-3 py-2 font-semibold">Avg / Stat</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {[
+                    { name: 'Common', total: 60, style: 'text-muted-foreground' },
+                    { name: 'Uncommon', total: 70, style: 'text-rarity-uncommon' },
+                    { name: 'Rare', total: 80, style: 'text-rarity-rare' },
+                    { name: 'Masterwork', total: 85, style: 'text-rarity-rare' },
+                    { name: 'Epic', total: 90, style: 'text-rarity-epic' },
+                    { name: 'Relic', total: 95, style: 'text-rarity-epic' },
+                    { name: 'Legendary', total: 100, style: 'text-rarity-legendary' },
+                    { name: 'Mythic', total: 110, style: 'text-rarity-mythic' },
+                    { name: 'Cyberium', total: 120, style: 'text-primary' },
+                  ].map((r) => (
+                    <tr key={r.name}>
+                      <td className={cn('px-3 py-1.5 font-semibold', r.style)}>{r.name}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-foreground">{r.total}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">
+                        ~{(r.total / 6).toFixed(1)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Body parts and material quality shift points between stats (more parts = stamina
+              bonus, better material = focus bonus), but the total stays within the rarity budget.
+              Because the trained stat cap is the same for everyone (300), a Common can close the
+              gap through focused training and smart race-type selection.
+            </p>
 
-            {/* Epic Example */}
-            <div className="rounded-lg border border-rarity-epic/30 overflow-hidden">
-              <div className="bg-rarity-epic/5 px-3 py-2 flex items-center justify-between">
-                <span className="font-display text-sm font-semibold text-foreground">Hydra 42</span>
-                <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-rarity-epic/10 text-rarity-epic">
-                  Epic
-                </span>
-              </div>
-              <div className="p-3 space-y-1.5 text-xs">
-                <p className="text-muted-foreground mb-2">
-                  Budget: ~90 · 6 parts · Cyberium material
-                </p>
-                {[
-                  { abbr: 'SPD', val: 14.1, color: 'text-race-sprint' },
-                  { abbr: 'STM', val: 17.1, color: 'text-race-distance' },
-                  { abbr: 'ACC', val: 14.1, color: 'text-race-technical' },
-                  { abbr: 'AGI', val: 14.1, color: 'text-race-mixed' },
-                  { abbr: 'HRT', val: 14.1, color: 'text-secondary' },
-                  { abbr: 'FOC', val: 16.1, color: 'text-primary' },
-                ].map((s) => (
-                  <div key={s.abbr} className="flex items-center gap-2">
-                    <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-rarity-epic/40" style={{ width: `${(s.val / 25) * 100}%` }} />
+            {/* CyberPets side-by-side example */}
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
+              Example: Common vs Epic
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-border/50 overflow-hidden">
+                <div className="bg-muted/30 px-3 py-2 flex items-center justify-between">
+                  <span className="font-display text-sm font-semibold text-foreground">Quokka 1906</span>
+                  <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
+                    Common
+                  </span>
+                </div>
+                <div className="p-3 space-y-1.5 text-xs">
+                  <p className="text-muted-foreground mb-2">
+                    Budget: ~60 · 8 parts · Silver material
+                  </p>
+                  {[
+                    { abbr: 'SPD', val: 9.2, color: 'text-race-sprint' },
+                    { abbr: 'STM', val: 13.2, color: 'text-race-distance' },
+                    { abbr: 'ACC', val: 9.2, color: 'text-race-technical' },
+                    { abbr: 'AGI', val: 9.2, color: 'text-race-mixed' },
+                    { abbr: 'HRT', val: 9.2, color: 'text-secondary' },
+                    { abbr: 'FOC', val: 9.7, color: 'text-primary' },
+                  ].map((s) => (
+                    <div key={s.abbr} className="flex items-center gap-2">
+                      <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full rounded-full bg-muted-foreground/40" style={{ width: `${(s.val / 25) * 100}%` }} />
+                      </div>
+                      <span className="font-mono text-foreground w-8 text-right">{s.val}</span>
                     </div>
-                    <span className="font-mono text-foreground w-8 text-right">{s.val}</span>
-                  </div>
-                ))}
-                <p className="font-mono text-rarity-epic text-right pt-1">Total: 89.6</p>
+                  ))}
+                  <p className="font-mono text-muted-foreground text-right pt-1">Total: 59.7</p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-rarity-epic/30 overflow-hidden">
+                <div className="bg-rarity-epic/5 px-3 py-2 flex items-center justify-between">
+                  <span className="font-display text-sm font-semibold text-foreground">Hydra 42</span>
+                  <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-rarity-epic/10 text-rarity-epic">
+                    Epic
+                  </span>
+                </div>
+                <div className="p-3 space-y-1.5 text-xs">
+                  <p className="text-muted-foreground mb-2">
+                    Budget: ~90 · 6 parts · Cyberium material
+                  </p>
+                  {[
+                    { abbr: 'SPD', val: 14.1, color: 'text-race-sprint' },
+                    { abbr: 'STM', val: 17.1, color: 'text-race-distance' },
+                    { abbr: 'ACC', val: 14.1, color: 'text-race-technical' },
+                    { abbr: 'AGI', val: 14.1, color: 'text-race-mixed' },
+                    { abbr: 'HRT', val: 14.1, color: 'text-secondary' },
+                    { abbr: 'FOC', val: 16.1, color: 'text-primary' },
+                  ].map((s) => (
+                    <div key={s.abbr} className="flex items-center gap-2">
+                      <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full rounded-full bg-rarity-epic/40" style={{ width: `${(s.val / 25) * 100}%` }} />
+                      </div>
+                      <span className="font-mono text-foreground w-8 text-right">{s.val}</span>
+                    </div>
+                  ))}
+                  <p className="font-mono text-rarity-epic text-right pt-1">Total: 89.6</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        ) : (
+          /* Aneta Angels Base Stats */
+          <div className="cyber-card rounded-xl p-6 space-y-4">
+            <h2 className="font-display text-lg font-semibold text-foreground">
+              How Base Stats Are Created
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Aneta Angels don't have an explicit rarity trait. Instead, <strong>rarity is
+              mathematically derived from how scarce each trait value is</strong> across the
+              entire collection of 4,406 circulating tokens. The scoring is frozen on-chain
+              and fully auditable.
+            </p>
+
+            {/* Scoring overview */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                <p className="font-semibold text-foreground mb-1">Trait Rarity Scoring</p>
+                <p className="text-muted-foreground">
+                  For each of the 5 scored traits, rarer values get higher scores using
+                  inverse frequency. Scores are <strong>normalized 0–100 per category</strong> so
+                  no single trait dominates.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                <p className="font-semibold text-foreground mb-1">Percentile Tiers</p>
+                <p className="text-muted-foreground">
+                  All 4,406 tokens are ranked by total score. Tiers are assigned by
+                  percentile: exactly <strong>2% Mythic, 6% Legendary, 12% Epic</strong>, etc.
+                  This guarantees a fair, predictable distribution.
+                </p>
+              </div>
+            </div>
+
+            {/* Trait → Stat mapping */}
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
+              Trait → Stat Mapping
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Each of the 5 scored trait categories maps to a specific stat. Your angel's
+              trait scores determine how its stat budget is distributed — two angels of the
+              same rarity tier will have different stat profiles based on their traits.
+            </p>
+            <div className="rounded-lg border border-border/50 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/30 text-muted-foreground">
+                    <th className="text-left px-3 py-2 font-semibold">Trait</th>
+                    <th className="text-left px-3 py-2 font-semibold">Stat</th>
+                    <th className="text-left px-3 py-2 font-semibold">Unique Values</th>
+                    <th className="text-left px-3 py-2 font-semibold">Logic</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {[
+                    { trait: 'Wings', stat: 'SPD', statColor: 'text-race-sprint', values: 8, logic: 'Wings = how fast you fly' },
+                    { trait: 'Body', stat: 'STM', statColor: 'text-race-distance', values: 41, logic: 'Body type = physical endurance' },
+                    { trait: 'Face', stat: 'HRT', statColor: 'text-secondary', values: 20, logic: 'Expression = grit and determination' },
+                    { trait: 'Head', stat: 'ACC', statColor: 'text-race-technical', values: 37, logic: 'Headgear = aerodynamics and burst' },
+                    { trait: 'Background', stat: 'AGI', statColor: 'text-race-mixed', values: 18, logic: 'Environment = adaptability' },
+                  ].map((row) => (
+                    <tr key={row.trait}>
+                      <td className="px-3 py-1.5 font-semibold text-foreground">{row.trait}</td>
+                      <td className="px-3 py-1.5"><StatBadge abbr={row.stat} color={row.statColor} /></td>
+                      <td className="px-3 py-1.5 font-mono text-muted-foreground">{row.values}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground">{row.logic}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="px-3 py-1.5 font-semibold text-foreground">Skin Tone</td>
+                    <td className="px-3 py-1.5"><StatBadge abbr="FOC" color="text-primary" /></td>
+                    <td className="px-3 py-1.5 font-mono text-muted-foreground">4</td>
+                    <td className="px-3 py-1.5 text-muted-foreground">Separate — not part of stat budget</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Aneta Angels rarity table */}
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
+              Rarity Tiers & Stat Budgets
+            </p>
+            <div className="rounded-lg border border-border/50 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/30 text-muted-foreground">
+                    <th className="text-left px-3 py-2 font-semibold">Tier</th>
+                    <th className="text-right px-3 py-2 font-semibold">Stat Budget</th>
+                    <th className="text-right px-3 py-2 font-semibold">Avg / Stat</th>
+                    <th className="text-right px-3 py-2 font-semibold">Count</th>
+                    <th className="text-right px-3 py-2 font-semibold">% of Collection</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {[
+                    { name: 'Common', total: 50, count: 1321, pct: '30.0%', style: 'text-muted-foreground' },
+                    { name: 'Uncommon', total: 60, count: 1321, pct: '30.0%', style: 'text-rarity-uncommon' },
+                    { name: 'Rare', total: 70, count: 882, pct: '20.0%', style: 'text-rarity-rare' },
+                    { name: 'Epic', total: 80, count: 529, pct: '12.0%', style: 'text-rarity-epic' },
+                    { name: 'Legendary', total: 90, count: 264, pct: '6.0%', style: 'text-rarity-legendary' },
+                    { name: 'Mythic', total: 100, count: 89, pct: '2.0%', style: 'text-rarity-mythic' },
+                  ].map((r) => (
+                    <tr key={r.name}>
+                      <td className={cn('px-3 py-1.5 font-semibold', r.style)}>{r.name}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-foreground">{r.total}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">
+                        ~{(r.total / 6).toFixed(1)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{r.count.toLocaleString()}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{r.pct}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Focus / Skin Tone */}
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
+              Skin Tone → Focus
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Focus is <strong>not</strong> part of the stat budget. It's a separate modifier
+              from Skin Tone that controls how much luck can swing your results. All four
+              tones are equally distributed (~25% each) — this is a strategic property, not
+              a power advantage.
+            </p>
+            <div className="rounded-lg border border-border/50 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/30 text-muted-foreground">
+                    <th className="text-left px-3 py-2 font-semibold">Skin Tone</th>
+                    <th className="text-right px-3 py-2 font-semibold">Focus</th>
+                    <th className="text-left px-3 py-2 font-semibold">Effect</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {[
+                    { tone: 'Tone 1', focus: '0.85 (High)', effect: 'Consistent, reliable. Protects a lead.' },
+                    { tone: 'Tone 2', focus: '0.70 (Mid-High)', effect: 'Slightly swingy. Small chance of surprise.' },
+                    { tone: 'Tone 3', focus: '0.55 (Mid-Low)', effect: 'Noticeable variance. Can overperform or underperform.' },
+                    { tone: 'Tone 4', focus: '0.40 (Low)', effect: 'Wild swings. Upset specialist — or spectacular flameout.' },
+                  ].map((row) => (
+                    <tr key={row.tone}>
+                      <td className="px-3 py-1.5 font-semibold text-foreground">{row.tone}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-primary">{row.focus}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground">{row.effect}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Aneta Angels examples */}
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider pt-2">
+              Example: Common vs Mythic
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Common angel */}
+              <div className="rounded-lg border border-border/50 overflow-hidden">
+                <div className="bg-muted/30 px-3 py-2 flex items-center justify-between">
+                  <span className="font-display text-sm font-semibold text-foreground">Aneta #2847</span>
+                  <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
+                    Common
+                  </span>
+                </div>
+                <div className="p-3 space-y-1.5 text-xs">
+                  <p className="text-muted-foreground mb-2">
+                    Score: 12.4 · Angel Wings · Tone 1
+                  </p>
+                  {[
+                    { abbr: 'SPD', val: 10, color: 'text-race-sprint' },
+                    { abbr: 'STM', val: 10, color: 'text-race-distance' },
+                    { abbr: 'ACC', val: 10, color: 'text-race-technical' },
+                    { abbr: 'AGI', val: 10, color: 'text-race-mixed' },
+                    { abbr: 'HRT', val: 10, color: 'text-secondary' },
+                    { abbr: 'FOC', val: 0.85, color: 'text-primary' },
+                  ].map((s) => (
+                    <div key={s.abbr} className="flex items-center gap-2">
+                      <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
+                      {s.abbr !== 'FOC' ? (
+                        <>
+                          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full bg-muted-foreground/40" style={{ width: `${(s.val / 30) * 100}%` }} />
+                          </div>
+                          <span className="font-mono text-foreground w-8 text-right">~{s.val}</span>
+                        </>
+                      ) : (
+                        <span className="font-mono text-primary text-right flex-1">{s.val}</span>
+                      )}
+                    </div>
+                  ))}
+                  <p className="font-mono text-muted-foreground text-right pt-1">Total: ~50</p>
+                  <p className="text-muted-foreground pt-1 italic">
+                    All common traits = flat stats, but high Focus means rock-solid consistency. Specialize via training to compete.
+                  </p>
+                </div>
+              </div>
+
+              {/* Mythic angel */}
+              <div className="rounded-lg border border-rarity-mythic/30 overflow-hidden">
+                <div className="bg-rarity-mythic/5 px-3 py-2 flex items-center justify-between">
+                  <span className="font-display text-sm font-semibold text-foreground">Aneta #0581</span>
+                  <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-rarity-mythic/10 text-rarity-mythic">
+                    Mythic
+                  </span>
+                </div>
+                <div className="p-3 space-y-1.5 text-xs">
+                  <p className="text-muted-foreground mb-2">
+                    Score: 265.0 · Gold Wings · Tone 4
+                  </p>
+                  {[
+                    { abbr: 'SPD', val: 27, color: 'text-race-sprint' },
+                    { abbr: 'STM', val: 14, color: 'text-race-distance' },
+                    { abbr: 'ACC', val: 8, color: 'text-race-technical' },
+                    { abbr: 'AGI', val: 16, color: 'text-race-mixed' },
+                    { abbr: 'HRT', val: 27, color: 'text-secondary' },
+                    { abbr: 'FOC', val: 0.40, color: 'text-primary' },
+                  ].map((s) => (
+                    <div key={s.abbr} className="flex items-center gap-2">
+                      <span className={cn('font-mono w-7', s.color)}>{s.abbr}</span>
+                      {s.abbr !== 'FOC' ? (
+                        <>
+                          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full bg-rarity-mythic/40" style={{ width: `${(s.val / 30) * 100}%` }} />
+                          </div>
+                          <span className="font-mono text-foreground w-8 text-right">~{s.val}</span>
+                        </>
+                      ) : (
+                        <span className="font-mono text-primary text-right flex-1">{s.val}</span>
+                      )}
+                    </div>
+                  ))}
+                  <p className="font-mono text-rarity-mythic text-right pt-1">Total: ~92</p>
+                  <p className="text-muted-foreground pt-1 italic">
+                    Gold Wings + Meme 4 face = massive SPD and HRT spikes, but low Focus means wild luck swings every race.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              A well-trained Common that specializes for sprint races can beat an untrained
+              Mythic. The trained stat cap (300) is the same for everyone — strategy matters
+              as much as rarity.
+            </p>
+          </div>
+        )}
 
         {/* FAQ Accordion */}
         <div className="cyber-card rounded-xl p-6">
@@ -287,7 +579,7 @@ export default function FAQ() {
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground space-y-3">
                 <p>
-                  Each race type weights the six stats differently. Your pet's <strong>effective
+                  Each race type weights the six stats differently. Your {creatureSingular}'s <strong>effective
                   stats</strong> are multiplied by these weights to produce a <strong>Base Power</strong> score.
                   The higher the weight, the more that stat matters.
                 </p>
@@ -309,7 +601,7 @@ export default function FAQ() {
                   </div>
                   <div className="p-3 rounded-lg bg-race-mixed/5 border border-race-mixed/20">
                     <p className="font-semibold text-race-mixed mb-1">Mixed</p>
-                    <p>Balanced weights across all stats. Well-rounded pets perform best.</p>
+                    <p>Balanced weights across all stats. Well-rounded {creatureSingular}s perform best.</p>
                   </div>
                   <div className="p-3 rounded-lg bg-race-hazard/5 border border-race-hazard/20">
                     <p className="font-semibold text-race-hazard mb-1">Hazard</p>
@@ -365,7 +657,7 @@ export default function FAQ() {
               <AccordionContent className="text-muted-foreground space-y-3">
                 <p>
                   To enter a race, pick an open race from the Races page, select one of your
-                  CyberPets, and confirm entry. Your creature's current stats, fatigue, and
+                  {' '}{collectionName}, and confirm entry. Your creature's current stats, fatigue, and
                   sharpness are <strong>snapshotted</strong> at entry time — training after
                   entering won't change your race stats.
                 </p>
@@ -427,31 +719,42 @@ export default function FAQ() {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Rarity */}
+            {/* Rarity — collection-specific */}
             <AccordionItem value="rarity">
               <AccordionTrigger className="text-foreground">
                 Does NFT rarity matter?
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground space-y-3">
                 <p>
-                  Yes — rarity determines your pet's <strong>base stats</strong>. Rarer pets
-                  start with higher base values, giving them a natural advantage. But because of
-                  the total trained stat cap (300), commons can still compete by specializing
-                  their training build for specific race types.
+                  Yes — rarity determines your {creatureSingular}'s <strong>base stats</strong>. Rarer
+                  {' '}{collectionName.toLowerCase()} start with higher base values, giving them a natural
+                  advantage. But because of the total trained stat cap (300), commons can still
+                  compete by specializing their training build for specific race types.
                 </p>
-                <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase">
-                  <span className="px-2 py-1 rounded bg-muted/30 text-muted-foreground">Common</span>
-                  <span className="px-2 py-1 rounded bg-rarity-uncommon/10 text-rarity-uncommon">Uncommon</span>
-                  <span className="px-2 py-1 rounded bg-rarity-rare/10 text-rarity-rare">Rare</span>
-                  <span className="px-2 py-1 rounded bg-rarity-rare/10 text-rarity-rare">Masterwork</span>
-                  <span className="px-2 py-1 rounded bg-rarity-epic/10 text-rarity-epic">Epic</span>
-                  <span className="px-2 py-1 rounded bg-rarity-epic/10 text-rarity-epic">Relic</span>
-                  <span className="px-2 py-1 rounded bg-rarity-legendary/10 text-rarity-legendary">Legendary</span>
-                  <span className="px-2 py-1 rounded bg-rarity-mythic/10 text-rarity-mythic">Mythic</span>
-                  <span className="px-2 py-1 rounded bg-primary/10 text-primary">Cyberium</span>
-                </div>
+                {isCyberPets ? (
+                  <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase">
+                    <span className="px-2 py-1 rounded bg-muted/30 text-muted-foreground">Common</span>
+                    <span className="px-2 py-1 rounded bg-rarity-uncommon/10 text-rarity-uncommon">Uncommon</span>
+                    <span className="px-2 py-1 rounded bg-rarity-rare/10 text-rarity-rare">Rare</span>
+                    <span className="px-2 py-1 rounded bg-rarity-rare/10 text-rarity-rare">Masterwork</span>
+                    <span className="px-2 py-1 rounded bg-rarity-epic/10 text-rarity-epic">Epic</span>
+                    <span className="px-2 py-1 rounded bg-rarity-epic/10 text-rarity-epic">Relic</span>
+                    <span className="px-2 py-1 rounded bg-rarity-legendary/10 text-rarity-legendary">Legendary</span>
+                    <span className="px-2 py-1 rounded bg-rarity-mythic/10 text-rarity-mythic">Mythic</span>
+                    <span className="px-2 py-1 rounded bg-primary/10 text-primary">Cyberium</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase">
+                    <span className="px-2 py-1 rounded bg-muted/30 text-muted-foreground">Common (30%)</span>
+                    <span className="px-2 py-1 rounded bg-rarity-uncommon/10 text-rarity-uncommon">Uncommon (30%)</span>
+                    <span className="px-2 py-1 rounded bg-rarity-rare/10 text-rarity-rare">Rare (20%)</span>
+                    <span className="px-2 py-1 rounded bg-rarity-epic/10 text-rarity-epic">Epic (12%)</span>
+                    <span className="px-2 py-1 rounded bg-rarity-legendary/10 text-rarity-legendary">Legendary (6%)</span>
+                    <span className="px-2 py-1 rounded bg-rarity-mythic/10 text-rarity-mythic">Mythic (2%)</span>
+                  </div>
+                )}
                 <p>
-                  A well-trained Common focused on speed can beat an untrained Epic in a sprint.
+                  A well-trained Common focused on speed can beat an untrained {isCyberPets ? 'Epic' : 'Mythic'} in a sprint.
                   Strategy matters as much as rarity.
                 </p>
               </AccordionContent>
@@ -472,8 +775,21 @@ export default function FAQ() {
                   <li><strong>Low Focus:</strong> Up to ±30% swing. High risk, high reward.</li>
                   <li><strong>High Focus:</strong> Minimal swing. Consistent, reliable performance.</li>
                 </ul>
+                {isCyberPets ? (
+                  <p>
+                    Focus comes from your CyberPet's <strong>material quality</strong>. Cyberium
+                    and Diamond materials give higher base Focus than Silver or Golden.
+                  </p>
+                ) : (
+                  <p>
+                    For Aneta Angels, Focus comes from <strong>Skin Tone</strong> (Tone 1 = high
+                    Focus 0.85, Tone 4 = low Focus 0.40). It's equally distributed across the
+                    collection and operates independently of the stat budget — a strategic property,
+                    not a power advantage.
+                  </p>
+                )}
                 <p>
-                  Think of Focus as "consistency insurance." If your pet has strong base stats,
+                  Think of Focus as "consistency insurance." If your {creatureSingular} has strong base stats,
                   you might want high Focus to protect that lead. If you're the underdog, low
                   Focus gives you a chance to upset — or crash spectacularly.
                 </p>
@@ -499,6 +815,7 @@ export default function FAQ() {
                 <p>
                   This keeps the game fresh and gives new players a fair shot each season.
                   Seasons may also introduce modifiers — rule changes that shake up the meta.
+                  Each collection has its own independent season.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -510,20 +827,49 @@ export default function FAQ() {
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground space-y-3">
                 <p>
-                  CyberPets are NFTs on the Ergo blockchain. The game uses the chain for:
+                  {collectionName} are NFTs on the Ergo blockchain. The game uses the chain for:
                 </p>
                 <ul className="space-y-1 text-sm list-disc list-inside">
-                  <li><strong>Ownership verification</strong> — Your wallet proves you own each pet</li>
+                  <li><strong>Ownership verification</strong> — Your wallet proves you own each {creatureSingular}</li>
                   <li><strong>Deterministic RNG</strong> — Race outcomes are seeded from Ergo block hashes,
                   making results provably fair and verifiable</li>
                   <li><strong>Boost expiry</strong> — Boosts expire based on Ergo block height, not wall-clock time</li>
+                  {!isCyberPets && (
+                    <li><strong>On-chain rarity</strong> — Aneta Angels rarity scores are frozen in an AVL tree
+                    on-chain, making them independently verifiable by anyone</li>
+                  )}
                 </ul>
                 <p>
-                  Connect your Nautilus wallet to get started. Your CyberPets are auto-discovered
+                  Connect your Nautilus wallet to get started. Your {collectionName} are auto-discovered
                   from your wallet balance.
                 </p>
               </AccordionContent>
             </AccordionItem>
+
+            {/* Aneta Angels: On-Chain Verification — only show for angels */}
+            {!isCyberPets && (
+              <AccordionItem value="verification">
+                <AccordionTrigger className="text-foreground">
+                  How can I verify rarity scores on-chain?
+                </AccordionTrigger>
+                <AccordionContent className="text-muted-foreground space-y-3">
+                  <p>
+                    The rarity scores are frozen on the Ergo blockchain in a single box containing:
+                  </p>
+                  <ul className="space-y-1 text-sm list-disc list-inside">
+                    <li><strong>R4:</strong> AVL tree root hash — cryptographic fingerprint of all 4,406 token scores</li>
+                    <li><strong>R5:</strong> SHA-256 hash of the scoring methodology document</li>
+                    <li><strong>R6:</strong> URL to the full scored dataset</li>
+                  </ul>
+                  <p>
+                    If a single trait score, tier assignment, or focus value were changed,
+                    the root hash would not match. The methodology hash proves the formula
+                    itself hasn't been altered. The scoring script is open source and anyone
+                    can independently reproduce the results from on-chain trait data.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
           </Accordion>
         </div>

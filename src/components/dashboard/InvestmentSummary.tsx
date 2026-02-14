@@ -1,13 +1,14 @@
 import { Link } from 'react-router-dom';
 import { Flame, Trophy, ArrowRight } from 'lucide-react';
-import { useWalletLedger, useCurrentSeason } from '@/api';
+import { useWalletLedger, useSeasons } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function InvestmentSummary() {
   const { address } = useWallet();
   const { data: ledger, loading } = useWalletLedger(address);
-  const { data: season } = useCurrentSeason();
+  const { data: seasons } = useSeasons();
+  const totalPrizePool = (seasons ?? []).reduce((sum, s) => sum + (s.prizePool ?? 0), 0);
 
   if (!address || loading) {
     if (loading) return <Skeleton className="h-16 rounded-xl mb-4" />;
@@ -48,7 +49,7 @@ export function InvestmentSummary() {
           </div>
           <div>
             <p className="font-mono text-sm font-semibold text-accent">
-              {(season?.prizePool ?? ledger.seasonPrizePoolErg).toFixed(2)} ERG
+              {(totalPrizePool || ledger.seasonPrizePoolErg).toFixed(2)} ERG
             </p>
             <p className="text-[10px] text-muted-foreground">Prize Pool</p>
           </div>

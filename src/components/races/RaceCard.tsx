@@ -79,13 +79,20 @@ export function RaceCard({ race, onEnter, onViewDetails, onExpired }: RaceCardPr
           <h3 className="font-display text-lg font-semibold text-foreground">
             {race.name}
           </h3>
-          <span className={cn(
-            'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider mt-1',
-            typeStyle.bg,
-            typeStyle.text
-          )}>
-            {typeLabels[race.raceType]}
-          </span>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className={cn(
+              'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider',
+              typeStyle.bg,
+              typeStyle.text
+            )}>
+              {typeLabels[race.raceType]}
+            </span>
+            {race.collectionName && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider bg-primary/10 text-primary/80 border border-primary/20">
+                {race.collectionName}
+              </span>
+            )}
+          </div>
         </div>
         
         {/* Status badge */}
