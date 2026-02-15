@@ -35,6 +35,9 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **Image caching proxy** — CyberPets via `/api/v2/img/[number]`, Aneta Angels via `/api/v2/img/token/[tokenId]`. Both proxied through Vercel CDN with `s-maxage` + `immutable` edge caching (1-year). Upstream: IPFS gateway (HTTPS-upgraded) → ergexplorer nftcache fallback. All API endpoints (creatures, leaderboard, ledger) pass collection-aware loaders for correct image URL resolution.
 - **Wallet display names** — Users can set a friendly name (e.g. "Andrius") via wallet dropdown. Shown on leaderboard, race podium, and race results instead of truncated address. Names are unique (case-insensitive), 2-20 chars. Purely off-chain (stored in `wallet_profiles` table) — zero impact on Phase 2 smart contracts
 - **Collection filter UI** — Reusable toggle pill component on Dashboard, Races, Leaderboard, Wallet Ledger, and Training pages. Wallet Ledger filter is fully wired: summary cards (Burned, Prize Pool, Activity) and transaction history all update per collection. Ledger entries include `collectionId`/`collectionName` derived from `season_id` join. Transaction rows show creature image + name and season name pill.
+- **Fatigue/Sharpness rework** — Per-activity sharpness deltas (physical activities reduce, mental activities increase), wider race sharpness modifier (×0.80 to ×1.05), scaled fatigue decay tiers (3/day at low fatigue up to 15/day at high fatigue), 12h sharpness grace period then −15/day decay. All configurable via `game_config` JSON.
+- **Meditation** — Recovery training action: 0 stat gains, −25 fatigue, +15 sharpness. Uses a training action slot. Recovery-specific UI mode in activity cards, confirm modal, and result modal (hides stat boosts, shows condition changes).
+- **Treatment Center** — Three lockout-based recovery tiers: Stim Pack (6h, −20 fatigue), Cryo Pod (12h, −40 fatigue, sharpness→50), Full Reset (24h, fatigue→0, sharpness→30). Lazy completion model — effects applied when timer expires. Creatures locked from training/racing during treatment. Full ErgoPay + Nautilus + free-play fee flows. Treatment page with creature selection, tier cards, confirm/result dialogs with explorer TX links.
 
 ### Open Items
 - [x] **Training cost (0.01 ERG)** — Real ERG payments via Nautilus. Treasury box registers (R4-R6) for on-chain traceability. Verified on mainnet.
@@ -88,6 +91,8 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | 11 | `POST /api/v2/train` | `api/v2/train.ts` | Train creature — validates cooldowns, applies gains |
 | 12 | `POST /api/v2/races/:id/enter` | `api/v2/races/[id]/enter.ts` | Enter race — snapshots stats, validates limits |
 | 13 | `POST /api/v2/ergopay/init` | `api/v2/ergopay/init.ts` | Create ErgoPay session, return ergopay:// URL |
+| 14 | `POST /api/v2/treatment/start` | `api/v2/treatment/start.ts` | Start treatment — validates creature state, applies lockout |
+| 15 | `POST /api/v2/ergopay/tx/request` | `api/v2/ergopay/tx/request.ts` | Create ErgoPay payment request (training, race entry, or treatment fees) |
 
 ### Admin POST Endpoints (Bearer token auth)
 
@@ -108,6 +113,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `GET /api/v2/collections` | `api/v2/collections.ts` | List collections |
 | `GET /api/v2/ergopay/connect/:sessionId/:address` | `api/v2/ergopay/connect/[sessionId]/[address].ts` | ErgoPay wallet callback (called by mobile wallet) |
 | `POST /api/v2/ergopay/tx/callback/:requestId` | `api/v2/ergopay/tx/callback/[requestId].ts` | ErgoPay TX callback — wallet POSTs `{ signedTxId }` after signing |
+| `GET /api/v2/ergopay/tx/status/:requestId` | `api/v2/ergopay/tx/status/[requestId].ts` | Poll ErgoPay TX request status (pending→executing→executed/expired/failed) |
 
 ### Shared Server Libraries
 
@@ -128,6 +134,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `api/_lib/credit-ledger.ts` | Credit ledger helper — records training fees, race fees, payouts |
 | `api/_lib/ergo-tx-builder.ts` | Server-side sigma serialization, Explorer UTXO fetching, unsigned TX builder with R4-R6 registers |
 | `api/_lib/execute-action.ts` | Shared training/race entry executor (used by API endpoints + ErgoPay callback) |
+| `api/_lib/execute-treatment.ts` | Treatment start + lazy completion logic (`executeTreatmentStart()`, `checkAndCompleteTreatment()`) |
 
 ### Frontend Hooks (all wired to real API)
 
@@ -150,6 +157,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `useUpdateWalletProfile` | `PUT /api/v2/wallet/:address/profile` | Mutation |
 | `useCollections` | `GET /api/v2/collections` | Query |
 | `useSeasons` | `GET /api/v2/seasons/current` | Query (array) |
+| `useTreatment` | `POST /api/v2/treatment/start` | Mutation |
 
 ---
 
@@ -825,6 +833,73 @@ When `REQUIRE_FEES=true`, `train.ts` and `enter.ts` return HTTP 402 if no `txId`
 
 ### Phase 2 Compatibility
 Treasury box registers (R4-R6) are already written in Phase 1. When Phase 2 scanner arrives, it reads existing boxes to index game actions. The transition from "API writes credit_ledger" to "scanner writes credit_ledger" requires zero schema changes — only the data ingestion pipeline changes.
+
+---
+
+## Fatigue/Sharpness Rework + Meditation + Treatment Center (2026-02-15)
+
+### Overview
+Five-phase rework of the creature condition system, adding strategic depth to training and recovery. All phases complete.
+
+### Phase 1 — Sharpness Rework & Scaled Fatigue Decay
+- **Per-activity sharpness deltas**: Each training activity now affects sharpness differently. Physical activities (Sprint Drills: −5, Distance Runs: −3, Cross-Training: −2) decrease sharpness, while mental activities (Gate Work: +5, Mental Prep: +15) increase it. Agility Course is neutral (±0).
+- **Wider race sharpness modifier**: Range expanded from ×0.90–1.00 to **×0.80–×1.05**. At 0 sharpness, creatures suffer a 20% penalty; at 100, they get a 5% bonus. Computed by `computeSharpnessMod()` in `lib/training-engine.ts`.
+- **Scaled fatigue decay tiers**: Fatigue no longer decays at a flat rate. Configurable tiers — light fatigue (<30) decays at ~3/day, moderate (30-60) at ~8/day, heavy (60-80) at ~12/day, severe (80+) at ~15/day. Implemented in `applyConditionDecay()`.
+- **Faster sharpness decay**: 12-hour grace period after last action, then −15/day (previously −10/day). Keeps sharpness relevant as a "train recently before a race" mechanic.
+- **Config-driven**: All values stored in `game_config` JSON — `sharpness_mod_floor`, `sharpness_mod_ceiling`, `sharpness_grace_hours`, `sharpness_decay_per_day`, `fatigue_decay_tiers`, per-activity `sharpness_delta`.
+- **Frontend**: ActivityCard shows sharpness arrows (↑/↓/−), ConfirmModal has sharpness section, ResultModal shows sharpness change.
+
+Migration: `013_sharpness_rework.sql`
+
+### Phase 2 — Meditation (Recovery Training Action)
+- **New activity**: Meditation — uses 1 training action, produces 0 stat gains, −25 fatigue, +15 sharpness.
+- **Fatigue floor clamp**: `execute-action.ts` clamps fatigue to ≥0 after applying negative fatigue cost.
+- **Recovery UI mode**: ActivityCard, ConfirmModal, and ResultModal detect recovery activities (fatigue_cost < 0) and show condition-focused UI instead of stat boosts. Stat boost selection hidden for recovery activities.
+- **CHECK constraint update**: `training_log` has a CHECK constraint on `activity` column — migration adds `'meditation'` to the allowed values.
+
+Migration: `014_meditation_activity.sql`
+
+### Phase 3 — Treatment Center (Backend)
+- **Three treatment tiers**:
+  - **Stim Pack** — 6h lockout, −20 fatigue, sharpness unchanged, 0.005 ERG
+  - **Cryo Pod** — 12h lockout, −40 fatigue, sharpness set to 50, 0.01 ERG
+  - **Full Reset** — 24h lockout, fatigue to 0, sharpness set to 30, 0.02 ERG
+- **Lockout model**: `creature_stats` gets `treatment_type`, `treatment_started_at`, `treatment_ends_at` columns. Creature cannot train or race while in treatment.
+- **Lazy completion**: `checkAndCompleteTreatment()` in `execute-treatment.ts` — when `treatment_ends_at < now`, applies treatment effects (fatigue/sharpness changes), clears treatment columns, logs to `treatment_log`.
+- **`treatment_log` table**: Records completed treatments with creature_id, season_id, treatment_type, duration_hours, fatigue/sharpness before/after.
+- **Treatment config**: Stored in `game_config.treatments` JSON — per-collection overridable via deep merge.
+- **ErgoPay support**: `treatment_fee` action type added to `ergopay/tx/request.ts` (validates creature not already in treatment, checks treatment type exists in config).
+- **Credit ledger**: `treatment_fee` added to `LedgerTxType` union and DB CHECK constraint.
+
+Migration: `015_treatment_center.sql`
+
+Files: `api/_lib/execute-treatment.ts`, `api/v2/treatment/start.ts`, `api/v2/ergopay/tx/request.ts`
+
+### Phase 4 — Treatment Center (Frontend)
+- **Treatment.tsx page**: Full treatment center with two views:
+  - *Creature selection*: Collection filter pills, creature grid with fatigue/sharpness bars, treatment timers for creatures already in treatment.
+  - *Treatment detail*: Three tier cards (yellow/cyan/violet color themes) with lockout duration, effects preview, and cost. Confirm dialog, result dialog with treatment timer and ergexplorer TX link.
+- **Fee flows**: Nautilus (sign_tx), ErgoPay (QR/deep-link via ErgoPayTxModal), and free-play (REQUIRE_FEES=false) all supported.
+- **CreatureCard updates**: Shows TreatmentTimer (instead of CooldownTimer) when in treatment. Train/Race buttons disabled during treatment. "Treat" button links to `/treatment/:id`.
+- **TreatmentTimer component**: Live countdown with progress bar. Compact mode for inline display, full mode for detail view.
+- **Navigation**: "Treat" nav item with Stethoscope icon added to desktop sidebar and mobile bottom nav (7-column grid).
+- **Routing**: `/treatment` and `/treatment/:creatureId` routes, lazy-loaded.
+
+Files: `src/pages/Treatment.tsx`, `src/components/creatures/TreatmentTimer.tsx`, `src/components/creatures/CreatureCard.tsx`, `src/components/layout/Navigation.tsx`, `src/App.tsx`, `src/api/useTreatment.ts`
+
+### Phase 5 — FAQ Updates
+- **Training section**: Per-activity sharpness deltas displayed in grid, meditation callout with border accent.
+- **Fatigue/Sharpness section**: Scaled decay explanation, wider modifier range (×0.80 to ×1.05), 12h grace period, recovery options summary.
+- **Scoring section**: Updated sharpness modifier range and explanation of strategic impact.
+- **Treatment Center section**: New accordion with color-coded tier cards (yellow/cyan/violet), strategic cost callout, lazy completion explanation.
+
+File: `src/pages/FAQ.tsx`
+
+### Key Pitfalls
+- `training_log` has a CHECK constraint on `activity` column — must be ALTERed when adding new activities (migration 014).
+- `credit_ledger` has a CHECK constraint on `tx_type` (migration 007) — must be ALTERed when adding new tx types like `treatment_fee` (migration 015).
+- `recordLedgerEntry()` is fire-and-forget — CHECK constraint violations are silently swallowed, making missing ledger entries hard to debug.
+- ErgoPay `tx/request.ts` if/else branching must use `else if` for each action type (not bare `else`) when there are 3+ action types.
 
 ---
 
