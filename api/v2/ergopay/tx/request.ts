@@ -111,8 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message = `${appName}: Training Fee (0.01 ERG)`;
       metadata = { actionType: 'train', tokenId, context: activity };
 
-    } else {
-      // race_entry_fee
+    } else if (actionType === 'race_entry_fee') {
       if (!creatureId || !raceId) {
         return res.status(400).json({ error: 'creatureId and raceId are required for race entry' });
       }
