@@ -64,11 +64,13 @@ async function verifyCreatureOwnership(
   walletAddress: string,
   selectFields: string = 'id, owner_address, token_id, collection_id'
 ) {
-  const { data: creature, error: creatureErr } = await supabase
+  const { data, error: creatureErr } = await supabase
     .from('creatures')
     .select(selectFields)
     .eq('id', creatureId)
     .single();
+
+  const creature = data as any;
 
   if (creatureErr || !creature) {
     throw new ActionError(400, 'Creature not found');
