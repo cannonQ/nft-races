@@ -82,6 +82,18 @@ export const TX_FEE = 1100000; // 1.1 ERG in nanoErgs
 export const MIN_NERG_BOX_VALUE = 1000000; // 1 ERG minimum box value
 export const CHANGE_BOX_VALUE = 7200000; // buffer for change box
 const MAX_TOKENS_PER_BOX = 100; // Ergo protocol allows 255, use 100 for safety margin
+const MIN_VALUE_PER_BYTE = 360; // nanoERG per byte (Ergo protocol parameter)
+
+/**
+ * Estimate minimum nanoERG a box needs based on its token count.
+ * Ergo requires: minValuePerByte * serializedBoxSize.
+ * Estimate: ~120 base bytes + ~36 bytes per token, with a 20% safety margin.
+ */
+function minBoxValue(numTokens: number): number {
+  const estimatedBytes = 120 + numTokens * 36;
+  const required = Math.ceil(estimatedBytes * MIN_VALUE_PER_BYTE * 1.2);
+  return Math.max(MIN_NERG_BOX_VALUE, required);
+}
 
 // Standard miner fee ergoTree (from frontend-field-main)
 const FEE_ERGO_TREE =
@@ -247,11 +259,17 @@ export async function buildAndSubmitEntryFeeTx(
 
   // 5. Determine how many change boxes we need (whale wallets can exceed MAX_TOKENS_PER_BOX)
   const numChangeBoxes = Math.max(1, Math.ceil(changeAssets.length / MAX_TOKENS_PER_BOX));
-  const extraChangeBoxCost = (numChangeBoxes - 1) * MIN_NERG_BOX_VALUE;
+
+  // Calculate ERG needed for each overflow change box based on its token count
+  let overflowBoxCost = 0;
+  for (let i = 1; i < numChangeBoxes; i++) {
+    const chunkSize = Math.min(MAX_TOKENS_PER_BOX, changeAssets.length - i * MAX_TOKENS_PER_BOX);
+    overflowBoxCost += minBoxValue(chunkSize);
+  }
 
   // 6. Calculate total change ERG and verify sufficient funds
   const totalChangeErg = totalInputValue - entryFeeNanoErgs - TX_FEE;
-  if (totalChangeErg < MIN_NERG_BOX_VALUE + extraChangeBoxCost) {
+  if (totalChangeErg < minBoxValue(Math.min(changeAssets.length, MAX_TOKENS_PER_BOX)) + overflowBoxCost) {
     throw new Error('Insufficient funds after fees');
   }
 
@@ -271,10 +289,10 @@ export async function buildAndSubmitEntryFeeTx(
   for (let i = 0; i < numChangeBoxes; i++) {
     const chunk = changeAssets.slice(i * MAX_TOKENS_PER_BOX, (i + 1) * MAX_TOKENS_PER_BOX);
     const isFirstBox = i === 0;
-    // First change box gets the bulk ERG; overflow boxes get minimum
+    // First change box gets the bulk ERG; overflow boxes get size-appropriate minimum
     const boxValue = isFirstBox
-      ? (totalChangeErg - extraChangeBoxCost)
-      : MIN_NERG_BOX_VALUE;
+      ? (totalChangeErg - overflowBoxCost)
+      : minBoxValue(chunk.length);
 
     changeBoxes.push({
       value: boxValue.toString(),
