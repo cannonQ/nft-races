@@ -50,6 +50,8 @@ export interface NFTOwnershipResult {
   tokenId: string;
   address: string;
   amount: number;
+  /** True when the result is unreliable due to Explorer API failure */
+  apiUnavailable?: boolean;
 }
 
 // ============================================

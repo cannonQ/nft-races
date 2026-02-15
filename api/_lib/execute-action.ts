@@ -78,10 +78,20 @@ async function verifyCreatureOwnership(
 
   const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
   if (!ownership.ownsToken) {
-    if (creature.owner_address === walletAddress) {
-      await supabase.from('creatures').update({ owner_address: null }).eq('id', creatureId);
+    // Explorer API was unreachable — trust the DB owner_address instead of rejecting
+    if (ownership.apiUnavailable) {
+      if (creature.owner_address === walletAddress) {
+        console.warn(`Explorer API unavailable — trusting DB owner for creature ${creatureId}`);
+      } else {
+        throw new ActionError(503, 'Ownership verification temporarily unavailable. Please try again.');
+      }
+    } else {
+      // Confirmed not owner — clear stale DB record
+      if (creature.owner_address === walletAddress) {
+        await supabase.from('creatures').update({ owner_address: null }).eq('id', creatureId);
+      }
+      throw new ActionError(403, 'You no longer own this NFT on-chain');
     }
-    throw new ActionError(403, 'You no longer own this NFT on-chain');
   }
 
   if (creature.owner_address !== walletAddress) {

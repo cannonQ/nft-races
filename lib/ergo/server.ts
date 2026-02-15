@@ -289,6 +289,7 @@ export async function verifyNFTOwnership(
       tokenId,
       address,
       amount: 0,
+      apiUnavailable: true,
     };
   }
 }
