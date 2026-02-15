@@ -81,6 +81,7 @@ function buildRegisters(metadata?: TxMetadata): Record<string, string> {
 export const TX_FEE = 1100000; // 1.1 ERG in nanoErgs
 export const MIN_NERG_BOX_VALUE = 1000000; // 1 ERG minimum box value
 export const CHANGE_BOX_VALUE = 7200000; // buffer for change box
+const MAX_TOKENS_PER_BOX = 100; // Ergo protocol allows 255, use 100 for safety margin
 
 // Standard miner fee ergoTree (from frontend-field-main)
 const FEE_ERGO_TREE =
@@ -231,26 +232,28 @@ export async function buildAndSubmitEntryFeeTx(
 ): Promise<string> {
   if (!window.ergo) throw new Error('Wallet not connected');
 
-  // 1. Calculate total required ERG
-  const totalRequired = entryFeeNanoErgs + TX_FEE + CHANGE_BOX_VALUE;
+  // 1. Collect input UTXOs (initial estimate — may need more for extra change boxes)
+  const initialRequired = entryFeeNanoErgs + TX_FEE + CHANGE_BOX_VALUE;
+  const { inputs, totalInputValue } = await getWalletUtxos(initialRequired);
 
-  // 2. Get UTXOs from wallet
-  const { inputs, totalInputValue } = await getWalletUtxos(totalRequired);
-
-  // 3. Get current block height
+  // 2. Get current block height
   const blockHeight = await getCurrentHeight();
 
-  // 4. Calculate change
-  const changeValue = totalInputValue - entryFeeNanoErgs - TX_FEE;
-  if (changeValue < MIN_NERG_BOX_VALUE) {
-    throw new Error('Insufficient funds after fees');
-  }
-
-  // 5. Get user's ergoTree for change box
+  // 3. Get user's ergoTree for change box
   const userErgoTree = getErgoTreeFromInputs(inputs, '');
 
-  // 6. Collect any tokens from inputs (return them in change)
+  // 4. Collect all tokens from inputs (for change)
   const changeAssets = collectChangeAssets(inputs);
+
+  // 5. Determine how many change boxes we need (whale wallets can exceed MAX_TOKENS_PER_BOX)
+  const numChangeBoxes = Math.max(1, Math.ceil(changeAssets.length / MAX_TOKENS_PER_BOX));
+  const extraChangeBoxCost = (numChangeBoxes - 1) * MIN_NERG_BOX_VALUE;
+
+  // 6. Calculate total change ERG and verify sufficient funds
+  const totalChangeErg = totalInputValue - entryFeeNanoErgs - TX_FEE;
+  if (totalChangeErg < MIN_NERG_BOX_VALUE + extraChangeBoxCost) {
+    throw new Error('Insufficient funds after fees');
+  }
 
   // 7. Build output boxes
 
@@ -263,14 +266,24 @@ export async function buildAndSubmitEntryFeeTx(
     creationHeight: blockHeight,
   };
 
-  // Change box (remaining ERG + tokens back to user)
-  const changeBox: OutputBox = {
-    value: changeValue.toString(),
-    ergoTree: userErgoTree,
-    assets: changeAssets,
-    additionalRegisters: {},
-    creationHeight: blockHeight,
-  };
+  // Change boxes — split tokens across multiple boxes if needed
+  const changeBoxes: OutputBox[] = [];
+  for (let i = 0; i < numChangeBoxes; i++) {
+    const chunk = changeAssets.slice(i * MAX_TOKENS_PER_BOX, (i + 1) * MAX_TOKENS_PER_BOX);
+    const isFirstBox = i === 0;
+    // First change box gets the bulk ERG; overflow boxes get minimum
+    const boxValue = isFirstBox
+      ? (totalChangeErg - extraChangeBoxCost)
+      : MIN_NERG_BOX_VALUE;
+
+    changeBoxes.push({
+      value: boxValue.toString(),
+      ergoTree: userErgoTree,
+      assets: chunk,
+      additionalRegisters: {},
+      creationHeight: blockHeight,
+    });
+  }
 
   // Miner fee box (standard pattern from frontend-field-main)
   const feeBox: OutputBox = {
@@ -296,7 +309,7 @@ export async function buildAndSubmitEntryFeeTx(
   // 10. Assemble unsigned transaction
   const unsignedTx = {
     inputs: uniqueInputs,
-    outputs: [treasuryBox, changeBox, feeBox],
+    outputs: [treasuryBox, ...changeBoxes, feeBox],
     dataInputs: [],
     fee: TX_FEE,
   };
