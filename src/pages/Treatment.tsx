@@ -8,6 +8,7 @@ import {
   Snowflake,
   RotateCcw,
   CheckCircle2,
+  ExternalLink,
 } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,8 @@ import { ErgoPayTxModal } from '@/components/ergopay/ErgoPayTxModal';
 import { requestErgoPayTx, type ErgoPayTxRequest } from '@/lib/ergo/ergopay-tx';
 import { TreatmentDef, TreatmentStartResponse } from '@/types/game';
 import { cn } from '@/lib/utils';
+
+const EXPLORER_TX_URL = 'https://ergexplorer.com/transactions#';
 
 const TIER_META: Record<string, { icon: typeof Zap; color: string; accent: string }> = {
   stim_pack:  { icon: Zap,        color: 'text-yellow-400', accent: 'border-yellow-400/40 hover:border-yellow-400/70' },
@@ -508,9 +511,15 @@ export default function Treatment() {
                   </div>
                 </div>
                 {lastTxId && (
-                  <p className="text-xs text-muted-foreground font-mono break-all">
-                    TX: {lastTxId}
-                  </p>
+                  <a
+                    href={`${EXPLORER_TX_URL}${lastTxId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 font-mono transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3 shrink-0" />
+                    <span className="break-all">View on Explorer</span>
+                  </a>
                 )}
               </div>
             )}

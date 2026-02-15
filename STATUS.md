@@ -1,6 +1,6 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-14
+**Date:** 2026-02-15
 **Phase:** 1 (DB + API — Launch Day)
 
 ---
@@ -24,10 +24,10 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **Auto-resolve**: Expired races resolve lazily on next page load (per-race `auto_resolve` flag, default true)
 - Cancelled races visible in admin with reopen capability
 - Resolve confirmation dialog prevents accidental race cancellation
-- On-chain NFT ownership verification on all mutation endpoints (train, race entry)
+- On-chain NFT ownership verification on all mutation endpoints (train, race entry) — resilient to Explorer API outages (trusts DB owner when API unavailable)
 - FAQ page with per-collection game mechanics guide (CyberPets / Aneta Angels pill selector, collection-specific base stats, rarity tiers, trait mapping, examples)
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
-- **Real ERG payments (Nautilus)** — Training (0.01 ERG) and race entry fees paid via Nautilus `sign_tx()`. Treasury box registers R4-R6 encode action type, NFT token ID, and context for on-chain verifiability. Credit ledger records `shadow=false` + `tx_id` for real payments. Both training and race entry verified on mainnet.
+- **Real ERG payments (Nautilus)** — Training (0.01 ERG) and race entry fees paid via Nautilus `sign_tx()`. Treasury box registers R4-R6 encode action type, NFT token ID, and context for on-chain verifiability. Credit ledger records `shadow=false` + `tx_id` for real payments. Both training and race entry verified on mainnet. Whale wallet support: change tokens split across multiple boxes for wallets with 100+ token types.
 - **ErgoPay TX flow** — Full reduced TX pipeline with R4-R6 registers. Server-side TX builder fetches UTXOs from Explorer API, builds unsigned TX with sigma-serialized registers, POSTs to `ergopay.duckdns.org/api/v1/reducedTx`. Wallet callback (`replyTo`) + blockchain fallback for payment detection. Verified on mainnet — registers decode correctly on ergexplorer (R4: train, R5: token ID, R6: mental_prep).
 - **TX UX polish** — Confirm modals stay open with "Signing..." spinner while Nautilus is signing (no page flash). Result modals show animated success state + "Payment Confirmed" banner with truncated txId linking to ergexplorer.com. Data refetch deferred to modal close to prevent background flicker. Training result: stat gain animations + progress bars. Race entry result: entry count gauge (X/Y) with animated fill bar. Wallet Ledger entries show explorer link icons for on-chain transactions.
 - **Credit ledger** — Tracks training fees, race entry fees, and season payouts per wallet. Supports both shadow (alpha) and real payments (`shadow` flag + `tx_id` column)
@@ -825,6 +825,36 @@ When `REQUIRE_FEES=true`, `train.ts` and `enter.ts` return HTTP 402 if no `txId`
 
 ### Phase 2 Compatibility
 Treasury box registers (R4-R6) are already written in Phase 1. When Phase 2 scanner arrives, it reads existing boxes to index game actions. The transition from "API writes credit_ledger" to "scanner writes credit_ledger" requires zero schema changes — only the data ingestion pipeline changes.
+
+---
+
+## Production Hardening — Explorer Resilience & Whale Wallets (2026-02-15)
+
+### Explorer API Resilience
+NFT ownership verification (`verifyNFTOwnership`) previously treated Explorer API failures as "confirmed not owner" — rejecting valid users and wiping their `owner_address` from the DB. Now distinguishes between API unavailability and confirmed non-ownership:
+- **API unavailable + DB says owner** → trusts the DB, action proceeds (warning logged)
+- **API unavailable + DB says NOT owner** → returns 503 "try again" (doesn't grant false access)
+- **API available + not owner** → existing 403 behavior unchanged
+
+Files: `lib/ergo/types.ts` (added `apiUnavailable` flag to `NFTOwnershipResult`), `lib/ergo/server.ts` (sets flag in catch block), `api/_lib/execute-action.ts` (branching logic).
+
+### Whale Wallet TX Support (MAX_TOKENS_PER_BOX)
+Wallets with 100+ different token types failed on Nautilus TX building because all change tokens were packed into a single box, exceeding Ergo's `ErgoBox::MAX_TOKENS_COUNT` (255) limit. Additionally, token-heavy boxes require more than the base `MIN_NERG_BOX_VALUE` (1M nanoERG) due to Ergo's `minValuePerByte * boxSize` rule.
+
+**Fix:** Change tokens are now split across multiple boxes (100 tokens per box, safety margin below protocol max). Each overflow box gets a dynamically calculated minimum ERG value based on its token count (~120 base bytes + 36 bytes/token, at 360 nanoERG/byte, with 20% margin).
+
+**ErgoPay is not affected** — the `ergopay.duckdns.org` service builds change boxes server-side and handles token splitting internally.
+
+Files: `src/lib/ergo/transactions.ts` (`MAX_TOKENS_PER_BOX`, `minBoxValue()`, multi-box change output loop).
+
+### Improved Error Visibility
+Training error catch block was swallowing non-Error exceptions (e.g. Nautilus wallet rejections returning objects instead of Error instances), showing only generic "Training failed". Now logs the full error to console (`[Train] Training error:`) and extracts messages from strings, objects, and Error instances.
+
+File: `src/pages/Train.tsx` (catch block).
+
+### Documentation
+- `docs/GUIDE-nautilus-tx.md` — Updated Step 5 (change boxes), complete example, comparison table, and gotchas for whale wallet splitting + dynamic min box value
+- `docs/GUIDE-ergopay-tx.md` — Added gotcha noting ErgoPay service handles whale wallets automatically
 
 ---
 
