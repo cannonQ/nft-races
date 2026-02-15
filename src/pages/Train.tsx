@@ -287,7 +287,11 @@ export default function Train() {
         return; // Don't set isTraining=false in finally — modal handles flow
       }
     } catch (err) {
-      setTrainError(err instanceof Error ? err.message : 'Training failed');
+      console.error('[Train] Training error:', err);
+      const msg = err instanceof Error
+        ? err.message
+        : (typeof err === 'string' ? err : JSON.stringify(err) || 'Training failed');
+      setTrainError(msg);
       setShowConfirm(false);
     } finally {
       setIsTraining(false);
