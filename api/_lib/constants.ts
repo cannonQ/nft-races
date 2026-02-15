@@ -19,6 +19,15 @@ export function positionToRewardLabel(position: number): string {
 /** Training cost in nanoERG (0.01 ERG) */
 export const TRAINING_FEE_NANOERG = 10_000_000;
 
+/** Treasury address receiving fee payments */
+export const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS || '';
+
+/** ErgoTree of the treasury address (hex-encoded, used by frontend TX building) */
+export const TREASURY_ERGO_TREE = process.env.TREASURY_ERGO_TREE || '';
+
+/** When true, real ERG payments are required for training/race entry */
+export const REQUIRE_FEES = process.env.REQUIRE_FEES === 'true';
+
 /** Convert nanoERG to ERG */
 export function nanoErgToErg(nanoErg: number): number {
   return nanoErg / 1_000_000_000;

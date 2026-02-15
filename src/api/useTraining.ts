@@ -56,17 +56,16 @@ export function useTrain(): MutationResponse<TrainResponse> {
     activity: Activity,
     walletAddress: string,
     boostRewardIds?: string[],
+    txId?: string,
   ): Promise<TrainResponse> => {
     setLoading(true);
     setError(null);
 
     try {
-      // No wallet signing needed — server verifies on-chain NFT ownership directly.
-      // Signing will be reintroduced when training fee (0.01 ERG tx) is implemented.
       const response = await fetch(`${API_BASE}/train`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatureId, activity, walletAddress, boostRewardIds }),
+        body: JSON.stringify({ creatureId, activity, walletAddress, boostRewardIds, txId }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

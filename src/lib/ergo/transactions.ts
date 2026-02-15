@@ -8,6 +8,73 @@
 import type { ErgoBox, ErgoBoxAsset, OutputBox } from './types';
 
 // ============================================
+// TX Metadata (on-chain registers for self-documenting payments)
+// ============================================
+
+/**
+ * Metadata written to treasury box registers R4-R6.
+ * Makes every payment self-documenting on-chain — no DB needed to verify.
+ *
+ * R4: Coll[Byte] — action type ("train" or "race")
+ * R5: Coll[Byte] — NFT token ID (32 bytes, the on-chain identifier)
+ * R6: Coll[Byte] — context (activity key for training, race ID for entry)
+ */
+export interface TxMetadata {
+  actionType: string;  // "train" or "race"
+  tokenId: string;     // NFT token ID (hex string, 64 chars)
+  context: string;     // activity key (e.g. "agility_course") or race identifier
+}
+
+// ============================================
+// Sigma Serialization (register value encoding)
+// ============================================
+
+/**
+ * Serialize a byte array as Sigma Coll[Byte].
+ * Format: 0x0e (type) + VLQ(length) + raw bytes
+ */
+function sigmaSerializeCollByte(data: Uint8Array): string {
+  const parts: number[] = [0x0e];
+  // VLQ encode the length
+  let len = data.length;
+  while (len >= 128) {
+    parts.push((len & 0x7f) | 0x80);
+    len >>>= 7;
+  }
+  parts.push(len);
+  // Raw bytes
+  for (const b of data) parts.push(b);
+  return Array.from(parts).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Serialize a UTF-8 string as Sigma Coll[Byte] */
+function sigmaSerializeUtf8(text: string): string {
+  return sigmaSerializeCollByte(new TextEncoder().encode(text));
+}
+
+/** Serialize a hex string (e.g. token ID) as Sigma Coll[Byte] */
+function sigmaSerializeHex(hex: string): string {
+  const clean = hex.replace(/^0x/, '');
+  const bytes = new Uint8Array(
+    clean.match(/.{1,2}/g)!.map(b => parseInt(b, 16))
+  );
+  return sigmaSerializeCollByte(bytes);
+}
+
+/**
+ * Build additionalRegisters map from TX metadata.
+ * Returns {} if no metadata provided (backward-compatible).
+ */
+function buildRegisters(metadata?: TxMetadata): Record<string, string> {
+  if (!metadata) return {};
+  return {
+    R4: sigmaSerializeUtf8(metadata.actionType),
+    R5: sigmaSerializeHex(metadata.tokenId),
+    R6: sigmaSerializeUtf8(metadata.context),
+  };
+}
+
+// ============================================
 // Constants (from frontend-field-main/ergofunctions/consts.js)
 // ============================================
 
@@ -126,30 +193,6 @@ async function getCurrentHeight(): Promise<number> {
   return data.items[0].height;
 }
 
-// ============================================
-// Address → ergoTree conversion
-// ============================================
-
-/**
- * Convert an Ergo address to its ergoTree representation.
- * Uses the Ergo explorer API as a simple way to do this without WASM.
- */
-async function addressToErgoTree(address: string): Promise<string> {
-  const response = await fetch(
-    `https://api.ergoplatform.com/api/v1/addresses/${address}`
-  );
-  if (!response.ok) throw new Error(`Failed to resolve address: ${address}`);
-  const data = await response.json();
-  // The explorer returns { ergoTree: "...", ... } but the actual endpoint
-  // for address info is different. Let's use a simpler approach:
-  // P2PK addresses have a predictable ergoTree format.
-  // For robustness, we'll use the /api/v1/boxes/byAddress endpoint.
-  // Actually, let's use the direct approach: fetch the ergoTree for a known box.
-  // Simpler: use the Ergo node API's /utils/addressToRaw endpoint
-  // For now, use the wallet's change address ergoTree from UTXOs.
-  throw new Error('Use getErgoTreeFromUtxo instead');
-}
-
 /**
  * Get the user's ergoTree from one of their UTXOs.
  */
@@ -178,11 +221,13 @@ function getErgoTreeFromInputs(inputs: ErgoBox[], userAddress: string): string {
  *
  * @param entryFeeNanoErgs - Entry fee amount in nanoERG
  * @param treasuryErgoTree - The ergoTree of the treasury/contract address
+ * @param metadata - Optional on-chain register data (R4-R6) for self-documenting payments
  * @returns Transaction ID
  */
 export async function buildAndSubmitEntryFeeTx(
   entryFeeNanoErgs: number,
-  treasuryErgoTree: string
+  treasuryErgoTree: string,
+  metadata?: TxMetadata
 ): Promise<string> {
   if (!window.ergo) throw new Error('Wallet not connected');
 
@@ -209,12 +254,12 @@ export async function buildAndSubmitEntryFeeTx(
 
   // 7. Build output boxes
 
-  // Treasury box (receives the entry fee)
+  // Treasury box (receives the entry fee, with on-chain metadata in registers)
   const treasuryBox: OutputBox = {
     value: entryFeeNanoErgs.toString(),
     ergoTree: treasuryErgoTree,
     assets: [],
-    additionalRegisters: {},
+    additionalRegisters: buildRegisters(metadata),
     creationHeight: blockHeight,
   };
 

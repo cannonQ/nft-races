@@ -36,6 +36,10 @@ interface TrainingConfirmModalProps {
   activity: TrainingActivity | null;
   currentBlockHeight: number | null;
   onConfirm: (selectedBoostIds: string[]) => void;
+  requireFees?: boolean;
+  walletType?: 'nautilus' | 'ergopay' | null;
+  /** When true, show spinner on button and prevent close (TX is being signed) */
+  submitting?: boolean;
 }
 
 const statLabels: Record<StatType, string> = {
@@ -63,6 +67,9 @@ export function TrainingConfirmModal({
   activity,
   currentBlockHeight,
   onConfirm,
+  requireFees,
+  walletType,
+  submitting,
 }: TrainingConfirmModalProps) {
   const [selectedBoostIds, setSelectedBoostIds] = useState<Set<string>>(new Set());
 
@@ -119,8 +126,13 @@ export function TrainingConfirmModal({
     : 0;
   const newSecondary = r2(currentSecondary + secondaryGain);
 
+  const handleClose = (value: boolean) => {
+    if (submitting) return;
+    onOpenChange(value);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="cyber-card border-primary/30 max-w-md">
         <DialogHeader>
           <DialogTitle className="font-display text-xl text-foreground">
@@ -278,22 +290,46 @@ export function TrainingConfirmModal({
           </div>
         </div>
 
+        {/* Fee Info (when fees enabled) */}
+        {requireFees && (
+          <div className="cyber-card rounded-lg p-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Training Fee</span>
+              <span className="font-mono text-primary font-semibold">0.01 ERG</span>
+            </div>
+            {walletType === 'ergopay' && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                You will be prompted to confirm payment in your wallet app.
+              </p>
+            )}
+          </div>
+        )}
+
         <DialogFooter className="gap-2">
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleClose(false)}
+            disabled={submitting}
             className="border-muted-foreground/30"
           >
             Cancel
           </Button>
           <Button
-            onClick={() => onConfirm(Array.from(selectedBoostIds))}
+            onClick={() => !submitting && onConfirm(Array.from(selectedBoostIds))}
+            disabled={submitting}
             className={cn(
               'bg-primary text-primary-foreground hover:bg-primary/90',
               'glow-cyan'
             )}
           >
-            Start Training
+            {submitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />
+                Signing...
+              </>
+            ) : (
+              requireFees ? 'Pay & Train (0.01 ERG)' : 'Start Training'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

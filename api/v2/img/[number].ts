@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const IPFS_CID = 'QmeQZUQJiKQYZ2dQ795491ykn1ikEv3bNJ1Aa1uyGs1aJw';
 
 const SOURCES = [
-  (n: string) => `https://api.ergexplorer.com/nftcache/${IPFS_CID}_${n}.png.png`,
+  (n: string) => `https://api.ergexplorer.com/nftcache/${IPFS_CID}_${n}.png`,
   (n: string) => `https://www.cyberversewiki.com/img/cyberpets/${n}.png`,
 ];
 
@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const body = Buffer.from(await upstream.arrayBuffer());
 
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Cache-Control', 'public, s-maxage=31536000, max-age=31536000, immutable');
       return res.status(200).send(body);
     } catch {
       continue;

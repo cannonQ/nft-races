@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getGameConfig } from '../_lib/config.js';
+import { TREASURY_ERGO_TREE, REQUIRE_FEES, TRAINING_FEE_NANOERG } from '../_lib/constants.js';
 
 /**
  * GET /api/v2/config
@@ -24,6 +25,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalStatCap: config.total_stat_cap ?? 300,
       baseActions: config.base_actions ?? 2,
       cooldownHours: config.cooldown_hours ?? 6,
+      // Fee config (frontend reads these to decide payment flow)
+      requireFees: REQUIRE_FEES,
+      treasuryErgoTree: TREASURY_ERGO_TREE,
+      trainingFeeNanoerg: TRAINING_FEE_NANOERG,
     });
   } catch (err) {
     console.error('GET /api/v2/config error:', err);

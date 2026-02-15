@@ -21,6 +21,10 @@ interface RaceEntryModalProps {
   onOpenChange: (open: boolean) => void;
   race: Race | null;
   onConfirm: (creatureIds: string[]) => void;
+  requireFees?: boolean;
+  walletType?: 'nautilus' | 'ergopay' | null;
+  /** When true, show spinner on button and prevent close (TX is being signed) */
+  submitting?: boolean;
 }
 
 const typeColors: Record<RaceType, string> = {
@@ -31,7 +35,7 @@ const typeColors: Record<RaceType, string> = {
   hazard: 'text-race-hazard',
 };
 
-export function RaceEntryModal({ open, onOpenChange, race, onConfirm }: RaceEntryModalProps) {
+export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFees, walletType, submitting }: RaceEntryModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { address } = useWallet();
   const { data: creatures, loading } = useCreaturesByWallet(address);
@@ -64,13 +68,15 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm }: RaceEntr
   };
 
   const handleConfirm = () => {
-    if (selected.size > 0) {
+    if (selected.size > 0 && !submitting) {
       onConfirm(Array.from(selected));
-      setSelected(new Set());
+      // Don't clear selection here — modal stays open while TX is signing.
+      // Selection is cleared on close instead.
     }
   };
 
   const handleClose = () => {
+    if (submitting) return; // Prevent closing while TX is in flight
     setSelected(new Set());
     onOpenChange(false);
   };
@@ -96,12 +102,22 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm }: RaceEntr
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Entry Fee</span>
               <span className="font-mono text-foreground">
-                {selected.size > 1
-                  ? `${race.entryFee} x ${selected.size} = ${race.entryFee * selected.size} credits`
-                  : `${race.entryFee} credits`
-                }
+                {requireFees ? (
+                  selected.size > 1
+                    ? `${race.entryFee} x ${selected.size} = ${race.entryFee * selected.size} ERG`
+                    : `${race.entryFee} ERG`
+                ) : (
+                  selected.size > 1
+                    ? `${race.entryFee} x ${selected.size} = ${race.entryFee * selected.size} credits`
+                    : `${race.entryFee} credits`
+                )}
               </span>
             </div>
+            {requireFees && walletType === 'ergopay' && selected.size > 1 && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                ErgoPay: each creature requires a separate payment confirmation.
+              </p>
+            )}
           </div>
 
           {/* Select All / Creature Selection */}
@@ -190,19 +206,28 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm }: RaceEntr
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={handleClose} className="border-muted-foreground/30">
+          <Button variant="outline" onClick={handleClose} disabled={submitting} className="border-muted-foreground/30">
             Cancel
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || submitting}
             className="bg-primary text-primary-foreground hover:bg-primary/90 glow-cyan"
           >
-            {selected.size > 1
-              ? `Enter ${selected.size} Creatures`
-              : `Confirm Entry`
-            }
-            {selected.size > 0 && ` (${race.entryFee * selected.size} credits)`}
+            {submitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />
+                Signing...
+              </>
+            ) : (
+              <>
+                {selected.size > 1
+                  ? `Enter ${selected.size} Creatures`
+                  : `Confirm Entry`
+                }
+                {selected.size > 0 && ` (${race.entryFee * selected.size} ${requireFees ? 'ERG' : 'credits'})`}
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

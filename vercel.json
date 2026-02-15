@@ -5,7 +5,7 @@
   "framework": "vite",
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "data/ergo/cyberpets/**"
+      "includeFiles": "{data/ergo/cyberpets/**,data/ergo/aneta-angels/**}"
     }
   },
   "rewrites": [

@@ -241,11 +241,17 @@ export interface LedgerEntry {
   amountErg: number;
   balanceAfterNanoerg: number;
   creatureId: string | null;
+  creatureName: string | null;
+  creatureImageUrl: string | null;
+  creatureFallbackImageUrl: string | null;
   raceId: string | null;
   seasonId: string | null;
+  seasonName: string | null;
   collectionId: string | null;
   collectionName: string | null;
   memo: string | null;
+  txId: string | null;
+  shadow: boolean;
   createdAt: string;
 }
 

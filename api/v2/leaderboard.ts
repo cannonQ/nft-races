@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../_lib/supabase.js';
 import { getActiveSeason, getCreatureDisplayName, getCreatureImageUrl, getCreatureFallbackImageUrl } from '../_lib/helpers.js';
 import { nanoErgToErg } from '../_lib/constants.js';
+import { getLoaderBySlug } from '../_lib/collections/registry.js';
+import type { CollectionLoader } from '../_lib/collections/types.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -23,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data, error } = await supabase
       .from('season_leaderboard')
-      .select('*, creatures(name, token_id, rarity, metadata)')
+      .select('*, creatures(name, token_id, rarity, metadata, collection_id)')
       .eq('season_id', seasonId)
       .order('wins', { ascending: false })
       .order('places', { ascending: false })
@@ -32,6 +34,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+
+    // Build loader lookup by collection_id for correct image/name resolution
+    const collectionIds = [...new Set((data ?? []).map((r: any) => r.creatures?.collection_id).filter(Boolean))];
+    const loadersByCollectionId = new Map<string, CollectionLoader>();
+    if (collectionIds.length > 0) {
+      const { data: cols } = await supabase
+        .from('collections')
+        .select('id, name')
+        .in('id', collectionIds);
+      for (const col of (cols ?? [])) {
+        const loader = getLoaderBySlug(col.name);
+        if (loader) loadersByCollectionId.set(col.id, loader);
+      }
     }
 
     // Compute average scores from race entries
@@ -71,14 +87,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const result = (data ?? []).map((row: any, index: number) => ({
+    const result = (data ?? []).map((row: any, index: number) => {
+      const loader = loadersByCollectionId.get(row.creatures?.collection_id);
+      return {
       rank: index + 1,
       creatureId: row.creature_id,
-      creatureName: getCreatureDisplayName(row.creatures?.metadata, row.creatures?.name ?? 'Unknown'),
+      creatureName: getCreatureDisplayName(row.creatures?.metadata, row.creatures?.name ?? 'Unknown', loader),
       tokenId: row.creatures?.token_id ?? '',
       rarity: row.creatures?.rarity ?? 'common',
-      imageUrl: getCreatureImageUrl(row.creatures?.metadata),
-      fallbackImageUrl: getCreatureFallbackImageUrl(row.creatures?.metadata),
+      imageUrl: getCreatureImageUrl(row.creatures?.metadata, loader),
+      fallbackImageUrl: getCreatureFallbackImageUrl(row.creatures?.metadata, loader),
       ownerAddress: row.owner_address,
       ownerDisplayName: displayNames[row.owner_address] ?? null,
       wins: row.wins ?? 0,
@@ -87,7 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       racesEntered: row.races_entered ?? 0,
       avgScore: avgScores[row.creature_id] ?? 0,
       earnings: nanoErgToErg(row.total_earnings_nanoerg ?? 0),
-    }));
+    };
+    });
 
     return res.status(200).json(result);
   } catch (err) {

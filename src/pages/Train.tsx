@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, AlertCircle, History } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -20,11 +20,13 @@ import { ActionsDisplay } from '@/components/training/ActionsDisplay';
 import { RewardBadges } from '@/components/creatures/RewardBadges';
 import { PetImage } from '@/components/creatures/PetImage';
 import { TrainingLog } from '@/components/creatures/TrainingLog';
+import { ErgoPayTxModal } from '@/components/ergopay/ErgoPayTxModal';
+import { requestErgoPayTx, type ErgoPayTxRequest } from '@/lib/ergo/ergopay-tx';
 
 export default function Train() {
   const { creatureId } = useParams();
   const navigate = useNavigate();
-  const { address } = useWallet();
+  const { address, walletType, buildAndSubmitEntryFee } = useWallet();
   const [selectedActivity, setSelectedActivity] = useState<TrainingActivity | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showResult, setShowResult] = useState(false);
@@ -35,6 +37,13 @@ export default function Train() {
   const [preTrainStats, setPreTrainStats] = useState<{ trained: StatBlock; base: StatBlock } | null>(null);
   const [preTrainBoost, setPreTrainBoost] = useState(0);
   const [currentBlockHeight, setCurrentBlockHeight] = useState<number | null>(null);
+  // TX tracking for result modal
+  const [lastTxId, setLastTxId] = useState<string | null>(null);
+  // ErgoPay payment state
+  const [ergoPayTx, setErgoPayTx] = useState<ErgoPayTxRequest | null>(null);
+  const [showErgoPayModal, setShowErgoPayModal] = useState(false);
+  // Pending boost IDs for ErgoPay flow (needed after payment confirms)
+  const [pendingBoostIds, setPendingBoostIds] = useState<string[]>([]);
 
   const { data: creature, loading: creatureLoading, refetch: refetchCreature } = useCreature(creatureId || null);
   const { data: userCreatures, loading: creaturesLoading } = useCreaturesByWallet(address);
@@ -68,6 +77,20 @@ export default function Train() {
         if (height) setCurrentBlockHeight(height);
       })
       .catch(() => {});
+  }, []);
+
+  const handleErgoPaySuccess = useCallback((result: any, txId: string) => {
+    setShowErgoPayModal(false);
+    setErgoPayTx(null);
+    setLastTxId(txId || null);
+    setTrainResult(result);
+    setShowResult(true);
+  }, []);
+
+  const handleErgoPayExpired = useCallback(() => {
+    setShowErgoPayModal(false);
+    setErgoPayTx(null);
+    setTrainError('Payment expired. Please try again.');
   }, []);
 
   // If no creature selected, show selection view
@@ -195,33 +218,77 @@ export default function Train() {
     setShowConfirm(true);
   };
 
-  const handleConfirmTraining = async (selectedBoostIds: string[]) => {
-    if (!selectedActivity || !creatureId || !address || !creature) return;
-    setShowConfirm(false);
-    setTrainError(null);
-    setIsTraining(true);
+  const requireFees = gameConfig?.requireFees ?? false;
+  const treasuryErgoTree = gameConfig?.treasuryErgoTree ?? '';
+  const trainingFeeNanoerg = gameConfig?.trainingFeeNanoerg ?? 10_000_000;
 
-    // Snapshot pre-training state before refetch overwrites it
+  const snapshotPreTrainState = (selectedBoostIds: string[]) => {
+    if (!creature) return;
     setPreTrainStats({ trained: { ...creature.trainedStats }, base: { ...creature.baseStats } });
-    // Compute the boost total from selected IDs
     const selectedBoostTotal = creature.boosts
       .filter(b => selectedBoostIds.includes(b.id))
       .reduce((sum, b) => sum + b.multiplier, 0);
     setPreTrainBoost(selectedBoostTotal);
+  };
+
+  const handleConfirmTraining = async (selectedBoostIds: string[]) => {
+    if (!selectedActivity || !creatureId || !address || !creature) return;
+    // Keep confirm modal open — it shows "Signing..." while Nautilus is up.
+    setTrainError(null);
+    setIsTraining(true);
+
+    snapshotPreTrainState(selectedBoostIds);
 
     try {
-      const result = await train.mutate(
-        creatureId,
-        selectedActivity.id as Activity,
-        address,
-        selectedBoostIds.length > 0 ? selectedBoostIds : undefined,
-      );
-      setTrainResult(result);
-      setShowResult(true);
-      refetchCreature();
-      refetchLogs();
+      if (!requireFees) {
+        // Alpha mode: no fees
+        setLastTxId(null);
+        const result = await train.mutate(
+          creatureId,
+          selectedActivity.id as Activity,
+          address,
+          selectedBoostIds.length > 0 ? selectedBoostIds : undefined,
+        );
+        setTrainResult(result);
+        setShowConfirm(false);
+        setShowResult(true);
+      } else if (walletType === 'nautilus') {
+        // Nautilus: build TX locally, sign, submit, then call backend with txId
+        const txId = await buildAndSubmitEntryFee(trainingFeeNanoerg, treasuryErgoTree, {
+          actionType: 'train',
+          tokenId: creature.tokenId,
+          context: selectedActivity.id,
+        });
+        setLastTxId(txId);
+        const result = await train.mutate(
+          creatureId,
+          selectedActivity.id as Activity,
+          address,
+          selectedBoostIds.length > 0 ? selectedBoostIds : undefined,
+          txId,
+        );
+        setTrainResult(result);
+        setShowConfirm(false);
+        setShowResult(true);
+      } else if (walletType === 'ergopay') {
+        // ErgoPay: close confirm modal, ErgoPay modal takes over
+        setShowConfirm(false);
+        setPendingBoostIds(selectedBoostIds);
+        const txReq = await requestErgoPayTx({
+          actionType: 'training_fee',
+          walletAddress: address,
+          creatureId,
+          activity: selectedActivity.id,
+          boostRewardIds: selectedBoostIds.length > 0 ? selectedBoostIds : undefined,
+        });
+        setErgoPayTx(txReq);
+        setShowErgoPayModal(true);
+        setIsTraining(false);
+        return; // Don't set isTraining=false in finally — modal handles flow
+      }
     } catch (err) {
       setTrainError(err instanceof Error ? err.message : 'Training failed');
+      setShowConfirm(false);
     } finally {
       setIsTraining(false);
     }
@@ -231,6 +298,9 @@ export default function Train() {
     setShowResult(false);
     setSelectedActivity(null);
     setTrainResult(null);
+    setLastTxId(null);
+    refetchCreature();
+    refetchLogs();
   };
 
   return (
@@ -310,15 +380,6 @@ export default function Train() {
           </div>
         )}
 
-        {isTraining && (
-          <div className="cyber-card rounded-lg p-4 border-primary/30 bg-primary/5">
-            <div className="flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-primary">Training in progress...</p>
-            </div>
-          </div>
-        )}
-
         <div>
           <h2 className="font-display text-xl font-semibold text-foreground mb-4">
             Choose Training Activity
@@ -348,6 +409,9 @@ export default function Train() {
           activity={selectedActivity}
           currentBlockHeight={currentBlockHeight}
           onConfirm={handleConfirmTraining}
+          requireFees={requireFees}
+          walletType={walletType}
+          submitting={isTraining}
         />
 
         <TrainingResultModal
@@ -358,7 +422,22 @@ export default function Train() {
           boostMultiplier={preTrainBoost}
           preTrainStats={preTrainStats}
           trainResult={trainResult}
+          txId={lastTxId}
+          feeErg={requireFees ? trainingFeeNanoerg / 1_000_000_000 : undefined}
         />
+
+        {ergoPayTx && (
+          <ErgoPayTxModal
+            open={showErgoPayModal}
+            onOpenChange={setShowErgoPayModal}
+            ergoPayUrl={ergoPayTx.ergoPayUrl}
+            requestId={ergoPayTx.requestId}
+            amount={ergoPayTx.amount}
+            description="Training fee payment"
+            onSuccess={handleErgoPaySuccess}
+            onExpired={handleErgoPayExpired}
+          />
+        )}
       </div>
     </MainLayout>
   );

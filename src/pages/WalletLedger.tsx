@@ -1,13 +1,16 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Flame, Trophy, Flag } from 'lucide-react';
+import { ArrowLeft, Flame, Trophy, Flag, ExternalLink } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CollectionFilter } from '@/components/ui/CollectionFilter';
+import { PetImage } from '@/components/creatures/PetImage';
 import { useWalletLedger, useCollections } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { cn } from '@/lib/utils';
+
+const EXPLORER_TX_URL = 'https://ergexplorer.com/transactions#';
 
 export default function WalletLedger() {
   const { address } = useWallet();
@@ -154,23 +157,58 @@ export default function WalletLedger() {
                         <span className="text-xs text-muted-foreground font-mono shrink-0 w-16">
                           {dateStr}
                         </span>
-                        <span className="text-sm text-foreground truncate">
-                          {entry.memo || entry.txType}
-                        </span>
+                        {(entry.creatureImageUrl || entry.creatureFallbackImageUrl) && (
+                          <PetImage
+                            src={entry.creatureImageUrl ?? undefined}
+                            fallbackSrc={entry.creatureFallbackImageUrl ?? undefined}
+                            alt={entry.creatureName ?? ''}
+                            className="w-6 h-6 rounded shrink-0"
+                          />
+                        )}
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm text-foreground truncate">
+                            {entry.memo || entry.txType}
+                          </span>
+                          {entry.creatureName && (
+                            <span className="text-xs text-muted-foreground truncate">
+                              {entry.creatureName}
+                            </span>
+                          )}
+                        </div>
+                        {entry.seasonName && (
+                          <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
+                            {entry.seasonName}
+                          </span>
+                        )}
                         {entry.collectionName && (
                           <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
                             {entry.collectionName}
                           </span>
                         )}
                       </div>
-                      <span
-                        className={cn(
-                          'font-mono text-sm font-semibold shrink-0 ml-4',
-                          isDebit ? 'text-destructive' : 'text-accent'
+                      <div className="flex items-center gap-2 shrink-0 ml-4">
+                        <span
+                          className={cn(
+                            'font-mono text-sm font-semibold',
+                            isDebit ? 'text-destructive' : 'text-accent'
+                          )}
+                        >
+                          {isDebit ? '' : '+'}{entry.amountErg.toFixed(2)} ERG
+                        </span>
+                        {entry.txId ? (
+                          <a
+                            href={`${EXPLORER_TX_URL}${entry.txId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent/60 hover:text-accent transition-colors"
+                            title="View on Ergo Explorer"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        ) : (
+                          <span className="w-3.5" />
                         )}
-                      >
-                        {isDebit ? '' : '+'}{entry.amountErg.toFixed(2)} ERG
-                      </span>
+                      </div>
                     </div>
                   );
                 })}

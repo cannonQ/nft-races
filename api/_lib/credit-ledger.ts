@@ -24,6 +24,8 @@ export interface LedgerEntry {
   trainingLogId?: string;
   raceEntryId?: string;
   memo?: string;
+  txId?: string;               // on-chain transaction ID (when real payment made)
+  shadow?: boolean;            // true = no real tx, false = real payment. Defaults to true.
 }
 
 /**
@@ -56,7 +58,8 @@ export async function recordLedgerEntry(entry: LedgerEntry): Promise<void> {
       training_log_id: entry.trainingLogId ?? null,
       race_entry_id: entry.raceEntryId ?? null,
       memo: entry.memo ?? null,
-      shadow: true,
+      shadow: entry.shadow ?? true,
+      tx_id: entry.txId ?? null,
     });
 
     if (error) {

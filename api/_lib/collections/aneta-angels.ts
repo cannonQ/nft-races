@@ -220,16 +220,9 @@ export class AnetaAngelsLoader implements CollectionLoader {
   }
 
   getImageUrl(metadata: Record<string, any>): string | undefined {
-    if (metadata?.ipfsUrl) {
-      return metadata.ipfsUrl;
-    }
-    // Fallback: look up IPFS URL from trait data (for creatures registered before ipfsUrl was added to metadata)
+    // Route through our image proxy for CDN caching + HTTPS
     if (metadata?.token_id) {
-      const token = getTokenIndex().get(metadata.token_id);
-      if (token?.ipfsUrl) {
-        return token.ipfsUrl;
-      }
-      return `https://api.ergexplorer.com/nftcache/${metadata.token_id}`;
+      return `/api/v2/img/token/${metadata.token_id}`;
     }
     return undefined;
   }

@@ -27,16 +27,21 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - On-chain NFT ownership verification on all mutation endpoints (train, race entry)
 - FAQ page with per-collection game mechanics guide (CyberPets / Aneta Angels pill selector, collection-specific base stats, rarity tiers, trait mapping, examples)
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
-- **Credit ledger (shadow billing)** — Tracks theoretical training fees, race entry fees, and season payouts per wallet (preparation for Phase 2 on-chain fees)
+- **Real ERG payments (Nautilus)** — Training (0.01 ERG) and race entry fees paid via Nautilus `sign_tx()`. Treasury box registers R4-R6 encode action type, NFT token ID, and context for on-chain verifiability. Credit ledger records `shadow=false` + `tx_id` for real payments. Both training and race entry verified on mainnet.
+- **ErgoPay TX flow** — Full reduced TX pipeline with R4-R6 registers. Server-side TX builder fetches UTXOs from Explorer API, builds unsigned TX with sigma-serialized registers, POSTs to `ergopay.duckdns.org/api/v1/reducedTx`. Wallet callback (`replyTo`) + blockchain fallback for payment detection. Verified on mainnet — registers decode correctly on ergexplorer (R4: train, R5: token ID, R6: mental_prep).
+- **TX UX polish** — Confirm modals stay open with "Signing..." spinner while Nautilus is signing (no page flash). Result modals show animated success state + "Payment Confirmed" banner with truncated txId linking to ergexplorer.com. Data refetch deferred to modal close to prevent background flicker. Training result: stat gain animations + progress bars. Race entry result: entry count gauge (X/Y) with animated fill bar. Wallet Ledger entries show explorer link icons for on-chain transactions.
+- **Credit ledger** — Tracks training fees, race entry fees, and season payouts per wallet. Supports both shadow (alpha) and real payments (`shadow` flag + `tx_id` column)
 - **Gamified investment display** — Dashboard summary card, per-creature investment card, and `/wallet` ledger page showing ERG burned vs prize pool
-- **Image caching proxy** — CyberPets via `/api/v2/img/[number]` with Vercel CDN edge caching; Aneta Angels via IPFS gateway (primary) + ergexplorer nftcache (fallback)
+- **Image caching proxy** — CyberPets via `/api/v2/img/[number]`, Aneta Angels via `/api/v2/img/token/[tokenId]`. Both proxied through Vercel CDN with `s-maxage` + `immutable` edge caching (1-year). Upstream: IPFS gateway (HTTPS-upgraded) → ergexplorer nftcache fallback. All API endpoints (creatures, leaderboard, ledger) pass collection-aware loaders for correct image URL resolution.
 - **Wallet display names** — Users can set a friendly name (e.g. "Andrius") via wallet dropdown. Shown on leaderboard, race podium, and race results instead of truncated address. Names are unique (case-insensitive), 2-20 chars. Purely off-chain (stored in `wallet_profiles` table) — zero impact on Phase 2 smart contracts
-- **Collection filter UI** — Reusable toggle pill component on Dashboard, Races, Leaderboard, Wallet Ledger, and Training pages. Wallet Ledger filter is fully wired: summary cards (Burned, Prize Pool, Activity) and transaction history all update per collection. Ledger entries include `collectionId`/`collectionName` derived from `season_id` join.
+- **Collection filter UI** — Reusable toggle pill component on Dashboard, Races, Leaderboard, Wallet Ledger, and Training pages. Wallet Ledger filter is fully wired: summary cards (Burned, Prize Pool, Activity) and transaction history all update per collection. Ledger entries include `collectionId`/`collectionName` derived from `season_id` join. Transaction rows show creature image + name and season name pill.
 
 ### Open Items
-- [ ] **Training cost (0.01 ERG)** — Architecture defines 10,000,000 nanoErg per training. Shadow-tracked in credit ledger. On-chain enforcement deferred to Phase 2 (requires treasury address + Nautilus `sign_tx()`).
-- [ ] **Race entry fee** — Same pattern as training cost. Entry fee stored in `season_races.entry_fee_nanoerg`. Shadow-tracked in credit ledger.
-- [ ] **Vercel deployment** — Push to deploy. Env vars should already be set.
+- [x] **Training cost (0.01 ERG)** — Real ERG payments via Nautilus. Treasury box registers (R4-R6) for on-chain traceability. Verified on mainnet.
+- [x] **Race entry fee (0.05 ERG)** — Same TX flow as training. Per-race entry fee via `season_races.entry_fee_nanoerg`. Nautilus verified on mainnet — registers + result modal + ledger all working.
+- [x] **TX UX** — Confirm modals hold open during Nautilus signing ("Signing..." state). Result modals with Payment Confirmed banner + ergexplorer link. Deferred refetch prevents page flicker.
+- [x] **ErgoPay TX with registers** — Switched from `POST /payment/addrequest` (simple payment, no register support) to `POST /api/v1/reducedTx` (full unsigned TX with R4-R6 registers). Server-side UTXO fetching, sigma serialization, wallet callback endpoint. Verified on mainnet — registers visible in mobile wallet signing screen and decoded correctly on ergexplorer.
+- [ ] **Vercel deployment** — Push to deploy. Env vars set.
 
 ### Infrastructure
 
@@ -47,7 +52,8 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | Database | Supabase (PostgreSQL) | Schema live, Season 1 created |
 | Blockchain | Ergo (Explorer API for ownership verification) | Integrated — single-call balance fetch |
 | Wallet | Nautilus (EIP-12) + ErgoPay (EIP-20) | Desktop + mobile wallet connect |
-| Auth | On-chain NFT ownership via Explorer API | No wallet signing in Phase 1; native UTXO auth in Phase 2 |
+| Payments | Nautilus `sign_tx()` + ErgoPay reduced TX (registers) | Training + race fees live (both wallets verified on mainnet) |
+| Auth | On-chain NFT ownership via Explorer API | TX signature for payments; native UTXO auth in Phase 2 |
 | Verification | ergo-lib-wasm-nodejs (server-side) | Available for future signing needs |
 | Deployment | Vercel (framework: vite) | Local dev tested |
 
@@ -71,7 +77,8 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | 10 | `GET /api/v2/wallet/:address/ledger` | `api/v2/wallet/[address]/ledger.ts` | Credit ledger (fees, payouts, balance) |
 | 11 | `GET /api/v2/wallet/:address/profile` | `api/v2/wallet/[address]/profile.ts` | Wallet display name (get or set via PUT) |
 | 12 | `GET /api/v2/ergopay/status/:sessionId` | `api/v2/ergopay/status/[sessionId].ts` | Poll ErgoPay session status |
-| 12 | `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | Image caching proxy (ergexplorer → cyberversewiki fallback, 1yr CDN cache) |
+| 12 | `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | CyberPets image proxy (ergexplorer → cyberversewiki fallback, 1yr CDN edge cache) |
+| 13 | `GET /api/v2/img/token/:tokenId` | `api/v2/img/token/[tokenId].ts` | Token image proxy (IPFS → ergexplorer fallback, 1yr CDN edge cache) |
 
 ### Public POST Endpoints (User Actions)
 
@@ -100,6 +107,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `GET /api/health` | `api/health.ts` | Health check |
 | `GET /api/v2/collections` | `api/v2/collections.ts` | List collections |
 | `GET /api/v2/ergopay/connect/:sessionId/:address` | `api/v2/ergopay/connect/[sessionId]/[address].ts` | ErgoPay wallet callback (called by mobile wallet) |
+| `POST /api/v2/ergopay/tx/callback/:requestId` | `api/v2/ergopay/tx/callback/[requestId].ts` | ErgoPay TX callback — wallet POSTs `{ signedTxId }` after signing |
 
 ### Shared Server Libraries
 
@@ -118,6 +126,8 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `api/_lib/register-creature.ts` | Shared creature registration (used by register endpoint + auto-discovery) |
 | `api/_lib/resolve-race.ts` | Shared race resolution logic (used by admin endpoint + auto-resolve in GET /races) |
 | `api/_lib/credit-ledger.ts` | Credit ledger helper — records training fees, race fees, payouts |
+| `api/_lib/ergo-tx-builder.ts` | Server-side sigma serialization, Explorer UTXO fetching, unsigned TX builder with R4-R6 registers |
+| `api/_lib/execute-action.ts` | Shared training/race entry executor (used by API endpoints + ErgoPay callback) |
 
 ### Frontend Hooks (all wired to real API)
 
@@ -264,7 +274,7 @@ The basic game loop (wallet → discover → train → race → results) is conf
 | **Prize distribution** | DB ledger (manual payout) | Contract auto-creates payout output boxes |
 | **Leaderboard** | `season_leaderboard` table | AVL tree or extended creature tree |
 | **Cooldowns** | `last_action_at` timestamps (6h / 180 blocks) | `HEIGHT >= lastHeight + 180` blocks |
-| **Fee collection** | Shadow-tracked in `credit_ledger` (no ERG moves yet) | User TX includes fee output natively |
+| **Fee collection** | Real ERG via Nautilus `sign_tx()` (client-side TX) + ErgoPay reduced TX (server-side TX via `ergopay.duckdns.org/api/v1/reducedTx`). Both paths write R4-R6 registers to treasury box. `credit_ledger` records `shadow=false` + `tx_id`. | User TX includes fee output natively (already happening — registers bridge to Phase 2 scanner) |
 
 ### Phase 2 Vision: Everything On-Chain, DB = Read Cache
 
@@ -292,8 +302,10 @@ These are the actual values enforced in the working codebase. Subject to tuning 
 | **Final race score** | `weighted × fatigueMod × sharpnessMod × (1 + rngMod)` | `computeRaceResult()` |
 | **Race prize split** | 50% / 30% / 20% (configurable via `game_config`) | `prize_distribution` default |
 | **Race rewards** | 1st: +1 bonus action, 2nd: +50% boost, 3rd: +25% boost, 4th+: +10% boost | `getRaceRewardBoost()` |
-| **Training cost** | 0.01 ERG (shadow-tracked in credit ledger, not yet on-chain) | `TRAINING_FEE_NANOERG` in `constants.ts` |
-| **Race entry fee** | Configurable per-race (`entry_fee_nanoerg` column) | `season_races` table |
+| **Training cost** | 0.01 ERG (real on-chain payment via Nautilus/ErgoPay) | `TRAINING_FEE_NANOERG` in `constants.ts` |
+| **Race entry fee** | Configurable per-race, real ERG payment (`entry_fee_nanoerg` column) | `season_races` table |
+| **Treasury address** | `9gbgJTNX...C3vm` | `TREASURY_ADDRESS` env var |
+| **TX registers** | R4: action type, R5: NFT token ID, R6: context | `buildRegisters()` in `transactions.ts` |
 | **Alpha testing mode** | `ALPHA_TESTING = true` — cooldown and daily limits disabled | `validateTrainingAction()` |
 
 ---
@@ -366,17 +378,80 @@ PHASE 2 (Target — Smart Contracts)
 
 ### Key Technical Decisions for Phase 2
 
-**AVL Tree (recommended over per-creature boxes):**
-- Single state box holds digest of entire creature tree
-- Race resolution reads all entrants from one tree (efficient)
-- Off-chain service generates AVL proofs for each TX
-- Already have AVL experience from oracle pool work
+**AVL Tree via GetBlok Plasma (confirmed approach):**
+- Single state box holds digest of entire creature tree — `PlasmaMap[ErgoId, CreatureState]`
+- GetBlok Plasma is battle-tested Scala/JVM library on top of Ergo Appkit (same logic securing significant on-chain value)
+- `LocalPlasmaMap` (LevelDB) provides persistent off-chain tree storage
+- `ProxyPlasmaMap` enables safe proof generation: temporary tree for building TX proofs, `commitChanges()` on TX confirmation, `dropChanges()` on failure — no risk of corrupting persistent state
+- Blake2b256 hashing, 32-byte digests — matches Ergo contract expectations
+- Confirmed by GetBlok Plasma team: standalone Scala service is the production-recommended path. WASM/sigma-rust has partial AVL support but lacks full batch update + persistent storage integration (high effort, Rust dev required)
+
+**CreatureState AVL Value (~26 bytes per creature):**
+```
+CreatureState {
+  speed: Short, stamina: Short, acceleration: Short,
+  agility: Short, heart: Short, focus: Short,
+  fatigue: Short, sharpness: Short,
+  lastActionHeight: Int,
+  actionsToday: Byte, bonusActions: Byte,
+  dayStartHeight: Int    // 720 blocks = 1 "day" for action reset
+}
+```
+Custom `ByteConversion[CreatureState]` for Plasma serialization. Key = NFT token ID (`ErgoId`, 32 bytes).
+
+**Race State: Pure UTXO (NOT AVL):**
+Races are short-lived, fixed-entrant entities — not a growing key-value set. Each race is a box:
+- R4: race params (type, max entries, entry fee, deadline height)
+- R5: `Coll[Coll[Byte]]` of entrant snapshots (token ID + 6 stats, appended per entry TX)
+- R6: deadline height
+- Entry TX: spends old race box → creates new race box with snapshot appended
+- Resolution TX: spends race box → reads `CONTEXT.headers(0).id` → creates reward + payout boxes
+- No Plasma/AVL involvement for races
+
+**Boost Rewards: Actual UTXO Boxes:**
+Each boost becomes a real Ergo box with `HEIGHT` expiry in contract. At training time, user includes boost boxes as TX inputs — consumed in same TX. No AVL tree involvement.
+
+**Concurrency Model (multiple users training simultaneously):**
+Only one proof can be valid per tree state. If two users train at the same time against the same tree digest, only the first TX to confirm succeeds (second proof is stale). Solutions:
+- **Pessimistic queue** (recommended for current scale): TX builder service queues proof requests, generates one at a time, waits for confirmation before issuing next proof. ~2 min block time on Ergo. Fine for ~100 actions/day.
+- **Batch updates**: Multiple training actions batched into one TX (update multiple AVL entries in one proof). Scales to higher throughput.
+- **Optimistic retry**: Build proof, submit TX. If stale digest, regenerate + retry. Simple but burns miner fees on failures.
+
+**Scala Plasma Service Architecture:**
+```
+┌──────────────┐     HTTP      ┌──────────────────────┐
+│ Vercel API   │──────────────▶│ Scala Plasma Service  │
+│ (TypeScript) │◀──────────────│ (Docker on Fly.io)    │
+└──────────────┘               │                       │
+                               │ • LocalPlasmaMap      │
+                               │   (LevelDB persistent)│
+                               │ • ProxyPlasmaMap      │
+                               │   (proof generation)  │
+                               │ • Akka/Tapir HTTP     │
+                               │ • Pessimistic queue   │
+                               └──────────────────────┘
+```
+HTTP hop is negligible vs 2-min block confirmation. Endpoints:
+1. `GET /proof/lookup?tokenId=...` — read creature state from tree
+2. `POST /proof/training` — generate proof for stat update, return proof bytes
+3. `POST /proof/race-snapshot` — read + prove stat snapshot for race entry
+4. `POST /commit` — commit changes after TX confirmation
+5. `POST /rollback` — drop uncommitted changes on TX failure
 
 **Off-chain services that persist:**
-- **TX Builder** — constructs training/race TXs with AVL proofs for Nautilus signing
-- **Indexer** — watches chain, mirrors to Supabase for fast API reads
+- **Scala Plasma Service** — holds `LocalPlasmaMap` (LevelDB), generates AVL proofs, commits on TX confirmation. Docker on Fly.io/Railway.
+- **TX Builder** — constructs training/race TXs with AVL proofs for Nautilus signing. Could live in Scala service or as a separate TS layer.
+- **Indexer/Scanner** — watches chain, mirrors to Supabase for fast API reads. Doesn't need Plasma — reads box registers and decodes values. Existing sigma serialization helpers (reversed to deserialize) handle register reading.
 - **Frontend** — identical React app, same API shape, data source shifts to chain-synced DB
 - **Race Scheduler** — creates race boxes on schedule (could also be on-chain with height-based triggers)
+
+**Admin Operations in Phase 2:**
+| Phase 1 (DB-only) | Phase 2 (On-Chain) | Register Layout |
+|--------------------|--------------------|-----------------|
+| `POST /admin/races/create` | Creates race box UTXO | R4: race params, R5: empty entrants, R6: deadline height |
+| `POST /admin/seasons/start` | Creates season box UTXO | R4: AVL tree digest (all stats zeroed), R5: season params (end height, prize pool = 0) |
+| `POST /admin/seasons/end` | Automated: `HEIGHT >= end_height` | Contract reads leaderboard from AVL tree, creates payout output boxes |
+| `POST /admin/races/resolve` | Permissionless: anyone triggers | Contract reads `CONTEXT.headers(0).id`, computes scores, creates reward boxes |
 
 ### Migration Steps
 
@@ -386,10 +461,12 @@ PHASE 2 (Target — Smart Contracts)
 | 2 | Gather balance data from ~100 races | 2-4 weeks |
 | 3 | Finalize constants (stat gains, fatigue curves, prize splits) | After data analysis |
 | 4 | Write ErgoScript contracts (Training, Race Entry, Resolution, Season Payout) | 2-3 weeks |
-| 5 | Build TX Builder service with AVL proof generation | 1-2 weeks |
-| 6 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
-| 7 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
-| 8 | Open-source frontend + TX builder | Post-launch |
+| 5 | Build Scala Plasma Service (Akka/Tapir HTTP + LocalPlasmaMap + proof queue) | 1-2 weeks |
+| 6 | Build TX Builder integration (Vercel API → Plasma Service → Nautilus) | 1 week |
+| 7 | Build Indexer/Scanner (watch chain → Supabase mirror) | 1 week |
+| 8 | Deploy to Ergo testnet, run parallel with DB version | 1-2 weeks testing |
+| 9 | Deploy to mainnet — DB becomes read-only indexer | Production launch |
+| 10 | Open-source frontend + TX builder + Plasma service | Post-launch |
 
 ---
 
@@ -534,9 +611,9 @@ Wallet display names are purely off-chain — stored in `wallet_profiles` table,
 CyberPet images were loaded directly from `api.ergexplorer.com/nftcache/` — an external service that frequently returns 404s (as seen in the screenshot for pet #146). Broken images degraded the UI experience.
 
 ### Solution: Three-Layer Resilience
-1. **Caching proxy** (`/api/v2/img/[number]`) — All image URLs now point to our own domain. The proxy tries ergexplorer first, falls back to cyberversewiki.com, and returns the image with `Cache-Control: public, max-age=31536000, immutable`. Vercel's CDN caches at the edge globally.
-2. **Client-side fallback** — New `<PetImage>` component tries the proxy URL; on `onError`, swaps to `cyberversewiki.com` directly.
-3. **External cache** — Lexy (cyberversewiki.com) hosts pre-cached images for all pets at `https://www.cyberversewiki.com/img/cyberpets/{number}.png`.
+1. **Caching proxy** — All image URLs point to our own domain. CyberPets: `/api/v2/img/[number]` (ergexplorer → cyberversewiki fallback). Aneta Angels: `/api/v2/img/token/[tokenId]` (IPFS HTTPS-upgraded → ergexplorer fallback). Both set `Cache-Control: public, s-maxage=31536000, max-age=31536000, immutable` for Vercel CDN edge + browser caching.
+2. **Client-side fallback** — `<PetImage>` component tries the proxy URL; on `onError`, swaps to fallback URL directly.
+3. **Collection-aware loaders** — All API endpoints (`creatures/[id]`, `leaderboard`, `wallet/ledger`, `creatures/by-wallet`) pass the correct collection loader for image/name resolution. Previously `creatures/[id]` and `leaderboard` were missing loaders, causing Aneta Angels to get CyberPets-style URLs.
 
 ### Performance Benefits
 - **CDN edge caching**: After first load, images served from Vercel's 300+ PoPs — no origin hit
@@ -548,12 +625,18 @@ CyberPet images were loaded directly from `api.ergexplorer.com/nftcache/` — an
 
 | Endpoint | File | Purpose |
 |----------|------|---------|
-| `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | Image caching proxy — tries ergexplorer, falls back to cyberversewiki, returns with 1yr immutable cache |
+| `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | CyberPets image proxy — ergexplorer → cyberversewiki, 1yr CDN edge cache |
+| `GET /api/v2/img/token/:tokenId` | `api/v2/img/token/[tokenId].ts` | Token image proxy — IPFS (HTTPS) → ergexplorer, 1yr CDN edge cache |
 
 ### Files Changed
-- `api/v2/img/[number].ts` — **NEW**: Image proxy endpoint
-- `api/_lib/helpers.ts` — `getCreatureImageUrl()` now returns `/api/v2/img/{number}` (proxy), added `getCreatureFallbackImageUrl()` (cyberversewiki direct)
-- `api/v2/leaderboard.ts` — Added `fallbackImageUrl` to response
+- `api/v2/img/[number].ts` — CyberPets image proxy (fixed double `.png.png`, added `s-maxage`)
+- `api/v2/img/token/[tokenId].ts` — **NEW**: Generic token image proxy (Aneta Angels IPFS → ergexplorer fallback)
+- `api/_lib/collections/aneta-angels.ts` — `getImageUrl()` routes through proxy instead of direct IPFS URLs
+- `api/v2/creatures/[id]/index.ts` — Now looks up and passes collection loader (was `undefined`)
+- `api/v2/leaderboard.ts` — Now looks up and passes collection loaders per creature
+- `api/v2/wallet/[address]/ledger.ts` — Returns `creatureName`, `creatureImageUrl`, `creatureFallbackImageUrl`, `seasonName` per entry
+- `src/pages/WalletLedger.tsx` — Transaction rows show creature image + name, season name pill
+- `vercel.json` — `includeFiles` now bundles `data/ergo/aneta-angels/**` alongside cyberpets
 - `lib/cyberpets/index.ts` — `getImageUrl()` updated to proxy, added `getFallbackImageUrl()`
 - `src/types/game.ts` — Added `fallbackImageUrl?` to `CreatureWithStats` and `LeaderboardEntry`
 - `src/components/creatures/PetImage.tsx` — **NEW**: Reusable image component with `onError` fallback
@@ -655,12 +738,93 @@ CREATE INDEX idx_credit_ledger_type ON credit_ledger(entry_type);
 ### Phase 2 Note
 Credit ledger entries map directly to on-chain TX fees. When real ERG transactions are enforced, the ledger becomes a read cache indexed from chain TXs. Historical shadow data provides fee calibration benchmarks. Per-race payouts are intentionally excluded — individual races award boosts only; ERG payouts happen at season end via `season_payout` entries.
 
-**On-chain TX structure (Phase 2):** Each game action has its own contract. Outputs use registers for scanner identification:
-- R4: action type (`"training"`, `"race_entry"`, `"season_payout"`)
-- R5: creature token ID
-- R6: context (activity hash, race ID, or pool type)
+**On-chain TX structure (NOW implemented for Nautilus, Phase 2 extends to SC):** Outputs use registers for scanner identification:
+- R4: action type (`"train"`, `"race"`, `"season_payout"`)
+- R5: creature token ID (32 bytes — the on-chain NFT identifier)
+- R6: context (activity key for training, race ID for entry, pool type for payouts)
 
-Scanner monitors contract addresses, reads registers, inserts into `credit_ledger` with `shadow=false` + `ergo_tx_id`. Frontend/API stay identical — only data ingestion changes.
+Scanner monitors treasury address, reads registers, inserts into `credit_ledger` with `shadow=false` + `tx_id`. Frontend/API stay identical — only data ingestion changes. **Registers are already being written to treasury boxes in Phase 1** via sigma-serialized `Coll[Byte]` values.
+
+---
+
+## TX Processing — Real ERG Payments (2026-02-14)
+
+### Overview
+Full TX processing pipeline: frontend builds unsigned TX → Nautilus signs/submits → backend validates `tx_id` and executes game action. ErgoPay path: backend creates payment request → mobile wallet pays → backend polls and executes on confirmation.
+
+### Treasury Box Registers (On-Chain Traceability)
+Every payment box at the treasury address is self-documenting via registers:
+
+| Register | Type | Training Example | Race Entry Example |
+|----------|------|------------------|--------------------|
+| R4 | `Coll[Byte]` | `"train"` | `"race"` |
+| R5 | `Coll[Byte]` | NFT token ID (32 bytes) | NFT token ID (32 bytes) |
+| R6 | `Coll[Byte]` | `"agility_course"` | Race UUID |
+
+Sigma serialization: `0x0e` (SColl[SByte]) + VLQ length + raw bytes.
+
+### Nautilus Flow
+1. Frontend reads `gameConfig.requireFees` + `gameConfig.treasuryErgoTree` from `/api/v2/config`
+2. User clicks "Pay & Train (0.01 ERG)" → `buildAndSubmitEntryFeeTx()` constructs unsigned TX with UTXO selection, treasury output (with R4-R6 registers), change output, miner fee
+3. Nautilus signs + submits → returns `txId`
+4. Frontend calls backend with `txId` → backend validates and executes action
+5. `credit_ledger` records `shadow=false`, `tx_id = <txId>`
+
+### ErgoPay Flow (Reduced TX with Registers)
+1. Frontend calls `POST /api/v2/ergopay/tx/request` with action details
+2. Backend validates action, generates request ID, inserts `ergopay_tx_requests` row (status: pending)
+3. Backend fetches sender's UTXOs from Explorer API, builds unsigned TX with treasury output (R4-R6 registers), POSTs to `ergopay.duckdns.org/api/v1/reducedTx` with `replyTo` callback URL
+4. Frontend shows `ErgoPayTxModal` with QR code (desktop) / deep-link (mobile) + polling spinner
+5. Mobile wallet signs + broadcasts TX → wallet POSTs `{ signedTxId }` to `replyTo` callback (`/api/v2/ergopay/tx/callback/[requestId]`)
+6. Backend `status/[requestId].ts` detects payment via: (a) callback-stored `signed_tx_id` in DB, or (b) blockchain fallback (mempool + confirmed TXs)
+7. Backend locks row, executes game action (training or race entry)
+8. Frontend receives success callback with result
+
+### Fee Gate
+When `REQUIRE_FEES=true`, `train.ts` and `enter.ts` return HTTP 402 if no `txId` provided. Frontend branches: alpha (no fees) → Nautilus (build TX) → ErgoPay (payment session).
+
+### DB Changes
+- `credit_ledger` — Added `tx_id TEXT` column + `shadow BOOLEAN DEFAULT true`
+- `ergopay_tx_requests` — New table for payment lifecycle tracking (pending → executing → executed/expired/failed)
+
+### Environment Variables
+- `TREASURY_ADDRESS` — Receiving address for fee payments
+- `TREASURY_ERGO_TREE` — Hex-encoded ergoTree (sent to frontend for TX building)
+- `REQUIRE_FEES` — `"true"` enables real ERG payments
+
+### Files Changed
+- `src/lib/ergo/transactions.ts` — `TxMetadata` interface, sigma serialization (`sigmaSerializeCollByte`, `sigmaSerializeUtf8`, `sigmaSerializeHex`), `buildRegisters()`, `buildAndSubmitEntryFeeTx()` accepts optional metadata
+- `src/context/WalletContext.tsx` — `buildAndSubmitEntryFee` accepts optional `TxMetadata`
+- `src/pages/Train.tsx` — Passes `{actionType: 'train', tokenId, context: activityId}` to TX builder; fixed Rules of Hooks violation (moved `useCallback` hooks before early returns)
+- `src/pages/Races.tsx` — Passes `{actionType: 'race', tokenId, context: raceId}` to TX builder
+- `src/components/training/TrainingConfirmModal.tsx` — Shows "Pay & Train (0.01 ERG)" when `requireFees`
+- `src/components/races/RaceEntryModal.tsx` — Shows ERG amounts when `requireFees`, ErgoPay multi-entry note
+- `api/v2/train.ts` — 402 fee gate, accepts `txId`
+- `api/v2/races/[id]/enter.ts` — 402 fee gate, accepts `txId`
+- `api/_lib/execute-action.ts` — Shared training/race entry executor (used by API + ErgoPay)
+- `api/_lib/ergo-tx-builder.ts` — **NEW**: Server-side sigma serialization, UTXO fetching (Explorer API), unsigned TX builder with R4-R6 registers
+- `api/v2/ergopay/tx/request.ts` — Create ErgoPay payment request via `POST /api/v1/reducedTx` (builds unsigned TX with registers, includes `replyTo` callback)
+- `api/v2/ergopay/tx/callback/[requestId].ts` — **NEW**: Wallet callback endpoint — receives `{ signedTxId }` from wallet after signing
+- `api/v2/ergopay/tx/status/[requestId].ts` — Poll + execute on payment confirmation (callback detection + blockchain fallback)
+- `src/lib/ergo/ergopay-tx.ts` — Frontend ErgoPay TX request/poll helpers
+- `src/components/ergopay/ErgoPayTxModal.tsx` — QR + polling + status modal
+- `api/_lib/constants.ts` — `TRAINING_FEE_NANOERG`, `TREASURY_ADDRESS`, `TREASURY_ERGO_TREE`, `REQUIRE_FEES`
+- `migrations/012_ergopay_tx_requests.sql` — Payment request tracking table
+
+### Verified On-Chain
+**Nautilus** — First real training fee TX: `113ca60b1c228b204e8dfba400c88d8c9c7ccc4e3aa89c350a77f2a1267599eb`
+- 0.01 ERG → treasury (`9gbgJTNX...C3vm`)
+- All tokens returned in change box
+- `credit_ledger`: `shadow=false`, `tx_id` linked, `training_log_id` linked
+
+**ErgoPay (mobile)** — First reduced TX with registers: `a0480c884c301ecfd9b83da2694329495d1d752a0b931651599a2af544c9e5b2`
+- 0.01 ERG → treasury with R4-R6 registers
+- ergexplorer box shows: R4: `train`, R5: `dbf0c1e2826c7bc3d2d5b17c3354471f9271eed04d06ee0fafbc468efc46d4f9`, R6: `mental_prep`
+- Mobile wallet signing screen shows all 3 boxes + register values (Base64-encoded Coll[Byte])
+- Training action executed successfully via callback + polling
+
+### Phase 2 Compatibility
+Treasury box registers (R4-R6) are already written in Phase 1. When Phase 2 scanner arrives, it reads existing boxes to index game actions. The transition from "API writes credit_ledger" to "scanner writes credit_ledger" requires zero schema changes — only the data ingestion pipeline changes.
 
 ---
 
@@ -733,7 +897,7 @@ Added ErgoPay (EIP-20) as a second wallet connection method alongside Nautilus. 
 | Submit transactions | Yes | No |
 | Reconnect | Auto (extension API) | localStorage trust |
 
-ErgoPay users can browse, train (server-verified), and enter free races. Paid transactions (Phase 2) will require Nautilus or an ErgoPay payment flow extension.
+ErgoPay users can browse, train, and enter races. Paid transactions use the ErgoPay TX payment flow (`ErgoPayTxModal` with QR code + polling → backend executes action on payment confirmation). Both Nautilus and ErgoPay payment paths are built.
 
 ### DB Migration (`migrations/008_ergopay_sessions.sql`)
 ```sql

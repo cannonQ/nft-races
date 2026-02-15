@@ -89,18 +89,17 @@ export function useEnterRace(): MutationResponse<EnterRaceResponse> {
   const mutate = useCallback(async (
     raceId: string,
     creatureId: string,
-    walletAddress: string
+    walletAddress: string,
+    txId?: string,
   ): Promise<EnterRaceResponse> => {
     setLoading(true);
     setError(null);
 
     try {
-      // No wallet signing needed — server verifies on-chain NFT ownership directly.
-      // Signing will be reintroduced when race entry fee (ERG tx) is implemented.
       const response = await fetch(`${API_BASE}/races/${raceId}/enter`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatureId, walletAddress }),
+        body: JSON.stringify({ creatureId, walletAddress, txId }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

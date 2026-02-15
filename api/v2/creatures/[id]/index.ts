@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { getActiveSeason, getLatestErgoBlock, countRegularActionsToday, getLastRegularActionAt, computeCreatureResponse } from '../../../_lib/helpers.js';
+import { getLoaderBySlug } from '../../../_lib/collections/registry.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -24,7 +25,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ error: 'Creature not found' });
     }
 
-    const season = await getActiveSeason();
+    // Look up collection loader for correct image/name resolution
+    let loader;
+    if (creature.collection_id) {
+      const { data: col } = await supabase
+        .from('collections')
+        .select('name')
+        .eq('id', creature.collection_id)
+        .single();
+      if (col) loader = getLoaderBySlug(col.name);
+    }
+
+    const season = await getActiveSeason(creature.collection_id);
 
     // Fetch stats, prestige, and current season leaderboard in parallel
     const [statsResult, prestigeResult, leaderboardResult] = await Promise.all([
@@ -79,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       regularActionsToday,
       availableBoosts,
       leaderboardResult.data ?? null,
-      undefined,
+      loader,
       lastRegularActionAt,
     );
 

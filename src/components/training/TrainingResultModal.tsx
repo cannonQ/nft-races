@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, Sparkles } from 'lucide-react';
+import { CheckCircle, Sparkles, ExternalLink } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { CreatureWithStats, TrainingActivity, TrainResponse, StatType, StatBlock } from '@/types/game';
 import { cn } from '@/lib/utils';
 
+const EXPLORER_TX_URL = 'https://ergexplorer.com/transactions#';
+
 interface TrainingResultModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -19,6 +21,10 @@ interface TrainingResultModalProps {
   /** Pre-training snapshot so we can show correct old→new even after refetch */
   preTrainStats?: { trained: StatBlock; base: StatBlock } | null;
   trainResult?: TrainResponse | null;
+  /** On-chain transaction ID (Nautilus or ErgoPay) */
+  txId?: string | null;
+  /** Fee paid in ERG (e.g. 0.01) */
+  feeErg?: number;
 }
 
 const statLabels: Record<StatType, string> = {
@@ -84,6 +90,8 @@ export function TrainingResultModal({
   boostMultiplier = 0,
   preTrainStats,
   trainResult,
+  txId,
+  feeErg,
 }: TrainingResultModalProps) {
   const [showAnimation, setShowAnimation] = useState(false);
 
@@ -255,6 +263,29 @@ export function TrainingResultModal({
         {trainResult && (
           <div className="text-center text-sm text-muted-foreground">
             <span className="font-mono text-foreground">{trainResult.actionsRemaining}</span> actions remaining today
+          </div>
+        )}
+
+        {/* TX confirmation banner */}
+        {txId && (
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-accent/10 border border-accent/20 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-xs text-accent font-semibold uppercase tracking-wider">
+                Payment Confirmed
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {feeErg != null ? `${feeErg} ERG` : 'Fee'} paid on-chain
+              </p>
+            </div>
+            <a
+              href={`${EXPLORER_TX_URL}${txId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 font-mono shrink-0 transition-colors"
+            >
+              {txId.slice(0, 8)}...
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
         )}
 

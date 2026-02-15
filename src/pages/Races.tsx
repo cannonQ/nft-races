@@ -1,19 +1,21 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, Calendar, AlertCircle } from 'lucide-react';
+import { Trophy, AlertCircle } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { RaceCard } from '@/components/races/RaceCard';
 import { RaceEntryModal } from '@/components/races/RaceEntryModal';
+import { RaceEntryResultModal } from '@/components/races/RaceEntryResultModal';
 import { RaceDetailsModal } from '@/components/races/RaceDetailsModal';
 import { CollectionFilter } from '@/components/ui/CollectionFilter';
-import { useRaces, useEnterRace, useCollections } from '@/api';
+import { useRaces, useEnterRace, useCollections, useGameConfig, useCreaturesByWallet } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { Race } from '@/types/game';
-import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { ErgoPayTxModal } from '@/components/ergopay/ErgoPayTxModal';
+import { requestErgoPayTx, type ErgoPayTxRequest } from '@/lib/ergo/ergopay-tx';
 
 export default function Races() {
   const [selectedRace, setSelectedRace] = useState<Race | null>(null);
@@ -21,12 +23,23 @@ export default function Races() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [entryError, setEntryError] = useState<string | null>(null);
   const [isEntering, setIsEntering] = useState(false);
-  const { toast } = useToast();
-  const { address } = useWallet();
+  const { address, walletType, buildAndSubmitEntryFee } = useWallet();
   const { data: races, loading, refetch: refetchRaces } = useRaces();
   const { data: collections } = useCollections();
+  const { data: gameConfig } = useGameConfig();
   const enterRace = useEnterRace();
+  const { data: creatures } = useCreaturesByWallet(address);
   const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
+  // Entry result modal state
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [lastTxId, setLastTxId] = useState<string | null>(null);
+  const [lastEnteredCount, setLastEnteredCount] = useState(0);
+  // ErgoPay payment state
+  const [ergoPayTx, setErgoPayTx] = useState<ErgoPayTxRequest | null>(null);
+  const [showErgoPayModal, setShowErgoPayModal] = useState(false);
+
+  const requireFees = gameConfig?.requireFees ?? false;
+  const treasuryErgoTree = gameConfig?.treasuryErgoTree ?? '';
 
   const openRaces = useMemo(() => (races?.filter(r => r.status === 'open' && matchesCollection(r.collectionId)) || []), [races, matchesCollection]);
   const runningRaces = useMemo(() => (races?.filter(r => r.status === 'running' && matchesCollection(r.collectionId)) || []), [races, matchesCollection]);
@@ -51,7 +64,7 @@ export default function Races() {
 
   const handleConfirmEntry = async (creatureIds: string[]) => {
     if (!selectedRace || !address || creatureIds.length === 0) return;
-    setShowEntryModal(false);
+    // Keep entry modal open — it shows "Signing..." while Nautilus is up.
     setEntryError(null);
     setIsEntering(true);
 
@@ -60,27 +73,72 @@ export default function Races() {
 
     for (const creatureId of creatureIds) {
       try {
-        await enterRace.mutate(selectedRace.id, creatureId, address);
-        entered++;
+        if (!requireFees) {
+          // Alpha mode: no fees
+          await enterRace.mutate(selectedRace.id, creatureId, address);
+          setLastTxId(null);
+          entered++;
+        } else if (walletType === 'nautilus') {
+          // Nautilus: build TX, sign, submit, then call backend with txId
+          const entryFeeNanoerg = (selectedRace.entryFee ?? 0) * 1_000_000_000;
+          const tokenId = (creatures || []).find(c => c.id === creatureId)?.tokenId ?? '';
+          const txId = await buildAndSubmitEntryFee(entryFeeNanoerg, treasuryErgoTree, {
+            actionType: 'race',
+            tokenId,
+            context: selectedRace.id,
+          });
+          await enterRace.mutate(selectedRace.id, creatureId, address, txId);
+          setLastTxId(txId);
+          entered++;
+        } else if (walletType === 'ergopay') {
+          // ErgoPay: close entry modal, ErgoPay modal takes over
+          setShowEntryModal(false);
+          const txReq = await requestErgoPayTx({
+            actionType: 'race_entry_fee',
+            walletAddress: address,
+            creatureId,
+            raceId: selectedRace.id,
+          });
+          setErgoPayTx(txReq);
+          setShowErgoPayModal(true);
+          setIsEntering(false);
+          return; // ErgoPay modal handles the rest
+        }
       } catch (err) {
         errors.push(err instanceof Error ? err.message : 'Failed to enter race');
       }
     }
 
-    if (entered > 0) {
-      toast({
-        title: "Entry Confirmed!",
-        description: `${entered} creature${entered > 1 ? 's' : ''} entered into ${selectedRace.name}`,
-      });
-    }
     if (errors.length > 0) {
       setEntryError(`${errors.length} failed: ${errors[0]}`);
     }
 
-    refetchRaces();
+    // Close entry modal and transition to result or back to lobby
+    setShowEntryModal(false);
     setIsEntering(false);
-    setSelectedRace(null);
+
+    if (entered > 0) {
+      setLastEnteredCount(entered);
+      setShowResultModal(true);
+    } else {
+      refetchRaces();
+      setSelectedRace(null);
+    }
   };
+
+  const handleErgoPayEntrySuccess = useCallback((_result: any, txId: string) => {
+    setShowErgoPayModal(false);
+    setErgoPayTx(null);
+    setLastTxId(txId || null);
+    setLastEnteredCount(1);
+    setShowResultModal(true);
+  }, []);
+
+  const handleErgoPayEntryExpired = useCallback(() => {
+    setShowErgoPayModal(false);
+    setErgoPayTx(null);
+    setEntryError('Payment expired. Please try again.');
+  }, []);
 
   return (
     <MainLayout>
@@ -106,15 +164,6 @@ export default function Races() {
             <div className="flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-destructive" />
               <p className="text-sm text-destructive">{entryError}</p>
-            </div>
-          </div>
-        )}
-
-        {isEntering && (
-          <div className="cyber-card rounded-lg p-4 border-primary/30 bg-primary/5">
-            <div className="flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-primary">Entering race...</p>
             </div>
           </div>
         )}
@@ -229,7 +278,40 @@ export default function Races() {
           onOpenChange={setShowEntryModal}
           race={selectedRace}
           onConfirm={handleConfirmEntry}
+          requireFees={requireFees}
+          walletType={walletType}
+          submitting={isEntering}
         />
+
+        {/* Entry Result Modal */}
+        <RaceEntryResultModal
+          open={showResultModal}
+          onOpenChange={(open) => {
+            setShowResultModal(open);
+            if (!open) {
+              setSelectedRace(null);
+              setLastTxId(null);
+              refetchRaces();
+            }
+          }}
+          race={selectedRace}
+          enteredCount={lastEnteredCount}
+          txId={lastTxId}
+          feeErg={requireFees && selectedRace ? selectedRace.entryFee * lastEnteredCount : undefined}
+        />
+
+        {ergoPayTx && (
+          <ErgoPayTxModal
+            open={showErgoPayModal}
+            onOpenChange={setShowErgoPayModal}
+            ergoPayUrl={ergoPayTx.ergoPayUrl}
+            requestId={ergoPayTx.requestId}
+            amount={ergoPayTx.amount}
+            description="Race entry fee payment"
+            onSuccess={handleErgoPayEntrySuccess}
+            onExpired={handleErgoPayEntryExpired}
+          />
+        )}
       </div>
     </MainLayout>
   );

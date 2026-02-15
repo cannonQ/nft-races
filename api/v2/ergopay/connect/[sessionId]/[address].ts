@@ -79,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Return ErgoPaySigningRequest JSON (no reducedTx = address-only flow)
     return res.status(200).json({
-      message: 'Connected to CyberPets Racing!',
+      message: 'Connected to NFT Racing!',
       messageSeverity: 'INFORMATION',
     });
   } catch (err) {

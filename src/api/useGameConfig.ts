@@ -18,6 +18,9 @@ export interface GameConfig {
   totalStatCap?: number;
   baseActions?: number;
   cooldownHours?: number;
+  requireFees?: boolean;
+  treasuryErgoTree?: string;
+  trainingFeeNanoerg?: number;
 }
 
 /**

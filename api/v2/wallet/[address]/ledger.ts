@@ -2,7 +2,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { nanoErgToErg } from '../../../_lib/constants.js';
 import { getWalletBalance } from '../../../_lib/credit-ledger.js';
-import { getActiveSeasons } from '../../../_lib/helpers.js';
+import { getActiveSeasons, getCreatureImageUrl, getCreatureFallbackImageUrl, getCreatureDisplayName } from '../../../_lib/helpers.js';
+import { getLoaderBySlug } from '../../../_lib/collections/registry.js';
+import type { CollectionLoader } from '../../../_lib/collections/types.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -99,6 +101,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       spentErg: nanoErgToErg(spentNanoerg),
     }));
 
+    // Batch-fetch creature info for entries that have a creature_id
+    const entryCreatureIds = [...new Set((entries ?? []).map((e: any) => e.creature_id).filter(Boolean))];
+    const creatureInfoMap = new Map<string, { name: string; imageUrl?: string; fallbackImageUrl?: string }>();
+    if (entryCreatureIds.length > 0) {
+      const { data: creatures } = await supabase
+        .from('creatures')
+        .select('id, name, metadata, collection_id')
+        .in('id', entryCreatureIds);
+
+      // Build loader lookup
+      const colIds = [...new Set((creatures ?? []).map((c: any) => c.collection_id).filter(Boolean))];
+      const loadersByColId = new Map<string, CollectionLoader>();
+      if (colIds.length > 0) {
+        const { data: cols } = await supabase.from('collections').select('id, name').in('id', colIds);
+        for (const col of (cols ?? [])) {
+          const loader = getLoaderBySlug(col.name);
+          if (loader) loadersByColId.set(col.id, loader);
+        }
+      }
+
+      for (const c of (creatures ?? [])) {
+        const loader = loadersByColId.get(c.collection_id);
+        creatureInfoMap.set(c.id, {
+          name: getCreatureDisplayName(c.metadata, c.name, loader),
+          imageUrl: getCreatureImageUrl(c.metadata, loader),
+          fallbackImageUrl: getCreatureFallbackImageUrl(c.metadata, loader),
+        });
+      }
+    }
+
+    // Build season name lookup
+    const seasonNameMap: Record<string, string> = {};
+    for (const s of seasons) {
+      seasonNameMap[s.id] = s.name ?? 'Season';
+    }
+
     return res.status(200).json({
       balance,
       balanceErg: nanoErgToErg(balance),
@@ -114,6 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       creatureSpending,
       entries: (entries ?? []).map((e: any) => {
         const col = e.season_id ? seasonCollectionMap[e.season_id] : undefined;
+        const creature = e.creature_id ? creatureInfoMap.get(e.creature_id) : undefined;
         return {
           id: e.id,
           txType: e.tx_type,
@@ -121,11 +160,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           amountErg: nanoErgToErg(e.amount_nanoerg),
           balanceAfterNanoerg: e.balance_after_nanoerg,
           creatureId: e.creature_id,
+          creatureName: creature?.name ?? null,
+          creatureImageUrl: creature?.imageUrl ?? null,
+          creatureFallbackImageUrl: creature?.fallbackImageUrl ?? null,
           raceId: e.race_id,
           seasonId: e.season_id,
+          seasonName: e.season_id ? (seasonNameMap[e.season_id] ?? null) : null,
           collectionId: col?.collectionId ?? null,
           collectionName: col?.collectionName ?? null,
           memo: e.memo,
+          txId: e.tx_id ?? null,
+          shadow: e.shadow ?? true,
           createdAt: e.created_at,
         };
       }),

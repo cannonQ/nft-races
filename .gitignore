@@ -152,5 +152,11 @@ Thumbs.db
 .vercel
 .env*.local
 
-# Plans
+# Plans & scratchpad notes
 PLAN-*.md
+PRE-*.md
+Console_errors_training.md
+Ergo-pay-overview.md
+aneta_angels_rarity_faq.md
+getblok_Plasma.MD
+docs/
