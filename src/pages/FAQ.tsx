@@ -531,16 +531,23 @@ export default function FAQ() {
                 <p>
                   You get <strong>2 training actions per day</strong> (UTC reset). Each action
                   targets a primary stat and a secondary stat. Pick the activity that
-                  matches the stats you want to develop.
+                  matches the stats you want to develop. Each activity also affects
+                  your <strong>sharpness</strong> — physical activities tend to decrease it,
+                  while mental activities increase it.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 rounded bg-muted/30">Sprint Drills → <StatBadge abbr="SPD" color="text-race-sprint" /> primary</div>
-                  <div className="p-2 rounded bg-muted/30">Distance Runs → <StatBadge abbr="STM" color="text-race-distance" /> primary</div>
-                  <div className="p-2 rounded bg-muted/30">Gate Work → <StatBadge abbr="ACC" color="text-race-technical" /> primary</div>
-                  <div className="p-2 rounded bg-muted/30">Agility Course → <StatBadge abbr="AGI" color="text-race-mixed" /> primary</div>
-                  <div className="p-2 rounded bg-muted/30">Cross-Training → <StatBadge abbr="STM" color="text-race-distance" /> + <StatBadge abbr="HRT" color="text-secondary" /></div>
-                  <div className="p-2 rounded bg-muted/30">Mental Prep → <StatBadge abbr="FOC" color="text-primary" /> primary</div>
+                  <div className="p-2 rounded bg-muted/30">Sprint Drills → <StatBadge abbr="SPD" color="text-race-sprint" /> primary · Sharpness −5</div>
+                  <div className="p-2 rounded bg-muted/30">Distance Runs → <StatBadge abbr="STM" color="text-race-distance" /> primary · Sharpness −3</div>
+                  <div className="p-2 rounded bg-muted/30">Gate Work → <StatBadge abbr="ACC" color="text-race-technical" /> primary · Sharpness +5</div>
+                  <div className="p-2 rounded bg-muted/30">Agility Course → <StatBadge abbr="AGI" color="text-race-mixed" /> primary · Sharpness ±0</div>
+                  <div className="p-2 rounded bg-muted/30">Cross-Training → <StatBadge abbr="STM" color="text-race-distance" /> + <StatBadge abbr="HRT" color="text-secondary" /> · Sharpness −2</div>
+                  <div className="p-2 rounded bg-muted/30">Mental Prep → <StatBadge abbr="FOC" color="text-primary" /> primary · Sharpness +15</div>
                 </div>
+                <p className="text-xs border-l-2 border-accent/30 pl-3">
+                  <strong>Meditation</strong> is a special recovery action: no stat gains, but
+                  <strong> −25 fatigue</strong> and <strong>+15 sharpness</strong>. Use it when
+                  your fatigue is too high or you need a sharpness boost before a race.
+                </p>
                 <p>
                   <strong>Diminishing returns:</strong> The closer a stat is to 80, the less
                   you gain per session. Early training is efficient; maxing a stat takes dedication.
@@ -555,19 +562,68 @@ export default function FAQ() {
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground space-y-3">
                 <p>
-                  <strong>Fatigue</strong> (0–100) builds up when you train. Higher fatigue
-                  penalizes race performance. It decays naturally over time (~3 points per day).
-                  Manage when you train relative to race day.
+                  <strong>Fatigue</strong> (0–100) builds up when you train physical activities.
+                  Higher fatigue penalizes race performance. It decays naturally over time at a
+                  <strong> scaled rate</strong> — light fatigue (under 30) decays slowly (~3/day),
+                  while heavy fatigue (60+) decays faster (~15/day). This means you recover from
+                  over-training faster than you might expect.
                 </p>
                 <p>
-                  <strong>Sharpness</strong> (0–100) increases when you train. Higher sharpness
-                  boosts race performance. It stays high for 24 hours after training, then decays
-                  (~10 points per day). Train recently before a race to stay sharp.
+                  <strong>Sharpness</strong> (0–100) is a strategic variable — different training
+                  activities affect it differently. Physical activities like Sprint Drills <em>decrease</em> sharpness,
+                  while mental activities like Mental Prep and Meditation <em>increase</em> it.
+                  After your last action, sharpness holds steady for <strong>12 hours</strong>, then
+                  decays at ~15 points per day. Train recently before a race to stay sharp.
                 </p>
                 <p className="text-xs border-l-2 border-primary/30 pl-3">
                   <strong>Race impact:</strong> Fatigue applies a penalty up to -50% (at max fatigue).
-                  Sharpness applies a bonus from -10% (at 0) to 0% (at 100). The sweet spot is
-                  training recently enough to be sharp, but not so much that fatigue drags you down.
+                  Sharpness has a wider modifier: from <strong>×0.80</strong> (at 0 sharpness — a 20% penalty)
+                  up to <strong>×1.05</strong> (at 100 sharpness — a 5% bonus). The sweet spot is balancing
+                  physical training for stats with mental training to keep sharpness high before race day.
+                </p>
+                <p className="text-xs">
+                  <strong>Recovery options:</strong> Use <strong>Meditation</strong> (a training action that
+                  reduces fatigue by 25 and boosts sharpness by 15), or visit the <strong>Treatment Center</strong> for
+                  deeper recovery with lockout-based treatments.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Treatment Center */}
+            <AccordionItem value="treatment">
+              <AccordionTrigger className="text-foreground">
+                What is the Treatment Center?
+              </AccordionTrigger>
+              <AccordionContent className="text-muted-foreground space-y-3">
+                <p>
+                  The Treatment Center offers <strong>deep recovery</strong> for creatures that have
+                  accumulated too much fatigue or lost sharpness. Unlike Meditation (which uses a
+                  training action), treatments are <strong>lockout-based</strong> — your creature
+                  can't train or race during the treatment period, but the recovery is much more powerful.
+                </p>
+                <div className="space-y-2 text-xs">
+                  <div className="p-3 rounded-lg bg-yellow-400/5 border border-yellow-400/20">
+                    <p className="font-semibold text-yellow-400 mb-1">Stim Pack — 6 hour lockout</p>
+                    <p>Reduces fatigue by 20 points. Sharpness unchanged. Quick fix between races.</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-cyan-400/5 border border-cyan-400/20">
+                    <p className="font-semibold text-cyan-400 mb-1">Cryo Pod — 12 hour lockout</p>
+                    <p>Reduces fatigue by 40 points. Sets sharpness to 50. Solid overnight recovery.</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-violet-400/5 border border-violet-400/20">
+                    <p className="font-semibold text-violet-400 mb-1">Full Reset — 24 hour lockout</p>
+                    <p>Fatigue goes to 0. Sharpness set to 30. Complete recovery but costs a full day.</p>
+                  </div>
+                </div>
+                <p className="text-xs border-l-2 border-destructive/30 pl-3">
+                  <strong>Strategic cost:</strong> In a weekly season, a 24h Full Reset costs
+                  1/7th of your season — that's a real strategic decision, not a casual click.
+                  Treatments are best reserved for when you've dug yourself into a fatigue hole
+                  and need a reset before a big race.
+                </p>
+                <p>
+                  Treatment effects are applied automatically when the timer completes. Your creature
+                  will be ready to train and race immediately after.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -636,8 +692,9 @@ export default function FAQ() {
                     (exhausted). Formula: 1.0 - (fatigue / 200).
                   </p>
                   <p>
-                    <strong>Sharpness Modifier</strong> — Ranges from ×0.90 (rusty) to ×1.00
-                    (peak). Formula: 0.90 + (sharpness / 1000).
+                    <strong>Sharpness Modifier</strong> — Ranges from <strong>×0.80</strong> (completely
+                    rusty) to <strong>×1.05</strong> (peak sharpness). At sharpness 50 you're at ×0.925.
+                    This is a much wider swing than fatigue — keeping sharpness high is critical.
                   </p>
                   <p>
                     <strong>Luck</strong> — A deterministic random factor seeded from the Ergo block
