@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Dumbbell, Flag } from 'lucide-react';
+import { Dumbbell, Flag, Stethoscope } from 'lucide-react';
 import { CreatureWithStats, StatType } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { StatBar, ConditionGauge, RarityBadge } from './StatBar';
 import { CooldownTimer } from './CooldownTimer';
+import { TreatmentTimer } from './TreatmentTimer';
 import { RewardBadges } from './RewardBadges';
 import { ActionsDisplay } from '../training/ActionsDisplay';
 import { PetImage } from './PetImage';
@@ -19,6 +20,8 @@ const statOrder: StatType[] = ['speed', 'stamina', 'accel', 'agility', 'heart', 
 
 export function CreatureCard({ creature, className, style }: CreatureCardProps) {
   const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
+  const inTreatment = creature.treatment && new Date(creature.treatment.endsAt) > new Date();
+  const isLocked = isOnCooldown || inTreatment;
   const hasRewards = creature.bonusActions > 0 || creature.boosts.length > 0;
 
   return (
@@ -81,14 +84,21 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
         <ConditionGauge type="sharpness" value={creature.sharpness} />
       </div>
 
-      {/* Actions & Cooldown */}
+      {/* Actions & Cooldown / Treatment */}
       <div className="flex flex-col items-center gap-2">
         <ActionsDisplay
           actionsRemaining={creature.actionsRemaining}
           maxActionsToday={creature.maxActionsToday}
           bonusActions={creature.bonusActions}
         />
-        <CooldownTimer endsAt={creature.cooldownEndsAt} />
+        {inTreatment ? (
+          <TreatmentTimer
+            endsAt={creature.treatment!.endsAt}
+            treatmentName={creature.treatment!.type.replace(/_/g, ' ')}
+          />
+        ) : (
+          <CooldownTimer endsAt={creature.cooldownEndsAt} />
+        )}
       </div>
 
       {/* Action Buttons */}
@@ -99,9 +109,9 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
           size="sm"
           className={cn(
             'flex-1 border-primary/50 text-primary hover:bg-primary/10 hover:border-primary',
-            isOnCooldown && 'opacity-50 pointer-events-none'
+            isLocked && 'opacity-50 pointer-events-none'
           )}
-          disabled={isOnCooldown}
+          disabled={!!isLocked}
         >
           <Link to={`/train/${creature.id}`}>
             <Dumbbell className="w-4 h-4 mr-2" />
@@ -112,11 +122,26 @@ export function CreatureCard({ creature, className, style }: CreatureCardProps) 
           asChild
           variant="outline"
           size="sm"
-          className="flex-1 border-secondary/50 text-secondary hover:bg-secondary/10 hover:border-secondary"
+          className={cn(
+            'flex-1 border-secondary/50 text-secondary hover:bg-secondary/10 hover:border-secondary',
+            inTreatment && 'opacity-50 pointer-events-none'
+          )}
+          disabled={!!inTreatment}
         >
           <Link to="/races">
             <Flag className="w-4 h-4 mr-2" />
             Race
+          </Link>
+        </Button>
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="flex-1 border-orange-400/50 text-orange-400 hover:bg-orange-400/10 hover:border-orange-400"
+        >
+          <Link to={`/treatment/${creature.id}`}>
+            <Stethoscope className="w-4 h-4 mr-2" />
+            Treat
           </Link>
         </Button>
       </div>

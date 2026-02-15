@@ -37,6 +37,9 @@ export { useLeaderboard } from './useLeaderboard';
 // Game Config
 export { useGameConfig } from './useGameConfig';
 
+// Treatment
+export { useTreatment } from './useTreatment';
+
 // Wallet Ledger
 export { useWalletLedger } from './useWalletLedger';
 
@@ -63,6 +66,8 @@ export type {
   LeaderboardEntry,
   EnterRaceResponse,
   RegisterCreatureResponse,
+  TreatmentDef,
+  TreatmentStartResponse,
   LedgerEntry,
   WalletLedger,
   WalletProfile,

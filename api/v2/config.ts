@@ -25,6 +25,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalStatCap: config.total_stat_cap ?? 300,
       baseActions: config.base_actions ?? 2,
       cooldownHours: config.cooldown_hours ?? 6,
+      // Sharpness modifier (race scoring)
+      sharpnessModFloor: config.sharpness_mod_floor ?? 0.80,
+      sharpnessModCeiling: config.sharpness_mod_ceiling ?? 1.05,
+      // Sharpness decay
+      sharpnessGraceHours: config.sharpness_grace_hours ?? 12,
+      sharpnessDecayPerDay: config.sharpness_decay_per_day ?? 15,
+      // Fatigue decay tiers
+      fatigueDecayTiers: config.fatigue_decay_tiers ?? [
+        { below: 30, rate: 3 },
+        { below: 60, rate: 6 },
+        { below: 80, rate: 10 },
+        { below: 101, rate: 15 },
+      ],
+      // Treatment tiers
+      treatments: config.treatments ?? {},
       // Fee config (frontend reads these to decide payment flow)
       requireFees: REQUIRE_FEES,
       treasuryErgoTree: TREASURY_ERGO_TREE,

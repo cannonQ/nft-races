@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, TrendingUp, Flame, Check } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Flame, Check, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -99,8 +99,11 @@ export function TrainingConfirmModal({
     .filter(b => selectedBoostIds.has(b.id))
     .reduce((sum, b) => sum + b.multiplier, 0);
 
-  const newFatigue = Math.min(100, creature.fatigue + activity.fatigueCost);
+  const isRecovery = activity.primaryGain === 0 && activity.fatigueCost < 0;
+  const newFatigue = Math.max(0, Math.min(100, creature.fatigue + activity.fatigueCost));
   const isHighFatigue = newFatigue >= 80;
+  const newSharpness = Math.max(0, Math.min(100, creature.sharpness + activity.sharpnessDelta));
+  const sharpnessChange = activity.sharpnessDelta;
 
   // Diminishing returns: gain = base_gain * (1 - trained_stat / 80)
   const trainedPrimary = creature.trainedStats[activity.primaryStat];
@@ -136,17 +139,17 @@ export function TrainingConfirmModal({
       <DialogContent className="cyber-card border-primary/30 max-w-md">
         <DialogHeader>
           <DialogTitle className="font-display text-xl text-foreground">
-            Confirm Training
+            {isRecovery ? 'Confirm Recovery' : 'Confirm Training'}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Train <span className="text-primary font-semibold">{creature.name}</span> with{' '}
+            {isRecovery ? 'Rest' : 'Train'} <span className="text-primary font-semibold">{creature.name}</span> with{' '}
             <span className="text-foreground font-semibold">{activity.name}</span>
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Boost Selector */}
-          {availableBoosts.length > 0 && (
+          {/* Boost Selector (hidden for recovery — boosts multiply 0 gains) */}
+          {!isRecovery && availableBoosts.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -205,89 +208,199 @@ export function TrainingConfirmModal({
             </div>
           )}
 
-          {/* Stat Changes */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Projected Gains
-            </h4>
+          {/* Stat Changes (hidden for recovery activities) */}
+          {!isRecovery && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Projected Gains
+              </h4>
 
-            <div className="cyber-card rounded-lg p-3 space-y-2">
-              {/* Primary Stat */}
-              <div className="flex items-center justify-between">
-                <span className={cn('font-mono text-sm', statColors[activity.primaryStat])}>
-                  {statLabels[activity.primaryStat]}
-                </span>
-                <div className="flex items-center gap-2 font-mono text-sm">
-                  <span className="text-muted-foreground">{currentPrimary}</span>
-                  <TrendingUp className="w-3 h-3 text-accent" />
-                  <span className={statColors[activity.primaryStat]}>{newPrimary}</span>
-                  <span className="text-accent text-xs">(+{primaryGain})</span>
+              <div className="cyber-card rounded-lg p-3 space-y-2">
+                {/* Primary Stat */}
+                <div className="flex items-center justify-between">
+                  <span className={cn('font-mono text-sm', statColors[activity.primaryStat])}>
+                    {statLabels[activity.primaryStat]}
+                  </span>
+                  <div className="flex items-center gap-2 font-mono text-sm">
+                    <span className="text-muted-foreground">{currentPrimary}</span>
+                    <TrendingUp className="w-3 h-3 text-accent" />
+                    <span className={statColors[activity.primaryStat]}>{newPrimary}</span>
+                    <span className="text-accent text-xs">(+{primaryGain})</span>
+                  </div>
+                </div>
+
+                {/* Secondary Stat */}
+                {activity.secondaryStat && (
+                  <div className="flex items-center justify-between">
+                    <span className={cn('font-mono text-sm', statColors[activity.secondaryStat])}>
+                      {statLabels[activity.secondaryStat]}
+                    </span>
+                    <div className="flex items-center gap-2 font-mono text-sm">
+                      <span className="text-muted-foreground">{currentSecondary}</span>
+                      <TrendingUp className="w-3 h-3 text-accent" />
+                      <span className={statColors[activity.secondaryStat]}>{newSecondary}</span>
+                      <span className="text-accent text-xs">(+{secondaryGain})</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Recovery Effects (shown for recovery activities) */}
+          {isRecovery && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Recovery Effects
+              </h4>
+
+              <div className="cyber-card rounded-lg p-3 space-y-3">
+                {/* Fatigue reduction */}
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-sm text-muted-foreground flex items-center gap-1.5">
+                    <ArrowDown className="w-3.5 h-3.5 text-accent" />
+                    Fatigue
+                  </span>
+                  <div className="flex items-center gap-2 font-mono text-sm">
+                    <span className="text-muted-foreground">{Math.round(creature.fatigue)}%</span>
+                    <span className="text-muted-foreground">&rarr;</span>
+                    <span className="text-accent font-bold">{Math.round(newFatigue)}%</span>
+                    <span className="text-accent text-xs">({activity.fatigueCost}%)</span>
+                  </div>
+                </div>
+
+                {/* Fatigue bar */}
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-300',
+                      newFatigue <= 30 ? 'bg-stat-stamina' :
+                      newFatigue <= 60 ? 'bg-stat-acceleration' :
+                      'bg-destructive'
+                    )}
+                    style={{ width: `${newFatigue}%` }}
+                  />
+                </div>
+
+                {/* Sharpness gain */}
+                {sharpnessChange > 0 && (
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <span className="font-mono text-sm text-muted-foreground flex items-center gap-1.5">
+                      <ArrowUp className="w-3.5 h-3.5 text-accent" />
+                      Sharpness
+                    </span>
+                    <div className="flex items-center gap-2 font-mono text-sm">
+                      <span className="text-muted-foreground">{Math.round(creature.sharpness)}%</span>
+                      <span className="text-muted-foreground">&rarr;</span>
+                      <span className="text-accent font-bold">{Math.round(newSharpness)}%</span>
+                      <span className="text-accent text-xs">(+{sharpnessChange})</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                No stat gains. Uses 1 daily action.
+              </p>
+            </div>
+          )}
+
+          {/* Fatigue Change (hidden for recovery — already shown above) */}
+          {!isRecovery && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Fatigue Impact
+              </h4>
+
+              <div className={cn(
+                'cyber-card rounded-lg p-3',
+                isHighFatigue && 'border-destructive/50'
+              )}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono text-sm text-muted-foreground">Fatigue Level</span>
+                  <div className="flex items-center gap-2 font-mono text-sm">
+                    <span className="text-muted-foreground">{Math.round(creature.fatigue)}%</span>
+                    <span className="text-muted-foreground">&rarr;</span>
+                    <span className={cn(
+                      isHighFatigue ? 'text-destructive' : 'text-foreground'
+                    )}>
+                      {Math.round(newFatigue)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Fatigue bar */}
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-300',
+                      newFatigue <= 30 ? 'bg-stat-stamina' :
+                      newFatigue <= 60 ? 'bg-stat-acceleration' :
+                      'bg-destructive'
+                    )}
+                    style={{ width: `${newFatigue}%` }}
+                  />
                 </div>
               </div>
 
-              {/* Secondary Stat */}
-              {activity.secondaryStat && (
-                <div className="flex items-center justify-between">
-                  <span className={cn('font-mono text-sm', statColors[activity.secondaryStat])}>
-                    {statLabels[activity.secondaryStat]}
-                  </span>
-                  <div className="flex items-center gap-2 font-mono text-sm">
-                    <span className="text-muted-foreground">{currentSecondary}</span>
-                    <TrendingUp className="w-3 h-3 text-accent" />
-                    <span className={statColors[activity.secondaryStat]}>{newSecondary}</span>
-                    <span className="text-accent text-xs">(+{secondaryGain})</span>
-                  </div>
+              {isHighFatigue && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                  <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive">
+                    High fatigue warning! Your creature may perform poorly in races and risk injury.
+                  </p>
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Fatigue Change */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Fatigue Impact
-            </h4>
+          {/* Sharpness Impact (hidden for recovery — already shown in Recovery Effects) */}
+          {!isRecovery && sharpnessChange !== 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Sharpness Impact
+              </h4>
 
-            <div className={cn(
-              'cyber-card rounded-lg p-3',
-              isHighFatigue && 'border-destructive/50'
-            )}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-sm text-muted-foreground">Fatigue Level</span>
-                <div className="flex items-center gap-2 font-mono text-sm">
-                  <span className="text-muted-foreground">{Math.round(creature.fatigue)}%</span>
-                  <span className="text-muted-foreground">&rarr;</span>
-                  <span className={cn(
-                    isHighFatigue ? 'text-destructive' : 'text-foreground'
-                  )}>
-                    {Math.round(newFatigue)}%
-                  </span>
+              <div className="cyber-card rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono text-sm text-muted-foreground">Sharpness</span>
+                  <div className="flex items-center gap-2 font-mono text-sm">
+                    <span className="text-muted-foreground">{Math.round(creature.sharpness)}%</span>
+                    <span className="text-muted-foreground">&rarr;</span>
+                    <span className={cn(
+                      sharpnessChange > 0 ? 'text-accent' : 'text-destructive'
+                    )}>
+                      {Math.round(newSharpness)}%
+                    </span>
+                    <span className={cn(
+                      'text-xs flex items-center gap-0.5',
+                      sharpnessChange > 0 ? 'text-accent' : 'text-destructive'
+                    )}>
+                      {sharpnessChange > 0 ? (
+                        <ArrowUp className="w-3 h-3" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3" />
+                      )}
+                      {sharpnessChange > 0 ? '+' : ''}{sharpnessChange}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sharpness bar */}
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-300',
+                      newSharpness >= 70 ? 'bg-accent' :
+                      newSharpness >= 40 ? 'bg-stat-acceleration' :
+                      'bg-destructive'
+                    )}
+                    style={{ width: `${newSharpness}%` }}
+                  />
                 </div>
               </div>
-
-              {/* Fatigue bar */}
-              <div className="h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={cn(
-                    'h-full rounded-full transition-all duration-300',
-                    newFatigue <= 30 ? 'bg-stat-stamina' :
-                    newFatigue <= 60 ? 'bg-stat-acceleration' :
-                    'bg-destructive'
-                  )}
-                  style={{ width: `${newFatigue}%` }}
-                />
-              </div>
             </div>
-
-            {isHighFatigue && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
-                <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                <p className="text-xs text-destructive">
-                  High fatigue warning! Your creature may perform poorly in races and risk injury.
-                </p>
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Fee Info (when fees enabled) */}
@@ -328,7 +441,9 @@ export function TrainingConfirmModal({
                 Signing...
               </>
             ) : (
-              requireFees ? 'Pay & Train (0.01 ERG)' : 'Start Training'
+              requireFees
+                ? (isRecovery ? 'Pay & Recover (0.01 ERG)' : 'Pay & Train (0.01 ERG)')
+                : (isRecovery ? 'Begin Recovery' : 'Start Training')
             )}
           </Button>
         </DialogFooter>

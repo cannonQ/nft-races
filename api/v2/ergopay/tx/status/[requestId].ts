@@ -12,6 +12,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../../_lib/supabase.js';
 import { executeTraining, executeRaceEntry, ActionError } from '../../../../_lib/execute-action.js';
+import { executeTreatmentStart } from '../../../../_lib/execute-treatment.js';
 import { TREASURY_ADDRESS } from '../../../../_lib/constants.js';
 
 const EXPLORER_API = 'https://api.ergoplatform.com/api/v1';
@@ -189,6 +190,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         result = await executeRaceEntry({
           raceId: txReq.race_id,
           creatureId: txReq.creature_id,
+          walletAddress: txReq.wallet_address,
+          txId: detectedTxId,
+        });
+      } else if (txReq.action_type === 'treatment_fee') {
+        result = await executeTreatmentStart({
+          creatureId: txReq.creature_id,
+          treatmentType: txReq.action_payload?.treatmentType,
           walletAddress: txReq.wallet_address,
           txId: detectedTxId,
         });

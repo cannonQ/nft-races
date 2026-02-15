@@ -2,7 +2,8 @@ import { TrainingActivity } from '@/types/game';
 
 /**
  * Static training activity definitions.
- * These don't come from the API - they're game constants.
+ * sharpnessDelta: physical activities cost sharpness, mental ones build it.
+ * Server config overrides these via game_config.activities[id].sharpness_delta.
  */
 export const trainingActivities: TrainingActivity[] = [
   {
@@ -14,6 +15,7 @@ export const trainingActivities: TrainingActivity[] = [
     primaryGain: 3,
     secondaryGain: 1,
     fatigueCost: 15,
+    sharpnessDelta: -5,
     description: 'Intense bursts to maximize raw speed potential.',
   },
   {
@@ -25,6 +27,7 @@ export const trainingActivities: TrainingActivity[] = [
     primaryGain: 3,
     secondaryGain: 2,
     fatigueCost: 20,
+    sharpnessDelta: -3,
     description: 'Long-form cardio to build endurance and willpower.',
   },
   {
@@ -36,6 +39,7 @@ export const trainingActivities: TrainingActivity[] = [
     primaryGain: 3,
     secondaryGain: 1,
     fatigueCost: 18,
+    sharpnessDelta: 0,
     description: 'Obstacle navigation for quick reflexes and nimble movement.',
   },
   {
@@ -47,6 +51,7 @@ export const trainingActivities: TrainingActivity[] = [
     primaryGain: 3,
     secondaryGain: 1,
     fatigueCost: 12,
+    sharpnessDelta: 5,
     description: 'Start-line drills to perfect explosive launches.',
   },
   {
@@ -58,6 +63,7 @@ export const trainingActivities: TrainingActivity[] = [
     primaryGain: 2,
     secondaryGain: 2,
     fatigueCost: 16,
+    sharpnessDelta: -2,
     description: 'Varied exercises for balanced overall conditioning.',
   },
   {
@@ -69,6 +75,19 @@ export const trainingActivities: TrainingActivity[] = [
     primaryGain: 3,
     secondaryGain: 2,
     fatigueCost: 8,
+    sharpnessDelta: 15,
     description: 'Concentration exercises to sharpen mental fortitude.',
+  },
+  {
+    id: 'meditation',
+    name: 'Meditation',
+    icon: 'Leaf',
+    primaryStat: 'focus',
+    secondaryStat: null,
+    primaryGain: 0,
+    secondaryGain: 0,
+    fatigueCost: -25,
+    sharpnessDelta: 15,
+    description: 'Deep rest to recover fatigue and restore mental sharpness.',
   },
 ];

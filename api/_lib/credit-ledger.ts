@@ -12,7 +12,8 @@ export type LedgerTxType =
   | 'season_payout'
   | 'deposit'
   | 'withdrawal'
-  | 'admin_credit';
+  | 'admin_credit'
+  | 'treatment_fee';
 
 export interface LedgerEntry {
   ownerAddress: string;

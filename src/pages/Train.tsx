@@ -65,6 +65,7 @@ export default function Train() {
       primaryGain: serverDef.primary_gain ?? activity.primaryGain,
       secondaryGain: serverDef.secondary_gain ?? activity.secondaryGain,
       fatigueCost: serverDef.fatigue_cost ?? activity.fatigueCost,
+      sharpnessDelta: serverDef.sharpness_delta ?? activity.sharpnessDelta,
     };
   });
 

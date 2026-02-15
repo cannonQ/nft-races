@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, Sparkles, ExternalLink } from 'lucide-react';
+import { CheckCircle, Sparkles, ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -136,6 +136,22 @@ export function TrainingResultModal({
     ? r2(trainResult.newStats[activity.secondaryStat] + baseStats[activity.secondaryStat])
     : r2(oldSecondary + secondaryGain);
 
+  // Recovery detection
+  const isRecovery = activity.primaryGain === 0 && activity.fatigueCost < 0;
+
+  // Fatigue change (for recovery display)
+  const oldFatigue = Math.round(creature.fatigue);
+  const newFatigue = trainResult
+    ? Math.round(trainResult.fatigue)
+    : Math.max(0, Math.min(100, Math.round(creature.fatigue + activity.fatigueCost)));
+
+  // Sharpness change from this activity
+  const sharpnessDelta = activity.sharpnessDelta;
+  const oldSharpness = Math.round(creature.sharpness);
+  const newSharpness = trainResult
+    ? Math.round(trainResult.sharpness)
+    : Math.max(0, Math.min(100, Math.round(creature.sharpness + sharpnessDelta)));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="cyber-card border-accent/30 max-w-md">
@@ -150,7 +166,7 @@ export function TrainingResultModal({
             </div>
           </div>
           <DialogTitle className="font-display text-2xl text-foreground text-center">
-            Training Complete!
+            {isRecovery ? 'Recovery Complete!' : 'Training Complete!'}
           </DialogTitle>
         </DialogHeader>
 
@@ -168,96 +184,189 @@ export function TrainingResultModal({
             )}
           </div>
 
-          {/* Animated stat gains */}
-          <div className="space-y-4">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">
-              Stats Improved
-            </h4>
+          {/* Recovery results */}
+          {isRecovery ? (
+            <div className="space-y-4">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">
+                Recovery Results
+              </h4>
 
-            <div className="cyber-card rounded-lg p-4 space-y-4">
-              {/* Primary Stat */}
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Sparkles className={cn('w-4 h-4', statColors[activity.primaryStat])} />
-                  <span className={cn('font-display text-sm', statColors[activity.primaryStat])}>
-                    {statLabels[activity.primaryStat]}
-                  </span>
-                </div>
-                <div className="flex items-center justify-center gap-3">
-                  <span className="font-mono text-2xl text-muted-foreground">{oldPrimary}</span>
-                  <span className="text-muted-foreground">→</span>
-                  <span className={cn('font-mono text-3xl font-bold', statColors[activity.primaryStat])}>
-                    {showAnimation ? (
-                      <AnimatedNumber from={oldPrimary} to={newPrimary} />
-                    ) : (
-                      oldPrimary
-                    )}
-                  </span>
-                    <span className="text-accent font-mono text-lg">+{primaryGain}</span>
-                  </div>
-
-                {/* Animated bar */}
-                <div className="mt-3 h-3 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all duration-1000 ease-out',
-                      activity.primaryStat === 'speed' && 'bg-stat-speed',
-                      activity.primaryStat === 'stamina' && 'bg-stat-stamina',
-                      activity.primaryStat === 'accel' && 'bg-stat-acceleration',
-                      activity.primaryStat === 'agility' && 'bg-stat-agility',
-                      activity.primaryStat === 'heart' && 'bg-stat-heart',
-                      activity.primaryStat === 'focus' && 'bg-stat-focus',
-                    )}
-                    style={{
-                      width: showAnimation ? `${newPrimary}%` : `${oldPrimary}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Secondary Stat */}
-              {activity.secondaryStat && secondaryGain > 0 && (
-                <div className="text-center pt-3 border-t border-border">
+              <div className="cyber-card rounded-lg p-4 space-y-4">
+                {/* Fatigue decrease */}
+                <div className="text-center">
                   <div className="flex items-center justify-center gap-2 mb-2">
-                    <Sparkles className={cn('w-3 h-3', statColors[activity.secondaryStat])} />
-                    <span className={cn('font-display text-xs', statColors[activity.secondaryStat])}>
-                      {statLabels[activity.secondaryStat]}
-                    </span>
+                    <ArrowDown className="w-4 h-4 text-accent" />
+                    <span className="font-display text-sm text-accent">Fatigue</span>
                   </div>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="font-mono text-lg text-muted-foreground">{oldSecondary}</span>
-                    <span className="text-muted-foreground">→</span>
-                    <span className={cn('font-mono text-xl font-bold', statColors[activity.secondaryStat])}>
+                  <div className="flex items-center justify-center gap-3">
+                    <span className="font-mono text-2xl text-muted-foreground">{oldFatigue}%</span>
+                    <span className="text-muted-foreground">&rarr;</span>
+                    <span className="font-mono text-3xl font-bold text-accent">
                       {showAnimation ? (
-                        <AnimatedNumber from={oldSecondary} to={newSecondary} />
+                        <AnimatedNumber from={oldFatigue} to={newFatigue} />
                       ) : (
-                        oldSecondary
-                      )}
+                        oldFatigue
+                      )}%
                     </span>
-                    <span className="text-accent font-mono text-sm">+{secondaryGain}</span>
                   </div>
 
-                  {/* Animated bar */}
+                  {/* Animated fatigue bar (shrinking = good) */}
                   <div className="mt-3 h-3 rounded-full bg-muted overflow-hidden">
                     <div
                       className={cn(
                         'h-full rounded-full transition-all duration-1000 ease-out',
-                        activity.secondaryStat === 'speed' && 'bg-stat-speed',
-                        activity.secondaryStat === 'stamina' && 'bg-stat-stamina',
-                        activity.secondaryStat === 'accel' && 'bg-stat-acceleration',
-                        activity.secondaryStat === 'agility' && 'bg-stat-agility',
-                        activity.secondaryStat === 'heart' && 'bg-stat-heart',
-                        activity.secondaryStat === 'focus' && 'bg-stat-focus',
+                        newFatigue <= 30 ? 'bg-stat-stamina' :
+                        newFatigue <= 60 ? 'bg-stat-acceleration' :
+                        'bg-destructive'
                       )}
                       style={{
-                        width: showAnimation ? `${newSecondary}%` : `${oldSecondary}%`,
+                        width: showAnimation ? `${newFatigue}%` : `${oldFatigue}%`,
                       }}
                     />
                   </div>
                 </div>
-              )}
+
+                {/* Sharpness gain */}
+                {sharpnessDelta > 0 && (
+                  <div className="text-center pt-3 border-t border-border">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <ArrowUp className="w-3.5 h-3.5 text-accent" />
+                      <span className="font-display text-xs text-accent">Sharpness</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="font-mono text-lg text-muted-foreground">{oldSharpness}%</span>
+                      <span className="text-muted-foreground">&rarr;</span>
+                      <span className="font-mono text-xl font-bold text-accent">
+                        {showAnimation ? (
+                          <AnimatedNumber from={oldSharpness} to={newSharpness} />
+                        ) : (
+                          oldSharpness
+                        )}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Animated stat gains */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">
+                  Stats Improved
+                </h4>
+
+                <div className="cyber-card rounded-lg p-4 space-y-4">
+                  {/* Primary Stat */}
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Sparkles className={cn('w-4 h-4', statColors[activity.primaryStat])} />
+                      <span className={cn('font-display text-sm', statColors[activity.primaryStat])}>
+                        {statLabels[activity.primaryStat]}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <span className="font-mono text-2xl text-muted-foreground">{oldPrimary}</span>
+                      <span className="text-muted-foreground">&rarr;</span>
+                      <span className={cn('font-mono text-3xl font-bold', statColors[activity.primaryStat])}>
+                        {showAnimation ? (
+                          <AnimatedNumber from={oldPrimary} to={newPrimary} />
+                        ) : (
+                          oldPrimary
+                        )}
+                      </span>
+                      <span className="text-accent font-mono text-lg">+{primaryGain}</span>
+                    </div>
+
+                    {/* Animated bar */}
+                    <div className="mt-3 h-3 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all duration-1000 ease-out',
+                          activity.primaryStat === 'speed' && 'bg-stat-speed',
+                          activity.primaryStat === 'stamina' && 'bg-stat-stamina',
+                          activity.primaryStat === 'accel' && 'bg-stat-acceleration',
+                          activity.primaryStat === 'agility' && 'bg-stat-agility',
+                          activity.primaryStat === 'heart' && 'bg-stat-heart',
+                          activity.primaryStat === 'focus' && 'bg-stat-focus',
+                        )}
+                        style={{
+                          width: showAnimation ? `${newPrimary}%` : `${oldPrimary}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Secondary Stat */}
+                  {activity.secondaryStat && secondaryGain > 0 && (
+                    <div className="text-center pt-3 border-t border-border">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <Sparkles className={cn('w-3 h-3', statColors[activity.secondaryStat])} />
+                        <span className={cn('font-display text-xs', statColors[activity.secondaryStat])}>
+                          {statLabels[activity.secondaryStat]}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="font-mono text-lg text-muted-foreground">{oldSecondary}</span>
+                        <span className="text-muted-foreground">&rarr;</span>
+                        <span className={cn('font-mono text-xl font-bold', statColors[activity.secondaryStat])}>
+                          {showAnimation ? (
+                            <AnimatedNumber from={oldSecondary} to={newSecondary} />
+                          ) : (
+                            oldSecondary
+                          )}
+                        </span>
+                        <span className="text-accent font-mono text-sm">+{secondaryGain}</span>
+                      </div>
+
+                      {/* Animated bar */}
+                      <div className="mt-3 h-3 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn(
+                            'h-full rounded-full transition-all duration-1000 ease-out',
+                            activity.secondaryStat === 'speed' && 'bg-stat-speed',
+                            activity.secondaryStat === 'stamina' && 'bg-stat-stamina',
+                            activity.secondaryStat === 'accel' && 'bg-stat-acceleration',
+                            activity.secondaryStat === 'agility' && 'bg-stat-agility',
+                            activity.secondaryStat === 'heart' && 'bg-stat-heart',
+                            activity.secondaryStat === 'focus' && 'bg-stat-focus',
+                          )}
+                          style={{
+                            width: showAnimation ? `${newSecondary}%` : `${oldSecondary}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sharpness Change */}
+              {sharpnessDelta !== 0 && (
+                <div className="cyber-card rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-sm text-muted-foreground flex items-center gap-1.5">
+                      {sharpnessDelta > 0 ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-accent" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-destructive" />
+                      )}
+                      Sharpness
+                    </span>
+                    <div className="flex items-center gap-2 font-mono text-sm">
+                      <span className="text-muted-foreground">{oldSharpness}%</span>
+                      <span className="text-muted-foreground">&rarr;</span>
+                      <span className={cn(
+                        sharpnessDelta > 0 ? 'text-accent font-bold' : 'text-destructive font-bold'
+                      )}>
+                        {newSharpness}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {trainResult && (

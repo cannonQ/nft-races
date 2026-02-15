@@ -54,6 +54,12 @@ export interface CreatureWithStats {
     lifetimeRaces: number;
     badges: string[];
   };
+  // Treatment lockout state (null = not in treatment)
+  treatment: {
+    type: string;
+    startedAt: string;
+    endsAt: string;
+  } | null;
   // Convenience fields matching old Creature interface
   totalRaces: number;
   totalEarnings: number;
@@ -61,14 +67,34 @@ export interface CreatureWithStats {
   fallbackImageUrl?: string;
 }
 
+// Treatment tier definition (from game_config)
+export interface TreatmentDef {
+  name: string;
+  duration_hours: number;
+  fatigue_reduction: number | null;  // null = reset to 0
+  sharpness_set: number | null;      // null = unchanged
+  cost_nanoerg: number;
+}
+
+// Treatment start response
+export interface TreatmentStartResponse {
+  success: boolean;
+  treatmentType: string;
+  treatmentName: string;
+  durationHours: number;
+  endsAt: string;
+  costNanoerg: number;
+}
+
 // Training activity types
-export type Activity = 
-  | 'sprint_drills' 
-  | 'distance_runs' 
-  | 'agility_course' 
-  | 'gate_work' 
-  | 'cross_training' 
-  | 'mental_prep';
+export type Activity =
+  | 'sprint_drills'
+  | 'distance_runs'
+  | 'agility_course'
+  | 'gate_work'
+  | 'cross_training'
+  | 'mental_prep'
+  | 'meditation';
 
 // Training activity configuration
 export interface TrainingActivity {
@@ -80,6 +106,7 @@ export interface TrainingActivity {
   primaryGain: number;
   secondaryGain: number;
   fatigueCost: number;
+  sharpnessDelta: number;
   description: string;
 }
 

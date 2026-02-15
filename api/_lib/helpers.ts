@@ -270,6 +270,7 @@ export async function getOrCreateCreatureStats(
  * @param leaderboardRow — current season's season_leaderboard row (W/P/S, races, earnings)
  * @param loader — optional collection loader for image/name resolution
  * @param lastRegularActionAt — timestamp of most recent regular (non-bonus) action (for cooldown)
+ * @param gameConfig — optional merged game config (passed to applyConditionDecay for scaled decay)
  */
 export function computeCreatureResponse(
   creatureRow: Record<string, any>,
@@ -280,6 +281,7 @@ export function computeCreatureResponse(
   leaderboardRow: Record<string, any> | null = null,
   loader?: CollectionLoader,
   lastRegularActionAt?: string | null,
+  gameConfig?: Record<string, any>,
 ) {
   const trainedStats = {
     speed: statsRow?.speed ?? 0,
@@ -301,11 +303,12 @@ export function computeCreatureResponse(
   const actionsRemaining = bonusActions + regularRemaining;
   const maxActionsToday = BASE_ACTIONS + bonusActions;
 
-  // Apply real-time condition decay
+  // Apply real-time condition decay (uses scaled fatigue + faster sharpness decay)
   const { fatigue, sharpness } = applyConditionDecay(
     statsRow?.fatigue ?? 0,
     statsRow?.sharpness ?? 50,
     statsRow?.last_action_at ?? null,
+    gameConfig,
   );
 
   // Compute cooldown: 6h fixed, bonus actions bypass cooldown.
@@ -364,5 +367,11 @@ export function computeCreatureResponse(
     },
     imageUrl: getCreatureImageUrl(creatureRow.metadata, loader),
     fallbackImageUrl: getCreatureFallbackImageUrl(creatureRow.metadata, loader),
+    treatment: statsRow?.treatment_type ? {
+      type: statsRow.treatment_type,
+      startedAt: statsRow.treatment_started_at,
+      endsAt: statsRow.treatment_ends_at,
+    } : null,
   };
 }
+

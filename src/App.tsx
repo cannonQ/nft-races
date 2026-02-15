@@ -16,6 +16,7 @@ const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const CreatureProfile = lazy(() => import("./pages/CreatureProfile"));
 const Admin = lazy(() => import("./pages/Admin"));
 const FAQ = lazy(() => import("./pages/FAQ"));
+const Treatment = lazy(() => import("./pages/Treatment"));
 const WalletLedger = lazy(() => import("./pages/WalletLedger"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -44,6 +45,8 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/train" element={<Train />} />
               <Route path="/train/:creatureId" element={<Train />} />
+              <Route path="/treatment" element={<Treatment />} />
+              <Route path="/treatment/:creatureId" element={<Treatment />} />
               <Route path="/races" element={<Races />} />
               <Route path="/races/:raceId/results" element={<RaceResults />} />
               <Route path="/leaderboard" element={<Leaderboard />} />

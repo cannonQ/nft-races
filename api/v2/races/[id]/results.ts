@@ -4,7 +4,7 @@ import seedrandom from 'seedrandom';
 import { supabase } from '../../../_lib/supabase.js';
 import { nanoErgToErg, positionToRewardLabel } from '../../../_lib/constants.js';
 import { getCreatureDisplayName } from '../../../_lib/helpers.js';
-import { STAT_KEYS } from '../../../../lib/training-engine.js';
+import { STAT_KEYS, computeSharpnessMod } from '../../../../lib/training-engine.js';
 import type { StatName } from '../../../../lib/training-engine.js';
 
 function seedToFloat(hexSeed: string): number {
@@ -96,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const fatigue = entry.snapshot_fatigue ?? 0;
         const sharpness = entry.snapshot_sharpness ?? 50;
         const fatigueMod = 1.0 - fatigue / 200;
-        const sharpnessMod = 0.90 + sharpness / 1000;
+        const sharpnessMod = computeSharpnessMod(sharpness, gameConfig?.config);
 
         // Recompute RNG modifier from block hash (deterministic)
         let rngMod = 0;

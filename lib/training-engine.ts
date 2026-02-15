@@ -27,6 +27,7 @@ export interface ActivityDef {
   secondary: StatName;
   secondary_gain: number;
   fatigue_cost: number;
+  sharpness_delta?: number;
 }
 
 /** Result of computeTrainingGains */
@@ -169,7 +170,7 @@ export function computeTrainingGains(
   return {
     statChanges: rawGains,
     fatigueDelta: activityDef.fatigue_cost,
-    sharpnessDelta: 20,
+    sharpnessDelta: activityDef.sharpness_delta ?? 0,
   };
 }
 
@@ -213,6 +214,18 @@ export async function validateTrainingAction(
 
   if (statsErr || !stats) {
     return { valid: false, reason: 'Creature stats not found for this season' };
+  }
+
+  // Treatment lockout: reject if creature is currently in treatment
+  if (stats.treatment_type && stats.treatment_ends_at) {
+    const treatmentEnds = new Date(stats.treatment_ends_at);
+    if (treatmentEnds > new Date()) {
+      const remainMs = treatmentEnds.getTime() - Date.now();
+      const hours = Math.floor(remainMs / (1000 * 60 * 60));
+      const minutes = Math.ceil((remainMs % (1000 * 60 * 60)) / (60 * 1000));
+      const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+      return { valid: false, reason: `Creature is in treatment — ${timeStr} remaining` };
+    }
   }
 
   const ALPHA_TESTING = false;
@@ -293,20 +306,31 @@ export async function validateTrainingAction(
 // Condition decay
 // ---------------------------------------------------------------------------
 
+/** Default fatigue decay tiers: [{ below, rate }] sorted ascending by threshold. */
+const DEFAULT_FATIGUE_DECAY_TIERS = [
+  { below: 30, rate: 3 },
+  { below: 60, rate: 6 },
+  { below: 80, rate: 10 },
+  { below: Infinity, rate: 15 },
+];
+
 /**
  * Natural condition decay based on time since last activity.
  *
- * Fatigue:  -3 per 24 h (prorated), floor 0
+ * Fatigue: scaled decay rate based on current fatigue tier (configurable).
+ *   0-30: -3/day, 30-60: -6/day, 60-80: -10/day, 80-100: -15/day
+ *
  * Sharpness:
- *   0-12 h  → no decay (recently trained)
- *   12-24 h → stays high (recovery window)
- *   > 24 h  → -10 per day prorated
+ *   0–grace_hours (default 12h) → no decay
+ *   > grace_hours → decay at sharpness_decay_per_day (default -15/day)
+ *
  * Both clamped 0-100.
  */
 export function applyConditionDecay(
   fatigue: number,
   sharpness: number,
   lastActionAt: Date | string | null,
+  config?: Record<string, any>,
 ): ConditionResult {
   if (!lastActionAt) {
     return { fatigue: clamp(fatigue, 0, 100), sharpness: clamp(sharpness, 0, 100) };
@@ -315,17 +339,27 @@ export function applyConditionDecay(
   const lastTime = typeof lastActionAt === 'string' ? new Date(lastActionAt) : lastActionAt;
   const hoursSince = (Date.now() - lastTime.getTime()) / (1000 * 60 * 60);
 
-  // Fatigue decay: -3 per 24h prorated
-  const fatigueDecay = (hoursSince / 24) * 3;
+  // --- Scaled fatigue decay ---
+  const tiers = config?.fatigue_decay_tiers ?? DEFAULT_FATIGUE_DECAY_TIERS;
+  let fatigueRate = 3; // fallback
+  for (const tier of tiers) {
+    if (fatigue < tier.below) {
+      fatigueRate = tier.rate;
+      break;
+    }
+  }
+  const fatigueDecay = (hoursSince / 24) * fatigueRate;
   const newFatigue = Math.max(0, fatigue - fatigueDecay);
 
-  // Sharpness decay
+  // --- Sharpness decay (configurable grace period + rate) ---
+  const graceHours = config?.sharpness_grace_hours ?? 12;
+  const sharpnessDecayPerDay = config?.sharpness_decay_per_day ?? 15;
+
   let newSharpness = sharpness;
-  if (hoursSince > 24) {
-    const daysOverWindow = (hoursSince - 24) / 24;
-    newSharpness = sharpness - daysOverWindow * 10;
+  if (hoursSince > graceHours) {
+    const daysOverGrace = (hoursSince - graceHours) / 24;
+    newSharpness = sharpness - daysOverGrace * sharpnessDecayPerDay;
   }
-  // 0-12h and 12-24h: no decay
 
   return {
     fatigue: clamp(Math.round(newFatigue * 100) / 100, 0, 100),
@@ -378,8 +412,8 @@ export function computeRaceResult(
     // 3. Fatigue modifier: 1.0 - (fatigue / 200) → range [0.50, 1.00]
     const fatigueMod = 1.0 - entry.fatigue / 200;
 
-    // 4. Sharpness modifier: 0.90 + (sharpness / 1000) → range [0.90, 1.00]
-    const sharpnessMod = 0.90 + entry.sharpness / 1000;
+    // 4. Sharpness modifier (configurable): default 0.80–1.05 (25% swing)
+    const sharpnessMod = computeSharpnessMod(entry.sharpness, config);
 
     // 5. RNG seed from block hash + creature id
     const rngSeed = createHash('sha256')
@@ -500,6 +534,22 @@ export async function applyRaceRewards(
       });
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sharpness race modifier
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the sharpness modifier for race scoring.
+ *
+ * Default range: 0.80 (sharpness 0) → 1.05 (sharpness 100) = 25% swing.
+ * Configurable via `sharpness_mod_floor` and `sharpness_mod_ceiling` in game_config.
+ */
+export function computeSharpnessMod(sharpness: number, config?: Record<string, any>): number {
+  const floor = config?.sharpness_mod_floor ?? 0.80;
+  const ceiling = config?.sharpness_mod_ceiling ?? 1.05;
+  return floor + (sharpness / 100) * (ceiling - floor);
 }
 
 // ---------------------------------------------------------------------------

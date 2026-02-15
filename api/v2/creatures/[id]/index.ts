@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { getActiveSeason, getLatestErgoBlock, countRegularActionsToday, getLastRegularActionAt, computeCreatureResponse } from '../../../_lib/helpers.js';
 import { getLoaderBySlug } from '../../../_lib/collections/registry.js';
+import { getGameConfig } from '../../../_lib/config.js';
+import { checkAndCompleteTreatment } from '../../../_lib/execute-treatment.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -84,15 +86,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       availableBoosts = boostRows ?? [];
     }
 
+    const gameConfig = await getGameConfig(creature.collection_id) ?? undefined;
+
+    // Lazy treatment completion: if treatment ended, apply effects before building response
+    let statsData = statsResult.data ?? null;
+    if (season && statsData?.treatment_type && statsData.treatment_ends_at) {
+      const completed = await checkAndCompleteTreatment(id, season.id, gameConfig);
+      if (completed) {
+        // Re-fetch stats after treatment completion
+        const { data: refreshed } = await supabase
+          .from('creature_stats')
+          .select('*')
+          .eq('creature_id', id)
+          .eq('season_id', season.id)
+          .single();
+        if (refreshed) statsData = refreshed;
+      }
+    }
+
     const result = computeCreatureResponse(
       creature,
-      statsResult.data ?? null,
+      statsData,
       prestigeResult.data ?? null,
       regularActionsToday,
       availableBoosts,
       leaderboardResult.data ?? null,
       loader,
       lastRegularActionAt,
+      gameConfig,
     );
 
     return res.status(200).json(result);

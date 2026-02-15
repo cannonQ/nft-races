@@ -21,12 +21,13 @@ export type ErgoPayTxStatus =
   | { status: 'failed'; error: string };
 
 export interface RequestErgoPayTxParams {
-  actionType: 'training_fee' | 'race_entry_fee';
+  actionType: 'training_fee' | 'race_entry_fee' | 'treatment_fee';
   walletAddress: string;
   creatureId: string;
   raceId?: string;
   activity?: string;
   boostRewardIds?: string[];
+  treatmentType?: string;
 }
 
 export async function requestErgoPayTx(params: RequestErgoPayTxParams): Promise<ErgoPayTxRequest> {

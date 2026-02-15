@@ -199,8 +199,8 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
   // 9. Compute new condition values
   const rawFatigue = (validation.statsRow?.fatigue ?? 0) + gains.fatigueDelta;
   const rawSharpness = Math.min(100, (validation.statsRow?.sharpness ?? 50) + gains.sharpnessDelta);
-  const fatigue = Math.min(100, Math.round(rawFatigue * 100) / 100);
-  const sharpness = Math.round(rawSharpness * 100) / 100;
+  const fatigue = Math.max(0, Math.min(100, Math.round(rawFatigue * 100) / 100));
+  const sharpness = Math.max(0, Math.round(rawSharpness * 100) / 100);
 
   const now = new Date().toISOString();
   const isBonusAction = validation.isBonusAction ?? false;
@@ -376,11 +376,22 @@ export async function executeRaceEntry(params: ExecuteRaceEntryParams): Promise<
     throw new ActionError(400, 'Failed to load creature stats for this season');
   }
 
-  // 6. Snapshot current stats with real-time condition decay
+  // 5b. Treatment lockout: reject if creature is currently in treatment
+  if (stats.treatment_type && stats.treatment_ends_at) {
+    if (new Date(stats.treatment_ends_at) > new Date()) {
+      throw new ActionError(400, 'Creature is currently in treatment and cannot enter races');
+    }
+  }
+
+  // 5c. Load merged game config for condition decay
+  const mergedConfig = await getGameConfig(creature.collection_id);
+
+  // 6. Snapshot current stats with real-time condition decay (scaled fatigue + faster sharpness)
   const { fatigue, sharpness } = applyConditionDecay(
     stats.fatigue ?? 0,
     stats.sharpness ?? 50,
     stats.last_action_at,
+    mergedConfig ?? undefined,
   );
 
   const snapshotStats = {

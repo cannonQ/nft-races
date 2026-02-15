@@ -6,6 +6,7 @@ export const ACTIVITY_DISPLAY: Record<string, { name: string; icon: string; prim
   gate_work:      { name: 'Gate Work',      icon: 'Timer',    primaryStat: 'accel' },
   cross_training: { name: 'Cross-Training', icon: 'Dumbbell', primaryStat: 'stamina' },
   mental_prep:    { name: 'Mental Prep',    icon: 'Brain',    primaryStat: 'focus' },
+  meditation:     { name: 'Meditation',    icon: 'Leaf',     primaryStat: 'focus' },
 };
 
 /** Map race finish position to a human-readable reward label */

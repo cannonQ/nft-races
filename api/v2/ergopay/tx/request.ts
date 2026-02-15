@@ -54,14 +54,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     raceId,
     activity,
     boostRewardIds,
+    treatmentType,
   } = req.body ?? {};
 
   if (!actionType || !walletAddress) {
     return res.status(400).json({ error: 'actionType and walletAddress are required' });
   }
 
-  if (actionType !== 'training_fee' && actionType !== 'race_entry_fee') {
-    return res.status(400).json({ error: 'actionType must be training_fee or race_entry_fee' });
+  if (actionType !== 'training_fee' && actionType !== 'race_entry_fee' && actionType !== 'treatment_fee') {
+    return res.status(400).json({ error: 'actionType must be training_fee, race_entry_fee, or treatment_fee' });
   }
 
   try {
@@ -176,6 +177,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const ergAmount = (amountNanoerg / 1_000_000_000).toFixed(4);
       message = `${appName}: Race Entry (${ergAmount} ERG)`;
       metadata = { actionType: 'race', tokenId, context: raceId };
+
+    } else {
+      // treatment_fee
+      if (!creatureId || !treatmentType) {
+        return res.status(400).json({ error: 'creatureId and treatmentType are required for treatment' });
+      }
+
+      // Verify creature + ownership
+      const { data: creature, error: creatureErr } = await supabase
+        .from('creatures')
+        .select('id, token_id, owner_address, collection_id, collections(name)')
+        .eq('id', creatureId)
+        .single();
+
+      if (creatureErr || !creature) {
+        return res.status(400).json({ error: 'Creature not found' });
+      }
+
+      const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
+      if (!ownership.ownsToken) {
+        return res.status(403).json({ error: 'You no longer own this NFT on-chain' });
+      }
+
+      const season = await getActiveSeason(creature.collection_id);
+      if (!season) {
+        return res.status(400).json({ error: 'No active season for this collection' });
+      }
+
+      const mergedConfig = await getGameConfig(creature.collection_id);
+      const treatments = mergedConfig?.treatments ?? {};
+      const treatmentDef = treatments[treatmentType];
+      if (!treatmentDef) {
+        return res.status(400).json({ error: `Unknown treatment type: ${treatmentType}` });
+      }
+
+      // Check creature stats — not already in treatment
+      const stats = await getOrCreateCreatureStats(creatureId, season.id);
+      if (stats?.treatment_type && stats.treatment_ends_at) {
+        if (new Date(stats.treatment_ends_at) > new Date()) {
+          return res.status(400).json({ error: 'Creature is already in treatment' });
+        }
+      }
+
+      tokenId = creature.token_id;
+      amountNanoerg = treatmentDef.cost_nanoerg;
+      if (amountNanoerg <= 0) {
+        return res.status(400).json({ error: 'This treatment has no fee' });
+      }
+
+      const appName = getAppName((creature as any).collections?.name || 'NFT');
+      const ergAmount = (amountNanoerg / 1_000_000_000).toFixed(4);
+      message = `${appName}: Treatment - ${treatmentDef.name} (${ergAmount} ERG)`;
+      metadata = { actionType: 'treatment', tokenId, context: treatmentType };
     }
 
     // Generate our own request ID (we insert into DB first, then reference in replyTo)
@@ -192,6 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       action_payload: {
         activity: activity ?? null,
         boostRewardIds: boostRewardIds ?? null,
+        treatmentType: treatmentType ?? null,
       },
       status: 'pending',
     });

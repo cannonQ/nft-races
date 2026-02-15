@@ -1,4 +1,4 @@
-import { Zap, Route, Wind, Timer, Dumbbell, Brain, Flame, LucideIcon } from 'lucide-react';
+import { Zap, Route, Wind, Timer, Dumbbell, Brain, Leaf, Flame, LucideIcon, ArrowUp, ArrowDown } from 'lucide-react';
 import { TrainingActivity, StatType } from '@/types/game';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +16,7 @@ const iconMap: Record<string, LucideIcon> = {
   Timer,
   Dumbbell,
   Brain,
+  Leaf,
 };
 
 const statColors: Record<StatType, string> = {
@@ -72,37 +73,75 @@ export function ActivityCard({ activity, disabled, onSelect, hasBoostsAvailable 
         </div>
       </div>
 
-      {/* Stat Gains */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        <div className={cn(
-          'flex items-center gap-1 px-2 py-1 rounded text-xs font-mono',
-          'bg-primary/10',
-          statColors[activity.primaryStat]
-        )}>
-          <span>+{activity.primaryGain}</span>
-          <span className="opacity-70">{statLabels[activity.primaryStat]}</span>
-          {hasBoostsAvailable && (
-            <Flame className="w-3 h-3 text-primary" />
-          )}
+      {/* Stat Gains or Recovery Tag */}
+      {activity.primaryGain === 0 && activity.fatigueCost < 0 ? (
+        <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono bg-accent/10 text-accent">
+            <Leaf className="w-3 h-3" />
+            <span>Recovery</span>
+          </div>
         </div>
-        {activity.secondaryStat && (
+      ) : (
+        <div className="flex flex-wrap gap-2 mb-3">
           <div className={cn(
             'flex items-center gap-1 px-2 py-1 rounded text-xs font-mono',
-            'bg-muted',
-            statColors[activity.secondaryStat]
+            'bg-primary/10',
+            statColors[activity.primaryStat]
           )}>
-            <span>+{activity.secondaryGain}</span>
-            <span className="opacity-70">{statLabels[activity.secondaryStat]}</span>
+            <span>+{activity.primaryGain}</span>
+            <span className="opacity-70">{statLabels[activity.primaryStat]}</span>
+            {hasBoostsAvailable && (
+              <Flame className="w-3 h-3 text-primary" />
+            )}
+          </div>
+          {activity.secondaryStat && (
+            <div className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs font-mono',
+              'bg-muted',
+              statColors[activity.secondaryStat]
+            )}>
+              <span>+{activity.secondaryGain}</span>
+              <span className="opacity-70">{statLabels[activity.secondaryStat]}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Fatigue & Sharpness Cost */}
+      <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-1.5">
+          {activity.fatigueCost < 0 ? (
+            <>
+              <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <span className="text-muted-foreground">
+                Fatigue: <span className="font-mono text-accent">{activity.fatigueCost}%</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <div className="w-1.5 h-1.5 rounded-full bg-destructive" />
+              <span className="text-muted-foreground">
+                Fatigue: <span className="font-mono text-destructive">+{activity.fatigueCost}%</span>
+              </span>
+            </>
+          )}
+        </div>
+        {activity.sharpnessDelta !== 0 && (
+          <div className="flex items-center gap-1">
+            {activity.sharpnessDelta > 0 ? (
+              <ArrowUp className="w-3 h-3 text-accent" />
+            ) : (
+              <ArrowDown className="w-3 h-3 text-destructive" />
+            )}
+            <span className={cn(
+              'font-mono',
+              activity.sharpnessDelta > 0 ? 'text-accent' : 'text-destructive'
+            )}>
+              {activity.sharpnessDelta > 0 ? '+' : ''}{activity.sharpnessDelta}
+            </span>
+            <span className="text-muted-foreground">Sharp</span>
           </div>
         )}
-      </div>
-
-      {/* Fatigue Cost */}
-      <div className="flex items-center gap-1.5 text-xs">
-        <div className="w-1.5 h-1.5 rounded-full bg-destructive" />
-        <span className="text-muted-foreground">
-          Fatigue: <span className="font-mono text-destructive">+{activity.fatigueCost}%</span>
-        </span>
       </div>
     </button>
   );

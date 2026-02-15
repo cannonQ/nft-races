@@ -8,6 +8,12 @@ export interface ActivityConfig {
   secondary: string;
   secondary_gain: number;
   fatigue_cost: number;
+  sharpness_delta?: number;
+}
+
+export interface FatigueDecayTier {
+  below: number;
+  rate: number;
 }
 
 export interface GameConfig {
@@ -18,6 +24,17 @@ export interface GameConfig {
   totalStatCap?: number;
   baseActions?: number;
   cooldownHours?: number;
+  // Sharpness modifier (race scoring)
+  sharpnessModFloor?: number;
+  sharpnessModCeiling?: number;
+  // Sharpness decay
+  sharpnessGraceHours?: number;
+  sharpnessDecayPerDay?: number;
+  // Fatigue decay tiers
+  fatigueDecayTiers?: FatigueDecayTier[];
+  // Treatments
+  treatments?: Record<string, import('@/types/game').TreatmentDef>;
+  // Fees
   requireFees?: boolean;
   treasuryErgoTree?: string;
   trainingFeeNanoerg?: number;
