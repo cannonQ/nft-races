@@ -735,13 +735,91 @@ export default function FAQ() {
               </AccordionContent>
             </AccordionItem>
 
+            {/* Rarity Class Races */}
+            <AccordionItem value="class-races">
+              <AccordionTrigger className="text-foreground">
+                What are Rarity Class races?
+              </AccordionTrigger>
+              <AccordionContent className="text-muted-foreground space-y-3">
+                <p>
+                  Class races restrict entry by creature rarity, so creatures compete against
+                  others of similar power level. There are three classes:
+                </p>
+                <div className="space-y-2 text-xs">
+                  <div className="p-3 rounded-lg bg-amber-400/5 border border-amber-400/20">
+                    <p className="font-semibold text-amber-400 mb-1">Rookie Class</p>
+                    <p>Common, Uncommon, and Rare creatures only. The proving ground for underdogs.</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-violet-400/5 border border-violet-400/20">
+                    <p className="font-semibold text-violet-400 mb-1">Contender Class</p>
+                    <p>Masterwork, Epic, and Relic creatures only. The competitive mid-tier.</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-cyan-400/5 border border-cyan-400/20">
+                    <p className="font-semibold text-cyan-400 mb-1">Champion Class</p>
+                    <p>Legendary, Mythic, and Cyberium creatures only. The elite arena.</p>
+                  </div>
+                </div>
+                <p>
+                  <strong>Open races</strong> (no class restriction) remain the default and accept
+                  all rarities. Class races are shown with a colored badge on the race card.
+                </p>
+                <p className="text-xs font-semibold uppercase tracking-wider pt-1">
+                  League Points
+                </p>
+                <p>
+                  League points are the <strong>primary leaderboard ranking metric</strong>.
+                  Open races award full points (7/5/3/1 by position). Class races award
+                  reduced points at 1/7 weight — so a 1st place in a class race earns 1 LP
+                  vs 7 LP in an open race.
+                </p>
+                <p className="text-xs border-l-2 border-primary/30 pl-3">
+                  <strong>Why reduced points?</strong> Class races have a smaller eligible pool
+                  and less competition. The reduced weight prevents players from farming easy
+                  wins in a narrow class to dominate the overall leaderboard. Open races reward
+                  competing against the full field.
+                </p>
+                <p className="text-xs font-semibold uppercase tracking-wider pt-1">
+                  Recovery Packs
+                </p>
+                <p>
+                  Instead of training boosts, class race finishers earn <strong>recovery packs</strong> —
+                  fatigue reduction items that can be consumed during training. These work like
+                  boost rewards but reduce fatigue instead of multiplying stat gains.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-2 rounded bg-race-sprint/10 border border-race-sprint/20 text-center">
+                    <span className="text-race-sprint font-semibold block">1st</span>
+                    <span>-8 fatigue</span>
+                  </div>
+                  <div className="p-2 rounded bg-primary/10 border border-primary/20 text-center">
+                    <span className="text-primary font-semibold block">2nd</span>
+                    <span>-5 fatigue</span>
+                  </div>
+                  <div className="p-2 rounded bg-secondary/10 border border-secondary/20 text-center">
+                    <span className="text-secondary font-semibold block">3rd</span>
+                    <span>-4 fatigue</span>
+                  </div>
+                  <div className="p-2 rounded bg-muted/30 border border-border/30 text-center">
+                    <span className="text-muted-foreground font-semibold block">4th+</span>
+                    <span>-3 fatigue</span>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
             {/* Rewards & Boosts */}
             <AccordionItem value="rewards">
               <AccordionTrigger className="text-foreground">
                 What rewards do I get from racing?
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground space-y-3">
-                <p>Every finisher earns a reward based on placement:</p>
+                <p>
+                  <strong>Open races</strong> award training rewards by placement. <strong>Class
+                  races</strong> award recovery packs instead (see above).
+                </p>
+                <p className="text-xs font-semibold uppercase tracking-wider">
+                  Open Race Rewards
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="flex items-center gap-2 p-2 rounded bg-race-sprint/10 border border-race-sprint/20">
                     <span className="text-race-sprint font-semibold">1st Place</span>
@@ -772,6 +850,14 @@ export default function FAQ() {
                 </p>
                 <p className="text-xs border-l-2 border-destructive/30 pl-3">
                   Boosts expire after ~3 days (2160 Ergo blocks). Use them or lose them!
+                </p>
+                <p className="text-xs font-semibold uppercase tracking-wider pt-1">
+                  League Points (All Races)
+                </p>
+                <p>
+                  Every race awards <strong>league points</strong> — the primary metric for
+                  season leaderboard ranking. Open races: 7/5/3/1 pts. Class races: ~1/0.7/0.4/0.1 pts
+                  (1/7 weight). Win count is the tiebreaker.
                 </p>
               </AccordionContent>
             </AccordionItem>
