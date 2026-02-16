@@ -15,7 +15,8 @@ import {
 } from '../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../lib/ergo/server.js';
 import { recordLedgerEntry } from './credit-ledger.js';
-import { TRAINING_FEE_NANOERG, REQUIRE_FEES } from './constants.js';
+import { TRAINING_FEE_NANOERG, REQUIRE_FEES, CLASS_RARITIES } from './constants.js';
+import type { RarityClass } from './constants.js';
 import { getUtcMidnightToday } from './helpers.js';
 
 // ============================================
@@ -27,6 +28,7 @@ export interface ExecuteTrainingParams {
   activity: string;
   walletAddress: string;
   boostRewardIds?: string[];
+  recoveryRewardIds?: string[];
   txId?: string;
 }
 
@@ -39,6 +41,8 @@ export interface ExecuteTrainingResult {
   boostUsed: boolean;
   totalBoostMultiplier: number;
   boostsConsumed: string[];
+  recoveriesConsumed: string[];
+  recoveryApplied: number;
   actionsRemaining: number;
   nextActionAt: string | null;
 }
@@ -119,7 +123,7 @@ export class ActionError extends Error {
 // ============================================
 
 export async function executeTraining(params: ExecuteTrainingParams): Promise<ExecuteTrainingResult> {
-  const { creatureId, activity, walletAddress, boostRewardIds, txId } = params;
+  const { creatureId, activity, walletAddress, boostRewardIds, recoveryRewardIds, txId } = params;
 
   // 1. Verify creature + ownership
   const creature = await verifyCreatureOwnership(creatureId, walletAddress);
@@ -187,6 +191,43 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
     }
   }
 
+  // 7b. Validate + apply recovery packs
+  const selectedRecoveryIds: string[] = Array.isArray(recoveryRewardIds) ? recoveryRewardIds : [];
+  let totalRecoveryReduction = 0;
+  let validatedRecoveries: any[] = [];
+
+  if (selectedRecoveryIds.length > 0) {
+    const { data: recoveryRows, error: recoveryErr } = await supabase
+      .from('recovery_rewards')
+      .select('*')
+      .in('id', selectedRecoveryIds)
+      .eq('creature_id', creatureId)
+      .is('consumed_at', null);
+
+    if (recoveryErr || !recoveryRows || recoveryRows.length !== selectedRecoveryIds.length) {
+      throw new ActionError(400, 'One or more selected recovery packs are invalid, already consumed, or do not belong to this creature');
+    }
+
+    // Check expiry if we haven't fetched block height yet
+    let currentHeight: number;
+    if (boostUsed) {
+      // Already fetched in boost section — reuse
+      const block = await getLatestErgoBlock();
+      currentHeight = block.height;
+    } else {
+      const block = await getLatestErgoBlock();
+      currentHeight = block.height;
+    }
+
+    const expired = recoveryRows.filter((r: any) => r.expires_at_height <= currentHeight);
+    if (expired.length > 0) {
+      throw new ActionError(400, `${expired.length} selected recovery pack(s) have expired`);
+    }
+
+    validatedRecoveries = recoveryRows;
+    totalRecoveryReduction = recoveryRows.reduce((sum: number, r: any) => sum + Math.abs(Number(r.fatigue_reduction)), 0);
+  }
+
   // 8. Compute new stat values
   const perStatCap = mergedConfig.per_stat_cap ?? 80;
   const newStats = { ...currentStats };
@@ -196,8 +237,8 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
     }
   }
 
-  // 9. Compute new condition values
-  const rawFatigue = (validation.statsRow?.fatigue ?? 0) + gains.fatigueDelta;
+  // 9. Compute new condition values (recovery packs reduce fatigue)
+  const rawFatigue = (validation.statsRow?.fatigue ?? 0) + gains.fatigueDelta - totalRecoveryReduction;
   const rawSharpness = Math.min(100, (validation.statsRow?.sharpness ?? 50) + gains.sharpnessDelta);
   const fatigue = Math.max(0, Math.min(100, Math.round(rawFatigue * 100) / 100));
   const sharpness = Math.max(0, Math.round(rawSharpness * 100) / 100);
@@ -234,6 +275,19 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
 
     if (spendErr) {
       console.error('Failed to mark boosts as spent:', spendErr);
+    }
+  }
+
+  // 10b2. Mark recovery packs as consumed
+  if (validatedRecoveries.length > 0) {
+    const consumedAt = new Date().toISOString();
+    const { error: consumeErr } = await supabase
+      .from('recovery_rewards')
+      .update({ consumed_at: consumedAt, consumed_in_training_log_id: logRow.id })
+      .in('id', validatedRecoveries.map((r: any) => r.id));
+
+    if (consumeErr) {
+      console.error('Failed to mark recovery packs as consumed:', consumeErr);
     }
   }
 
@@ -304,6 +358,8 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
     boostUsed,
     totalBoostMultiplier,
     boostsConsumed: validatedBoosts.map((b: any) => b.id),
+    recoveriesConsumed: validatedRecoveries.map((r: any) => r.id),
+    recoveryApplied: totalRecoveryReduction,
     actionsRemaining,
     nextActionAt,
   };
@@ -346,6 +402,24 @@ export async function executeRaceEntry(params: ExecuteRaceEntryParams): Promise<
   const raceCollectionId = race.seasons?.collection_id;
   if (raceCollectionId && creature.collection_id !== raceCollectionId) {
     throw new ActionError(400, 'This creature cannot enter this race — collection mismatch');
+  }
+
+  // 2c. Rarity class guard
+  if (race.rarity_class) {
+    const allowedRarities = CLASS_RARITIES[race.rarity_class as RarityClass];
+    if (!allowedRarities) {
+      throw new ActionError(400, `Unknown rarity class: ${race.rarity_class}`);
+    }
+    // Look up creature rarity from DB
+    const { data: creatureData } = await supabase
+      .from('creatures')
+      .select('rarity')
+      .eq('id', creatureId)
+      .single();
+    const creatureRarity = (creatureData?.rarity ?? '').toLowerCase();
+    if (!allowedRarities.includes(creatureRarity)) {
+      throw new ActionError(400, `This race is restricted to ${race.rarity_class} class (${allowedRarities.join(', ')})`);
+    }
   }
 
   // 3. Entry count check

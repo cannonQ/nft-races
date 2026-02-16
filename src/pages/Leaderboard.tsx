@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, Medal, Award } from 'lucide-react';
+import { Trophy, Medal, Award, Star } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { CollectionFilter } from '@/components/ui/CollectionFilter';
 import { useLeaderboard, useRaces, useCollections, useSeasons } from '@/api';
@@ -80,22 +80,24 @@ export default function Leaderboard() {
           </h2>
           <div className="cyber-card rounded-xl overflow-hidden overflow-x-auto">
             {/* Desktop Header */}
-            <div className="hidden md:grid grid-cols-[3rem_2.5rem_1fr_5rem_8rem_5rem_5rem_3.5rem] gap-3 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+            <div className="hidden md:grid grid-cols-[3rem_2.5rem_1fr_5rem_8rem_3.5rem_5rem_5rem_3.5rem] gap-3 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
               <div className="text-center">Rank</div>
               <div></div>
               <div>Creature</div>
               <div>Rarity</div>
               <div>Owner</div>
+              <div className="text-center">Pts</div>
               <div className="text-center">W/P/S</div>
               <div className="text-center">Avg</div>
               <div className="text-right">Races</div>
             </div>
 
             {/* Mobile Header */}
-            <div className="grid md:hidden grid-cols-[2.5rem_2rem_1fr_4.5rem_3rem] gap-2 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+            <div className="grid md:hidden grid-cols-[2.5rem_2rem_1fr_2.5rem_4.5rem_3rem] gap-2 items-center p-3 bg-muted/50 border-b border-border/50 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
               <div className="text-center">#</div>
               <div></div>
               <div>Creature</div>
+              <div className="text-center">Pts</div>
               <div className="text-center">W/P/S</div>
               <div className="text-right">Races</div>
             </div>
@@ -116,7 +118,7 @@ export default function Leaderboard() {
                       {/* Desktop Row */}
                       <div
                         className={cn(
-                          'hidden md:grid grid-cols-[3rem_2.5rem_1fr_5rem_8rem_5rem_5rem_3.5rem] gap-3 items-center p-3 transition-colors',
+                          'hidden md:grid grid-cols-[3rem_2.5rem_1fr_5rem_8rem_3.5rem_5rem_5rem_3.5rem] gap-3 items-center p-3 transition-colors',
                           isUser ? 'bg-primary/10' : 'hover:bg-muted/30'
                         )}
                       >
@@ -171,6 +173,12 @@ export default function Leaderboard() {
                         </div>
 
                         <div className="text-center">
+                          <span className="font-mono text-sm font-semibold text-primary">
+                            {entry.leaguePoints > 0 ? entry.leaguePoints.toFixed(1) : '-'}
+                          </span>
+                        </div>
+
+                        <div className="text-center">
                           <span className="font-mono text-sm text-foreground">
                             {entry.wins}/{entry.places}/{entry.shows}
                           </span>
@@ -192,7 +200,7 @@ export default function Leaderboard() {
                       {/* Mobile Row */}
                       <div
                         className={cn(
-                          'grid md:hidden grid-cols-[2.5rem_2rem_1fr_4.5rem_3rem] gap-2 items-center p-3 transition-colors',
+                          'grid md:hidden grid-cols-[2.5rem_2rem_1fr_2.5rem_4.5rem_3rem] gap-2 items-center p-3 transition-colors',
                           isUser ? 'bg-primary/10' : 'hover:bg-muted/30'
                         )}
                       >
@@ -222,6 +230,11 @@ export default function Leaderboard() {
                             </p>
                           </Link>
                           <RarityBadge rarity={entry.rarity} className="mt-0.5" />
+                        </div>
+                        <div className="text-center">
+                          <span className="font-mono text-xs font-semibold text-primary">
+                            {entry.leaguePoints > 0 ? entry.leaguePoints.toFixed(0) : '-'}
+                          </span>
                         </div>
                         <div className="text-center">
                           <span className="font-mono text-xs text-foreground">

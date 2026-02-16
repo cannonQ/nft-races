@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Race, RaceResults, EnterRaceResponse, ApiResponse, MutationResponse } from '@/types/game';
+import { Race, RaceResults, EnterRaceResponse, EnterRaceBatchResponse, ApiResponse, MutationResponse } from '@/types/game';
 import { API_BASE } from './config';
 
 /**
@@ -79,6 +79,47 @@ export function useRaceResults(raceId: string | null): ApiResponse<RaceResults> 
 }
 
 /**
+ * Fetch creature IDs entered by a wallet in a specific race.
+ * GET ${API_BASE}/races/${id}/entries?wallet=ADDRESS
+ */
+export function useRaceEntries(raceId: string | null | undefined, wallet: string | null | undefined): ApiResponse<string[]> {
+  const [data, setData] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!raceId || !wallet) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/races/${raceId}/entries?wallet=${encodeURIComponent(wallet)}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${response.status}`);
+      }
+      const result = await response.json();
+      setData(result.creatureIds ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch race entries'));
+    } finally {
+      setLoading(false);
+    }
+  }, [raceId, wallet]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
+/**
  * Enter a creature into a race
  * POST ${API_BASE}/races/${id}/enter
  */
@@ -116,4 +157,44 @@ export function useEnterRace(): MutationResponse<EnterRaceResponse> {
   }, []);
 
   return { mutate: mutate as (...args: unknown[]) => Promise<EnterRaceResponse>, loading, error };
+}
+
+/**
+ * Enter multiple creatures into a race in a single batch
+ * POST ${API_BASE}/races/${id}/enter-batch
+ */
+export function useEnterRaceBatch(): MutationResponse<EnterRaceBatchResponse> {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const mutate = useCallback(async (
+    raceId: string,
+    creatureIds: string[],
+    walletAddress: string,
+    txId?: string,
+  ): Promise<EnterRaceBatchResponse> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/races/${raceId}/enter-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creatureIds, walletAddress, txId }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${response.status}`);
+      }
+      return await response.json();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to enter race');
+      setError(error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { mutate: mutate as (...args: unknown[]) => Promise<EnterRaceBatchResponse>, loading, error };
 }

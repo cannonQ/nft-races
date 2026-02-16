@@ -29,6 +29,33 @@ export const TREASURY_ERGO_TREE = process.env.TREASURY_ERGO_TREE || '';
 /** When true, real ERG payments are required for training/race entry */
 export const REQUIRE_FEES = process.env.REQUIRE_FEES === 'true';
 
+/** Rarity class definitions — maps class name to allowed rarity tiers */
+export type RarityClass = 'rookie' | 'contender' | 'champion';
+
+export const CLASS_RARITIES: Record<RarityClass, string[]> = {
+  rookie: ['common', 'uncommon', 'rare'],
+  contender: ['masterwork', 'epic', 'relic'],
+  champion: ['legendary', 'mythic', 'cyberium'],
+};
+
+export const CLASS_LABELS: Record<RarityClass, string> = {
+  rookie: 'Rookie',
+  contender: 'Contender',
+  champion: 'Champion',
+};
+
+/** Default class weight for class-restricted races (1/7 of Open race points) */
+export const DEFAULT_CLASS_WEIGHT = 1 / 7;
+
+/** League points awarded per position (Open race at full weight) */
+export const LEAGUE_POINTS_BY_POSITION = [7, 5, 3, 1]; // 1st, 2nd, 3rd, 4th+
+
+/** Recovery fatigue reduction per position in class races */
+export const RECOVERY_BY_POSITION = [8, 5, 4, 3]; // 1st, 2nd, 3rd, 4th+
+
+/** Recovery reward expiry in blocks (~3 days at ~2 min/block) */
+export const RECOVERY_EXPIRY_BLOCKS = 2160;
+
 /** Convert nanoERG to ERG */
 export function nanoErgToErg(nanoErg: number): number {
   return nanoErg / 1_000_000_000;

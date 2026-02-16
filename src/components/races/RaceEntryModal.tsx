@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Check, CheckCheck } from 'lucide-react';
+import { AlertTriangle, Check, CheckCheck, Clock } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -9,8 +9,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Race, RaceType } from '@/types/game';
-import { useCreaturesByWallet } from '@/api';
+import { Race, RaceType, CLASS_RARITIES, CLASS_LABELS } from '@/types/game';
+import type { RarityClass } from '@/types/game';
+import { useCreaturesByWallet, useRaceEntries } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { RarityBadge, ConditionGauge } from '@/components/creatures/StatBar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,19 +36,40 @@ const typeColors: Record<RaceType, string> = {
   hazard: 'text-race-hazard',
 };
 
+/** Round to avoid floating point artifacts like 0.15000000000000002 */
+function roundFee(value: number): string {
+  return (Math.round(value * 1e8) / 1e8).toString();
+}
+
 export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFees, walletType, submitting }: RaceEntryModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { address } = useWallet();
   const { data: creatures, loading } = useCreaturesByWallet(address);
+  // Fetch which of my creatures are already entered in this race
+  const { data: enteredCreatureIds } = useRaceEntries(
+    open ? race?.id : null,
+    address,
+  );
 
   if (!race) return null;
 
-  // Filter creatures to only show those matching the race's collection
-  const creatureList = (creatures || []).filter(
-    c => !race.collectionId || c.collectionId === race.collectionId
-  );
+  // Filter creatures to match collection + rarity class
+  const allowedRarities = race.rarityClass ? CLASS_RARITIES[race.rarityClass] : null;
+  const creatureList = (creatures || []).filter(c => {
+    if (race.collectionId && c.collectionId !== race.collectionId) return false;
+    if (allowedRarities && !allowedRarities.includes(c.rarity.toLowerCase() as any)) return false;
+    return true;
+  });
+
+  const enteredSet = new Set(enteredCreatureIds ?? []);
+
+  // Only count selectable creatures (not in treatment, not already entered)
+  const selectableCreatures = creatureList.filter(c => !c.treatment && !enteredSet.has(c.id));
 
   const toggleCreature = (id: string) => {
+    const creature = creatureList.find(c => c.id === id);
+    if (!creature || creature.treatment || enteredSet.has(id)) return;
+
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -60,28 +82,28 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
   };
 
   const selectAll = () => {
-    if (selected.size === creatureList.length) {
+    if (selected.size === selectableCreatures.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(creatureList.map(c => c.id)));
+      setSelected(new Set(selectableCreatures.map(c => c.id)));
     }
   };
 
   const handleConfirm = () => {
     if (selected.size > 0 && !submitting) {
       onConfirm(Array.from(selected));
-      // Don't clear selection here — modal stays open while TX is signing.
-      // Selection is cleared on close instead.
     }
   };
 
   const handleClose = () => {
-    if (submitting) return; // Prevent closing while TX is in flight
+    if (submitting) return;
     setSelected(new Set());
     onOpenChange(false);
   };
 
-  const allSelected = creatureList.length > 0 && selected.size === creatureList.length;
+  const allSelected = selectableCreatures.length > 0 && selected.size === selectableCreatures.length;
+  const totalFee = race.entryFee * selected.size;
+  const unit = requireFees ? 'ERG' : 'credits';
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -102,20 +124,15 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Entry Fee</span>
               <span className="font-mono text-foreground">
-                {requireFees ? (
-                  selected.size > 1
-                    ? `${race.entryFee} x ${selected.size} = ${race.entryFee * selected.size} ERG`
-                    : `${race.entryFee} ERG`
-                ) : (
-                  selected.size > 1
-                    ? `${race.entryFee} x ${selected.size} = ${race.entryFee * selected.size} credits`
-                    : `${race.entryFee} credits`
-                )}
+                {selected.size > 1
+                  ? `${race.entryFee} x ${selected.size} = ${roundFee(totalFee)} ${unit}`
+                  : `${race.entryFee} ${unit}`
+                }
               </span>
             </div>
             {requireFees && walletType === 'ergopay' && selected.size > 1 && (
               <p className="text-[10px] text-muted-foreground mt-1">
-                ErgoPay: each creature requires a separate payment confirmation.
+                ErgoPay: one payment for all creatures.
               </p>
             )}
           </div>
@@ -128,7 +145,7 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
             </div>
           ) : (
             <>
-              {creatureList.length > 1 && (
+              {selectableCreatures.length > 1 && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -142,6 +159,9 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
 
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {creatureList.map((creature) => {
+                  const isInTreatment = !!creature.treatment;
+                  const isAlreadyEntered = enteredSet.has(creature.id);
+                  const isDisabled = isInTreatment || isAlreadyEntered;
                   const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
                   const isHighFatigue = creature.fatigue >= 80;
                   const isSelected = selected.has(creature.id);
@@ -150,40 +170,55 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
                     <button
                       key={creature.id}
                       onClick={() => toggleCreature(creature.id)}
+                      disabled={isDisabled}
                       className={cn(
                         'w-full cyber-card rounded-lg p-3 text-left transition-all duration-200',
-                        isSelected && 'border-primary glow-cyan',
-                        !isSelected && 'hover:border-primary/50'
+                        isDisabled && 'opacity-50 cursor-not-allowed',
+                        isSelected && !isDisabled && 'border-primary glow-cyan',
+                        !isSelected && !isDisabled && 'hover:border-primary/50'
                       )}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div className={cn(
-                            'w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all',
-                            isSelected
-                              ? 'bg-primary border-primary'
-                              : 'border-muted-foreground/40'
-                          )}>
-                            {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
-                          </div>
+                          {isDisabled ? (
+                            <div className="w-5 h-5 rounded border-2 border-muted-foreground/20 shrink-0" />
+                          ) : (
+                            <div className={cn(
+                              'w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all',
+                              isSelected
+                                ? 'bg-primary border-primary'
+                                : 'border-muted-foreground/40'
+                            )}>
+                              {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+                            </div>
+                          )}
                           <h4 className="font-display text-sm font-semibold text-foreground">
                             {creature.name}
                           </h4>
                           <RarityBadge rarity={creature.rarity} />
                         </div>
-                        {isOnCooldown && (
+                        {isAlreadyEntered && (
+                          <span className="text-xs text-primary font-semibold">Already entered</span>
+                        )}
+                        {isInTreatment && !isAlreadyEntered && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
+                            <Clock className="w-3 h-3" />
+                            In treatment
+                          </span>
+                        )}
+                        {!isDisabled && isOnCooldown && (
                           <span className="text-xs text-muted-foreground font-mono">Training cooldown</span>
                         )}
                       </div>
 
-                      {/* Condition */}
-                      <div className="space-y-1">
-                        <ConditionGauge type="fatigue" value={creature.fatigue} />
-                        <ConditionGauge type="sharpness" value={creature.sharpness} />
-                      </div>
+                      {!isDisabled && (
+                        <div className="space-y-1">
+                          <ConditionGauge type="fatigue" value={creature.fatigue} />
+                          <ConditionGauge type="sharpness" value={creature.sharpness} />
+                        </div>
+                      )}
 
-                      {/* Warnings */}
-                      {isHighFatigue && (
+                      {!isDisabled && isHighFatigue && (
                         <div className="flex items-center gap-1.5 mt-2 text-xs text-destructive">
                           <AlertTriangle className="w-3 h-3" />
                           <span>High fatigue may affect performance</span>
@@ -198,9 +233,11 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
 
           {!loading && creatureList.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
-              {race.collectionName
-                ? `You don't own any ${race.collectionName} NFTs. This race requires ${race.collectionName} creatures.`
-                : 'No creatures available. Register an NFT to enter races.'}
+              {race.rarityClass
+                ? `No eligible creatures. This ${CLASS_LABELS[race.rarityClass]} class race is restricted to ${allowedRarities?.join(', ')} rarities.`
+                : race.collectionName
+                  ? `You don't own any ${race.collectionName} NFTs. This race requires ${race.collectionName} creatures.`
+                  : 'No creatures available. Register an NFT to enter races.'}
             </div>
           )}
         </div>
@@ -225,7 +262,7 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
                   ? `Enter ${selected.size} Creatures`
                   : `Confirm Entry`
                 }
-                {selected.size > 0 && ` (${race.entryFee * selected.size} ${requireFees ? 'ERG' : 'credits'})`}
+                {selected.size > 0 && ` (${roundFee(totalFee)} ${unit})`}
               </>
             )}
           </Button>

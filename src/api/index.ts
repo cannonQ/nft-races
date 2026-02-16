@@ -25,10 +25,12 @@ export {
 } from './useTraining';
 
 // Races
-export { 
-  useRaces, 
-  useRaceResults, 
-  useEnterRace 
+export {
+  useRaces,
+  useRaceResults,
+  useRaceEntries,
+  useEnterRace,
+  useEnterRaceBatch,
 } from './useRaces';
 
 // Leaderboard

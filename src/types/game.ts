@@ -14,10 +14,34 @@ export type StatType = keyof StatBlock;
 // Rarity tiers for creatures
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'masterwork' | 'epic' | 'relic' | 'legendary' | 'mythic' | 'cyberium';
 
+// Rarity class for class-restricted races
+export type RarityClass = 'rookie' | 'contender' | 'champion';
+
+export const CLASS_RARITIES: Record<RarityClass, Rarity[]> = {
+  rookie: ['common', 'uncommon', 'rare'],
+  contender: ['masterwork', 'epic', 'relic'],
+  champion: ['legendary', 'mythic', 'cyberium'],
+};
+
+export const CLASS_LABELS: Record<RarityClass, string> = {
+  rookie: 'Rookie',
+  contender: 'Contender',
+  champion: 'Champion',
+};
+
 // Discrete boost reward (UTXO-style, awarded from races)
 export interface BoostReward {
   id: string;
   multiplier: number;
+  awardedAtHeight: number;
+  expiresAtHeight: number;
+  raceId: string | null;
+}
+
+// Discrete recovery reward (UTXO-style, awarded from class races)
+export interface RecoveryReward {
+  id: string;
+  fatigueReduction: number;
   awardedAtHeight: number;
   expiresAtHeight: number;
   raceId: string | null;
@@ -39,6 +63,7 @@ export interface CreatureWithStats {
   bonusActions: number;
   boosts: BoostReward[];
   boostMultiplier: number; // computed sum of available boosts
+  recoveries: RecoveryReward[];
   actionsRemaining: number;
   maxActionsToday: number;
   cooldownEndsAt: string | null;
@@ -127,6 +152,8 @@ export interface Race {
   entryDeadline: string;
   status: RaceStatus;
   autoResolve?: boolean;
+  rarityClass?: RarityClass | null;
+  classWeight?: number;
   collectionId?: string;
   collectionName?: string;
 }
@@ -193,6 +220,8 @@ export interface TrainResponse {
   boostUsed: boolean;
   totalBoostMultiplier: number;
   boostsConsumed: string[];
+  recoveriesConsumed: string[];
+  recoveryApplied: number;
   actionsRemaining: number;
   nextActionAt: string | null;
 }
@@ -235,6 +264,7 @@ export interface LeaderboardEntry {
   places: number;
   shows: number;
   racesEntered: number;
+  leaguePoints: number;
   avgScore: number;
   earnings: number;
 }
@@ -252,6 +282,14 @@ export interface PastRace {
 export interface EnterRaceResponse {
   success: boolean;
   entryId: string;
+}
+
+// Batch race entry mutation response
+export interface EnterRaceBatchResponse {
+  success: boolean;
+  partial?: boolean;
+  entries: Array<{ creatureId: string; entryId: string }>;
+  errors?: Array<{ creatureId: string; error: string }>;
 }
 
 // Register creature mutation response

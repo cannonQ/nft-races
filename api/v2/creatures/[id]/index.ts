@@ -72,18 +72,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ])
       : [0, null];
 
-    // Fetch available (unspent + unexpired) boost rewards
+    // Fetch available (unspent + unexpired) boost rewards and recovery rewards
     let availableBoosts: any[] = [];
+    let availableRecoveries: any[] = [];
     if (season) {
       const { height: currentHeight } = await getLatestErgoBlock();
-      const { data: boostRows } = await supabase
-        .from('boost_rewards')
-        .select('*')
-        .eq('creature_id', id)
-        .eq('season_id', season.id)
-        .is('spent_at', null)
-        .gt('expires_at_height', currentHeight);
+      const [{ data: boostRows }, { data: recoveryRows }] = await Promise.all([
+        supabase
+          .from('boost_rewards')
+          .select('*')
+          .eq('creature_id', id)
+          .eq('season_id', season.id)
+          .is('spent_at', null)
+          .gt('expires_at_height', currentHeight),
+        supabase
+          .from('recovery_rewards')
+          .select('*')
+          .eq('creature_id', id)
+          .eq('season_id', season.id)
+          .is('consumed_at', null)
+          .gt('expires_at_height', currentHeight),
+      ]);
       availableBoosts = boostRows ?? [];
+      availableRecoveries = recoveryRows ?? [];
     }
 
     const gameConfig = await getGameConfig(creature.collection_id) ?? undefined;
@@ -114,6 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       loader,
       lastRegularActionAt,
       gameConfig,
+      availableRecoveries,
     );
 
     return res.status(200).json(result);

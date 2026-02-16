@@ -16,7 +16,7 @@ import { getActiveSeason, getOrCreateCreatureStats } from '../../../_lib/helpers
 import { getGameConfig } from '../../../_lib/config.js';
 import { validateTrainingAction } from '../../../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../../../lib/ergo/server.js';
-import { buildUnsignedTx, type TxMetadata } from '../../../_lib/ergo-tx-builder.js';
+import { buildUnsignedTx, buildUnsignedBatchTx, type TxMetadata } from '../../../_lib/ergo-tx-builder.js';
 
 const ERGOPAY_BASE = 'https://ergopay.duckdns.org';
 
@@ -51,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     actionType,
     walletAddress,
     creatureId,
+    creatureIds,
     raceId,
     activity,
     boostRewardIds,
@@ -68,8 +69,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     let amountNanoerg: number;
     let message: string;
-    let tokenId: string;
-    let metadata: TxMetadata;
+    let unsignedTx: any;
+    // For DB storage — single creature actions use creatureId, batch uses first creature
+    let dbCreatureId: string | null = null;
+    // isBatch flag for race entry
+    let isBatch = false;
 
     if (actionType === 'training_fee') {
       // Validate training prerequisites (fail early before payment)
@@ -106,33 +110,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const appName = getAppName((creature as any).collections?.name || 'NFT');
-      tokenId = creature.token_id;
+      dbCreatureId = creatureId;
       amountNanoerg = TRAINING_FEE_NANOERG;
       message = `${appName}: Training Fee (0.01 ERG)`;
-      metadata = { actionType: 'train', tokenId, context: activity };
+      const metadata: TxMetadata = { actionType: 'train', tokenId: creature.token_id, context: activity };
+      unsignedTx = await buildUnsignedTx({
+        senderAddress: walletAddress,
+        treasuryAddress: TREASURY_ADDRESS,
+        amountNanoErg: amountNanoerg,
+        metadata,
+      });
 
     } else if (actionType === 'race_entry_fee') {
-      if (!creatureId || !raceId) {
-        return res.status(400).json({ error: 'creatureId and raceId are required for race entry' });
+      // Support both single creatureId and batch creatureIds[]
+      const resolvedIds: string[] = Array.isArray(creatureIds) && creatureIds.length > 0
+        ? creatureIds
+        : creatureId ? [creatureId] : [];
+
+      if (resolvedIds.length === 0 || !raceId) {
+        return res.status(400).json({ error: 'creatureId (or creatureIds[]) and raceId are required for race entry' });
       }
 
-      // Verify creature + ownership
-      const { data: creature, error: creatureErr } = await supabase
-        .from('creatures')
-        .select('id, token_id, owner_address, collection_id, collections(name)')
-        .eq('id', creatureId)
-        .single();
+      isBatch = resolvedIds.length > 1;
 
-      if (creatureErr || !creature) {
-        return res.status(400).json({ error: 'Creature not found' });
-      }
-
-      const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
-      if (!ownership.ownsToken) {
-        return res.status(403).json({ error: 'You no longer own this NFT on-chain' });
-      }
-
-      // Verify race exists, is open, and collection matches
+      // Verify race exists, is open
       const { data: race, error: raceErr } = await supabase
         .from('season_races')
         .select('*, seasons!inner(collection_id)')
@@ -149,33 +150,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Race entry deadline has passed' });
       }
 
-      const raceCollectionId = race.seasons?.collection_id;
-      if (raceCollectionId && creature.collection_id !== raceCollectionId) {
-        return res.status(400).json({ error: 'Collection mismatch' });
-      }
-
-      // Check not already entered
-      const { data: existing } = await supabase
-        .from('season_race_entries')
-        .select('id')
-        .eq('race_id', raceId)
-        .eq('creature_id', creatureId)
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        return res.status(400).json({ error: 'Creature is already entered in this race' });
-      }
-
-      tokenId = creature.token_id;
-      amountNanoerg = race.entry_fee_nanoerg ?? 0;
-      if (amountNanoerg <= 0) {
+      const perEntryFee = race.entry_fee_nanoerg ?? 0;
+      if (perEntryFee <= 0) {
         return res.status(400).json({ error: 'This race has no entry fee' });
       }
 
-      const appName = getAppName((creature as any).collections?.name || 'NFT');
-      const ergAmount = (amountNanoerg / 1_000_000_000).toFixed(4);
-      message = `${appName}: Race Entry (${ergAmount} ERG)`;
-      metadata = { actionType: 'race', tokenId, context: raceId };
+      // Check race capacity for all entries
+      const { count: entryCount } = await supabase
+        .from('season_race_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('race_id', raceId);
+
+      const remaining = race.max_entries - (entryCount ?? 0);
+      if (remaining < resolvedIds.length) {
+        return res.status(400).json({
+          error: `Race only has ${remaining} spot(s) remaining but you selected ${resolvedIds.length} creatures`,
+        });
+      }
+
+      // Validate all creatures: ownership, collection, not already entered
+      const raceCollectionId = race.seasons?.collection_id;
+      const txEntries: Array<{ amountNanoErg: number; metadata: TxMetadata }> = [];
+      let appName = '';
+
+      for (const cId of resolvedIds) {
+        const { data: creature, error: creatureErr } = await supabase
+          .from('creatures')
+          .select('id, token_id, owner_address, collection_id, collections(name)')
+          .eq('id', cId)
+          .single();
+
+        if (creatureErr || !creature) {
+          return res.status(400).json({ error: `Creature ${cId} not found` });
+        }
+
+        const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
+        if (!ownership.ownsToken) {
+          return res.status(403).json({ error: `You do not own creature ${cId} on-chain` });
+        }
+
+        if (raceCollectionId && creature.collection_id !== raceCollectionId) {
+          return res.status(400).json({ error: `Creature ${cId}: collection mismatch` });
+        }
+
+        const { data: existing } = await supabase
+          .from('season_race_entries')
+          .select('id')
+          .eq('race_id', raceId)
+          .eq('creature_id', cId)
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          return res.status(400).json({ error: `Creature ${cId} is already entered in this race` });
+        }
+
+        if (!appName) {
+          appName = getAppName((creature as any).collections?.name || 'NFT');
+        }
+
+        txEntries.push({
+          amountNanoErg: perEntryFee,
+          metadata: { actionType: 'race', tokenId: creature.token_id, context: raceId },
+        });
+      }
+
+      dbCreatureId = resolvedIds[0];
+      amountNanoerg = perEntryFee * resolvedIds.length;
+      const ergTotal = (amountNanoerg / 1_000_000_000).toFixed(4);
+
+      if (isBatch) {
+        message = `${appName}: Race Entry x${resolvedIds.length} (${ergTotal} ERG)`;
+        unsignedTx = await buildUnsignedBatchTx({
+          senderAddress: walletAddress,
+          treasuryAddress: TREASURY_ADDRESS,
+          entries: txEntries,
+        });
+      } else {
+        message = `${appName}: Race Entry (${ergTotal} ERG)`;
+        unsignedTx = await buildUnsignedTx({
+          senderAddress: walletAddress,
+          treasuryAddress: TREASURY_ADDRESS,
+          amountNanoErg: perEntryFee,
+          metadata: txEntries[0].metadata,
+        });
+      }
 
     } else {
       // treatment_fee
@@ -219,7 +277,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      tokenId = creature.token_id;
+      dbCreatureId = creatureId;
       amountNanoerg = treatmentDef.cost_nanoerg;
       if (amountNanoerg <= 0) {
         return res.status(400).json({ error: 'This treatment has no fee' });
@@ -228,11 +286,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const appName = getAppName((creature as any).collections?.name || 'NFT');
       const ergAmount = (amountNanoerg / 1_000_000_000).toFixed(4);
       message = `${appName}: Treatment - ${treatmentDef.name} (${ergAmount} ERG)`;
-      metadata = { actionType: 'treatment', tokenId, context: treatmentType };
+      const metadata: TxMetadata = { actionType: 'treatment', tokenId: creature.token_id, context: treatmentType };
+      unsignedTx = await buildUnsignedTx({
+        senderAddress: walletAddress,
+        treasuryAddress: TREASURY_ADDRESS,
+        amountNanoErg: amountNanoerg,
+        metadata,
+      });
     }
 
     // Generate our own request ID (we insert into DB first, then reference in replyTo)
     const requestId = generateRequestId();
+
+    // Resolve creatureIds for storage in action_payload
+    const resolvedCreatureIds: string[] = Array.isArray(creatureIds) && creatureIds.length > 0
+      ? creatureIds
+      : creatureId ? [creatureId] : [];
 
     // Store in ergopay_tx_requests BEFORE calling the service
     const { error: insertErr } = await supabase.from('ergopay_tx_requests').insert({
@@ -240,12 +309,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       wallet_address: walletAddress,
       action_type: actionType,
       amount_nanoerg: amountNanoerg,
-      creature_id: creatureId,
+      creature_id: dbCreatureId,
       race_id: raceId ?? null,
       action_payload: {
         activity: activity ?? null,
         boostRewardIds: boostRewardIds ?? null,
         treatmentType: treatmentType ?? null,
+        creatureIds: isBatch ? resolvedCreatureIds : null,
       },
       status: 'pending',
     });
@@ -253,23 +323,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (insertErr) {
       console.error('Failed to store ergopay_tx_request:', insertErr);
       return res.status(500).json({ error: 'Failed to store payment request' });
-    }
-
-    // Build the unsigned TX with R4-R6 metadata registers
-    let unsignedTx;
-    try {
-      unsignedTx = await buildUnsignedTx({
-        senderAddress: walletAddress,
-        treasuryAddress: TREASURY_ADDRESS,
-        amountNanoErg: amountNanoerg,
-        metadata,
-      });
-    } catch (txErr) {
-      // Clean up the DB row if TX building fails
-      await supabase.from('ergopay_tx_requests').delete().eq('id', requestId);
-      const msg = txErr instanceof Error ? txErr.message : 'Failed to build transaction';
-      console.error('buildUnsignedTx failed:', txErr);
-      return res.status(400).json({ error: msg });
     }
 
     // Build callback URL for wallet to POST signed TX ID

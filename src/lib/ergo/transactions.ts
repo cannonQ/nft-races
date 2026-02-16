@@ -335,3 +335,96 @@ export async function buildAndSubmitEntryFeeTx(
   // 11. Sign and submit
   return await signAndSubmitTx(unsignedTx);
 }
+
+// ============================================
+// Build Batch Entry Fee Transaction (N creatures, 1 TX)
+// ============================================
+
+/**
+ * Build, sign, and submit a single transaction that pays for N creature entries.
+ * Creates N treasury output boxes (one per entry), each with its own R4-R6 metadata.
+ * One signature, one miner fee.
+ */
+export async function buildAndSubmitBatchEntryFeeTx(
+  entries: Array<{ entryFeeNanoErgs: number; metadata: TxMetadata }>,
+  treasuryErgoTree: string
+): Promise<string> {
+  if (!window.ergo) throw new Error('Wallet not connected');
+  if (entries.length === 0) throw new Error('No entries provided');
+
+  // 1. Calculate total ERG needed
+  const totalEntryFee = entries.reduce((sum, e) => sum + e.entryFeeNanoErgs, 0);
+  const initialRequired = totalEntryFee + TX_FEE + CHANGE_BOX_VALUE;
+  const { inputs, totalInputValue } = await getWalletUtxos(initialRequired);
+
+  // 2. Get current block height
+  const blockHeight = await getCurrentHeight();
+
+  // 3. Get user's ergoTree for change box
+  const userErgoTree = getErgoTreeFromInputs(inputs, '');
+
+  // 4. Collect all tokens from inputs (for change)
+  const changeAssets = collectChangeAssets(inputs);
+
+  // 5. Change box overflow handling (whale wallets)
+  const numChangeBoxes = Math.max(1, Math.ceil(changeAssets.length / MAX_TOKENS_PER_BOX));
+  let overflowBoxCost = 0;
+  for (let i = 1; i < numChangeBoxes; i++) {
+    const chunkSize = Math.min(MAX_TOKENS_PER_BOX, changeAssets.length - i * MAX_TOKENS_PER_BOX);
+    overflowBoxCost += minBoxValue(chunkSize);
+  }
+
+  const totalChangeErg = totalInputValue - totalEntryFee - TX_FEE;
+  if (totalChangeErg < minBoxValue(Math.min(changeAssets.length, MAX_TOKENS_PER_BOX)) + overflowBoxCost) {
+    throw new Error('Insufficient funds after fees');
+  }
+
+  // 6. Build N treasury output boxes (one per entry)
+  const treasuryBoxes: OutputBox[] = entries.map(entry => ({
+    value: entry.entryFeeNanoErgs.toString(),
+    ergoTree: treasuryErgoTree,
+    assets: [],
+    additionalRegisters: buildRegisters(entry.metadata),
+    creationHeight: blockHeight,
+  }));
+
+  // 7. Build change boxes
+  const changeBoxes: OutputBox[] = [];
+  for (let i = 0; i < numChangeBoxes; i++) {
+    const chunk = changeAssets.slice(i * MAX_TOKENS_PER_BOX, (i + 1) * MAX_TOKENS_PER_BOX);
+    const boxValue = i === 0
+      ? (totalChangeErg - overflowBoxCost)
+      : minBoxValue(chunk.length);
+    changeBoxes.push({
+      value: boxValue.toString(),
+      ergoTree: userErgoTree,
+      assets: chunk,
+      additionalRegisters: {},
+      creationHeight: blockHeight,
+    });
+  }
+
+  // 8. Miner fee box
+  const feeBox: OutputBox = {
+    value: TX_FEE.toString(),
+    ergoTree: FEE_ERGO_TREE,
+    assets: [],
+    additionalRegisters: {},
+    creationHeight: blockHeight,
+  };
+
+  // 9. Prepare inputs
+  const uniqueInputs = inputs
+    .map(box => ({ ...box, extension: {} }))
+    .filter((box, index, self) => index === self.findIndex(b => b.boxId === box.boxId));
+
+  // 10. Assemble and submit
+  const unsignedTx = {
+    inputs: uniqueInputs,
+    outputs: [...treasuryBoxes, ...changeBoxes, feeBox],
+    dataInputs: [],
+    fee: TX_FEE,
+  };
+
+  return await signAndSubmitTx(unsignedTx);
+}

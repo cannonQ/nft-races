@@ -93,6 +93,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         entryDeadline: race.entry_deadline,
         status: race.status,
         autoResolve: race.auto_resolve ?? true,
+        rarityClass: race.rarity_class ?? null,
+        classWeight: race.class_weight ?? 1.0,
         collectionId: seasonInfo?.collectionId ?? race.collection_id ?? null,
         collectionName: seasonInfo?.collectionName ?? null,
       };

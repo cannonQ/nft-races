@@ -174,3 +174,43 @@ export async function buildUnsignedTx(params: BuildUnsignedTxParams) {
     ],
   };
 }
+
+// ── Build Unsigned Batch TX (N outputs, 1 TX) ────────────────────────
+
+export interface BuildUnsignedBatchTxParams {
+  senderAddress: string;
+  treasuryAddress: string;
+  entries: Array<{ amountNanoErg: number; metadata: TxMetadata }>;
+}
+
+/**
+ * Build an unsigned transaction with N treasury outputs (one per entry).
+ * Used by ErgoPay batch flow — same structure as Nautilus batch but built server-side.
+ */
+export async function buildUnsignedBatchTx(params: BuildUnsignedBatchTxParams) {
+  const { senderAddress, treasuryAddress, entries } = params;
+
+  const totalAmount = entries.reduce((sum, e) => sum + e.amountNanoErg, 0);
+  const totalRequired = totalAmount + TX_FEE + MIN_BOX_VALUE;
+
+  const [{ boxes }, creationHeight] = await Promise.all([
+    fetchUtxos(senderAddress, totalRequired),
+    getCurrentHeight(),
+  ]);
+
+  const outputs = entries.map(entry => ({
+    value: entry.amountNanoErg.toString(),
+    address: treasuryAddress,
+    assets: [],
+    additionalRegisters: buildRegisters(entry.metadata),
+  }));
+
+  return {
+    creationHeight,
+    fee: TX_FEE,
+    changeAddress: senderAddress,
+    inputs: boxes.map(b => ({ boxId: b.boxId })),
+    dataInputs: [],
+    outputs,
+  };
+}

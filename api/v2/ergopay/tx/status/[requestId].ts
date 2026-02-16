@@ -28,6 +28,15 @@ async function detectPaymentOnChain(
   amountNanoerg: number,
   createdAfterMs: number,
 ): Promise<{ txId: string } | null> {
+  // Check if TX outputs to treasury sum to at least the expected amount.
+  // Works for both single-output and batch (N outputs) TXs.
+  function txMatchesPayment(tx: any): boolean {
+    const totalToTreasury = (tx.outputs || [])
+      .filter((o: any) => o.address === treasuryAddress)
+      .reduce((sum: number, o: any) => sum + (o.value ?? 0), 0);
+    return totalToTreasury >= amountNanoerg;
+  }
+
   try {
     // 1. Check mempool (unconfirmed) — catches TX before it confirms
     try {
@@ -39,10 +48,7 @@ async function detectPaymentOnChain(
         const mempoolData = await mempoolResp.json();
         const items = Array.isArray(mempoolData) ? mempoolData : (mempoolData.items || []);
         for (const tx of items) {
-          const hasPayment = (tx.outputs || []).some(
-            (o: any) => o.address === treasuryAddress && o.value === amountNanoerg,
-          );
-          if (hasPayment) return { txId: tx.id };
+          if (txMatchesPayment(tx)) return { txId: tx.id };
         }
       }
     } catch {
@@ -59,11 +65,7 @@ async function detectPaymentOnChain(
       for (const tx of data.items || []) {
         // Skip TXs from before the payment request was created
         if (tx.timestamp && tx.timestamp < createdAfterMs) continue;
-
-        const hasPayment = (tx.outputs || []).some(
-          (o: any) => o.address === treasuryAddress && o.value === amountNanoerg,
-        );
-        if (hasPayment) return { txId: tx.id };
+        if (txMatchesPayment(tx)) return { txId: tx.id };
       }
     }
 
@@ -184,15 +186,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           activity: txReq.action_payload?.activity,
           walletAddress: txReq.wallet_address,
           boostRewardIds: txReq.action_payload?.boostRewardIds || undefined,
+          recoveryRewardIds: txReq.action_payload?.recoveryRewardIds || undefined,
           txId: detectedTxId,
         });
       } else if (txReq.action_type === 'race_entry_fee') {
-        result = await executeRaceEntry({
-          raceId: txReq.race_id,
-          creatureId: txReq.creature_id,
-          walletAddress: txReq.wallet_address,
-          txId: detectedTxId,
-        });
+        // Batch support: action_payload.creatureIds[] if present
+        const batchIds: string[] | null = txReq.action_payload?.creatureIds;
+        if (Array.isArray(batchIds) && batchIds.length > 1) {
+          const entries: Array<{ creatureId: string; entryId: string }> = [];
+          for (const cId of batchIds) {
+            const entryResult = await executeRaceEntry({
+              raceId: txReq.race_id,
+              creatureId: cId,
+              walletAddress: txReq.wallet_address,
+              txId: detectedTxId,
+            });
+            entries.push({ creatureId: cId, entryId: entryResult.entryId });
+          }
+          result = { success: true, entries };
+        } else {
+          result = await executeRaceEntry({
+            raceId: txReq.race_id,
+            creatureId: txReq.creature_id,
+            walletAddress: txReq.wallet_address,
+            txId: detectedTxId,
+          });
+        }
       } else if (txReq.action_type === 'treatment_fee') {
         result = await executeTreatmentStart({
           creatureId: txReq.creature_id,

@@ -165,7 +165,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const creatureIds = ownedCreatures.map((c: any) => c.id);
     const allSeasonIds = seasons.map((s: any) => s.id);
 
-    const [statsResult, prestigeResult, logsResult, boostsResult, leaderboardResult] = await Promise.all([
+    const [statsResult, prestigeResult, logsResult, boostsResult, leaderboardResult, recoveriesResult] = await Promise.all([
       allSeasonIds.length > 0
         ? supabase
             .from('creature_stats')
@@ -202,6 +202,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .in('season_id', allSeasonIds)
             .in('creature_id', creatureIds)
         : { data: [] },
+      allSeasonIds.length > 0
+        ? supabase
+            .from('recovery_rewards')
+            .select('*')
+            .in('creature_id', creatureIds)
+            .in('season_id', allSeasonIds)
+            .is('consumed_at', null)
+            .gt('expires_at_height', currentBlockHeight)
+        : { data: [] },
     ]);
 
     const statsMap = new Map<string, any>();
@@ -231,6 +240,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const arr = boostsMap.get(b.creature_id) ?? [];
       arr.push(b);
       boostsMap.set(b.creature_id, arr);
+    }
+
+    const recoveriesMap = new Map<string, any[]>();
+    for (const r of (recoveriesResult.data ?? [])) {
+      const arr = recoveriesMap.get(r.creature_id) ?? [];
+      arr.push(r);
+      recoveriesMap.set(r.creature_id, arr);
     }
 
     const leaderboardMap = new Map<string, any>();
@@ -287,7 +303,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const lastRegularAction = lastRegularActionMap.get(creature.id) ?? null;
       const loader = loadersByCollectionId.get(creature.collection_id);
       const gameConfig = gameConfigByCollectionId.get(creature.collection_id);
-      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts, leaderboard, loader, lastRegularAction, gameConfig);
+      const recoveries = recoveriesMap.get(creature.id) ?? [];
+      return computeCreatureResponse(creature, stats, prestige, actionsToday, boosts, leaderboard, loader, lastRegularAction, gameConfig, recoveries);
     });
 
     return res.status(200).json(result);

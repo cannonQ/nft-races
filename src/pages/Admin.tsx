@@ -8,6 +8,12 @@ import { useToast } from '@/hooks/use-toast';
 import { API_BASE } from '@/api/config';
 
 const RACE_TYPES = ['sprint', 'distance', 'technical', 'mixed', 'hazard'] as const;
+const RARITY_CLASSES = [
+  { value: '', label: 'Open (any rarity)' },
+  { value: 'rookie', label: 'Rookie (Common/Uncommon/Rare)' },
+  { value: 'contender', label: 'Contender (Masterwork/Epic/Relic)' },
+  { value: 'champion', label: 'Champion (Legendary/Mythic/Cyberium)' },
+] as const;
 
 export default function Admin() {
   const [secret, setSecret] = useState<string>('');
@@ -51,6 +57,7 @@ export default function Admin() {
   const [raceType, setRaceType] = useState<string>('sprint');
   const [deadlineMinutes, setDeadlineMinutes] = useState(60);
   const [maxEntries, setMaxEntries] = useState(8);
+  const [raceRarityClass, setRaceRarityClass] = useState('');
   const [autoResolve, setAutoResolve] = useState(true);
   const [creating, setCreating] = useState(false);
 
@@ -259,6 +266,7 @@ export default function Admin() {
           maxEntries,
           autoResolve,
           collectionId: raceCollectionId || undefined,
+          rarityClass: raceRarityClass || undefined,
         }),
       });
       const data = await res.json();
@@ -755,6 +763,18 @@ export default function Admin() {
                   className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
               </div>
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Rarity Class</label>
+                <select
+                  value={raceRarityClass}
+                  onChange={e => setRaceRarityClass(e.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  {RARITY_CLASSES.map(rc => (
+                    <option key={rc.value} value={rc.value}>{rc.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -871,6 +891,9 @@ export default function Admin() {
                           <div className="flex gap-3 text-xs text-muted-foreground mt-1">
                             {race.collectionName && (
                               <span className="text-primary/70">{race.collectionName}</span>
+                            )}
+                            {race.rarityClass && (
+                              <span className="text-yellow-400 font-semibold uppercase">{race.rarityClass}</span>
                             )}
                             <span className="uppercase">{race.raceType}</span>
                             <span>{race.entryCount}/{race.maxEntries} entries</span>

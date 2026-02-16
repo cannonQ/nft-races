@@ -282,6 +282,7 @@ export function computeCreatureResponse(
   loader?: CollectionLoader,
   lastRegularActionAt?: string | null,
   gameConfig?: Record<string, any>,
+  recoveryRewards: any[] = [],
 ) {
   const trainedStats = {
     speed: statsRow?.speed ?? 0,
@@ -328,7 +329,7 @@ export function computeCreatureResponse(
   return {
     id: creatureRow.id,
     name: getCreatureDisplayName(creatureRow.metadata, creatureRow.name, loader),
-    rarity: creatureRow.rarity,
+    rarity: (creatureRow.rarity ?? 'common').toLowerCase(),
     tokenId: creatureRow.token_id,
     collectionId: creatureRow.collection_id,
     ownerAddress: creatureRow.owner_address,
@@ -346,6 +347,13 @@ export function computeCreatureResponse(
       raceId: b.race_id ?? null,
     })),
     boostMultiplier: boostRewards.reduce((sum: number, b: any) => sum + Number(b.multiplier), 0),
+    recoveries: recoveryRewards.map((r: any) => ({
+      id: r.id,
+      fatigueReduction: Math.abs(Number(r.fatigue_reduction)),
+      awardedAtHeight: r.awarded_at_height,
+      expiresAtHeight: r.expires_at_height,
+      raceId: r.race_id ?? null,
+    })),
     actionsRemaining,
     maxActionsToday,
     cooldownEndsAt,

@@ -23,7 +23,8 @@ export type ErgoPayTxStatus =
 export interface RequestErgoPayTxParams {
   actionType: 'training_fee' | 'race_entry_fee' | 'treatment_fee';
   walletAddress: string;
-  creatureId: string;
+  creatureId?: string;
+  creatureIds?: string[];
   raceId?: string;
   activity?: string;
   boostRewardIds?: string[];

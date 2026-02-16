@@ -7,7 +7,7 @@
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 23 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). FAQ page explains all game mechanics. Currently in multi-user alpha testing.
+Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 25 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
@@ -28,6 +28,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - FAQ page with per-collection game mechanics guide (CyberPets / Aneta Angels pill selector, collection-specific base stats, rarity tiers, trait mapping, examples)
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
 - **Real ERG payments (Nautilus)** — Training (0.01 ERG) and race entry fees paid via Nautilus `sign_tx()`. Treasury box registers R4-R6 encode action type, NFT token ID, and context for on-chain verifiability. Credit ledger records `shadow=false` + `tx_id` for real payments. Both training and race entry verified on mainnet. Whale wallet support: change tokens split across multiple boxes for wallets with 100+ token types.
+- **Single-TX batch race entry** — Entering N creatures into a race uses one TX with N treasury output boxes (each with its own R4-R6 registers). One wallet signature, one miner fee. Works for Nautilus, ErgoPay, and alpha (no-fee) modes. Verified on mainnet: 2 creatures × 0.05 ERG = 2 output boxes at treasury, single txId.
 - **ErgoPay TX flow** — Full reduced TX pipeline with R4-R6 registers. Server-side TX builder fetches UTXOs from Explorer API, builds unsigned TX with sigma-serialized registers, POSTs to `ergopay.duckdns.org/api/v1/reducedTx`. Wallet callback (`replyTo`) + blockchain fallback for payment detection. Verified on mainnet — registers decode correctly on ergexplorer (R4: train, R5: token ID, R6: mental_prep).
 - **TX UX polish** — Confirm modals stay open with "Signing..." spinner while Nautilus is signing (no page flash). Result modals show animated success state + "Payment Confirmed" banner with truncated txId linking to ergexplorer.com. Data refetch deferred to modal close to prevent background flicker. Training result: stat gain animations + progress bars. Race entry result: entry count gauge (X/Y) with animated fill bar. Wallet Ledger entries show explorer link icons for on-chain transactions.
 - **Credit ledger** — Tracks training fees, race entry fees, and season payouts per wallet. Supports both shadow (alpha) and real payments (`shadow` flag + `tx_id` column)
@@ -38,12 +39,14 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **Fatigue/Sharpness rework** — Per-activity sharpness deltas (physical activities reduce, mental activities increase), wider race sharpness modifier (×0.80 to ×1.05), scaled fatigue decay tiers (3/day at low fatigue up to 15/day at high fatigue), 12h sharpness grace period then −15/day decay. All configurable via `game_config` JSON.
 - **Meditation** — Recovery training action: 0 stat gains, −25 fatigue, +15 sharpness. Uses a training action slot. Recovery-specific UI mode in activity cards, confirm modal, and result modal (hides stat boosts, shows condition changes).
 - **Treatment Center** — Three lockout-based recovery tiers: Stim Pack (6h, −20 fatigue), Cryo Pod (12h, −40 fatigue, sharpness→50), Full Reset (24h, fatigue→0, sharpness→30). Lazy completion model — effects applied when timer expires. Creatures locked from training/racing during treatment. Full ErgoPay + Nautilus + free-play fee flows. Treatment page with creature selection, tier cards, confirm/result dialogs with explorer TX links.
+- **Rarity class races** — Rookie (Common/Uncommon/Rare), Contender (Masterwork/Epic/Relic), Champion (Legendary/Mythic/Cyberium). Entry restricted by creature rarity. Fractional league points (1/7 weight vs open races). Recovery rewards (UTXO-style fatigue reduction packs) awarded from class race placements. Race entry modal filters by class eligibility, shows treatment/already-entered guards.
 
 ### Open Items
 - [x] **Training cost (0.01 ERG)** — Real ERG payments via Nautilus. Treasury box registers (R4-R6) for on-chain traceability. Verified on mainnet.
 - [x] **Race entry fee (0.05 ERG)** — Same TX flow as training. Per-race entry fee via `season_races.entry_fee_nanoerg`. Nautilus verified on mainnet — registers + result modal + ledger all working.
 - [x] **TX UX** — Confirm modals hold open during Nautilus signing ("Signing..." state). Result modals with Payment Confirmed banner + ergexplorer link. Deferred refetch prevents page flicker.
 - [x] **ErgoPay TX with registers** — Switched from `POST /payment/addrequest` (simple payment, no register support) to `POST /api/v1/reducedTx` (full unsigned TX with R4-R6 registers). Server-side UTXO fetching, sigma serialization, wallet callback endpoint. Verified on mainnet — registers visible in mobile wallet signing screen and decoded correctly on ergexplorer.
+- [x] **Single-TX batch race entry** — Entering N creatures into a race now uses a single TX with N treasury output boxes (one per creature, each with R4-R6 registers). One wallet signature, one miner fee. Works for Nautilus, ErgoPay, and alpha (no-fee) modes. Batch endpoint: `POST /api/v2/races/:id/enter-batch`.
 - [ ] **Vercel deployment** — Push to deploy. Env vars set.
 
 ### Infrastructure
@@ -82,6 +85,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | 12 | `GET /api/v2/ergopay/status/:sessionId` | `api/v2/ergopay/status/[sessionId].ts` | Poll ErgoPay session status |
 | 12 | `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | CyberPets image proxy (ergexplorer → cyberversewiki fallback, 1yr CDN edge cache) |
 | 13 | `GET /api/v2/img/token/:tokenId` | `api/v2/img/token/[tokenId].ts` | Token image proxy (IPFS → ergexplorer fallback, 1yr CDN edge cache) |
+| 14 | `GET /api/v2/races/:id/entries` | `api/v2/races/[id]/entries.ts` | Creature IDs entered by wallet in a race (`?wallet=ADDRESS`) |
 
 ### Public POST Endpoints (User Actions)
 
@@ -93,6 +97,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | 13 | `POST /api/v2/ergopay/init` | `api/v2/ergopay/init.ts` | Create ErgoPay session, return ergopay:// URL |
 | 14 | `POST /api/v2/treatment/start` | `api/v2/treatment/start.ts` | Start treatment — validates creature state, applies lockout |
 | 15 | `POST /api/v2/ergopay/tx/request` | `api/v2/ergopay/tx/request.ts` | Create ErgoPay payment request (training, race entry, or treatment fees) |
+| 16 | `POST /api/v2/races/:id/enter-batch` | `api/v2/races/[id]/enter-batch.ts` | Batch enter N creatures into race (single txId, all-or-nothing validation) |
 
 ### Admin POST Endpoints (Bearer token auth)
 
@@ -122,7 +127,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `api/_lib/supabase.ts` | Supabase service client |
 | `api/_lib/auth.ts` | Admin `CRON_SECRET` bearer token guard |
 | `api/_lib/helpers.ts` | `getActiveSeason()`, `getLatestErgoBlock()`, `computeCreatureResponse()`, `countRegularActionsToday()`, `getLastRegularActionAt()` |
-| `api/_lib/constants.ts` | Activity display map, reward labels, nanoErg conversion |
+| `api/_lib/constants.ts` | Activity display map, reward labels, nanoErg conversion, `CLASS_RARITIES`, `LEAGUE_POINTS_BY_POSITION`, `RECOVERY_BY_POSITION` |
 | `api/_lib/cyberpets.ts` | CyberPet JSON loader, trait parser, base stat computation (legacy — see also `collections/cyberpets.ts`) |
 | `api/_lib/collections/types.ts` | `CollectionLoader` interface, `TokenEntry`, `Stats`, `StatName` types |
 | `api/_lib/collections/registry.ts` | Collection loader registry — maps collection names to loaders |
@@ -157,6 +162,8 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `useUpdateWalletProfile` | `PUT /api/v2/wallet/:address/profile` | Mutation |
 | `useCollections` | `GET /api/v2/collections` | Query |
 | `useSeasons` | `GET /api/v2/seasons/current` | Query (array) |
+| `useRaceEntries` | `GET /api/v2/races/:id/entries` | Query |
+| `useEnterRaceBatch` | `POST /api/v2/races/:id/enter-batch` | Mutation |
 | `useTreatment` | `POST /api/v2/treatment/start` | Mutation |
 
 ---
@@ -277,7 +284,8 @@ The basic game loop (wallet → discover → train → race → results) is conf
 | **Training action** | API validates + DB update | User TX: 0.01 ERG fee + AVL proof → Training Contract validates |
 | **Training log** | `training_log` table | On-chain TX history, indexed by scanner |
 | **Boost rewards** | `boost_rewards` table (UTXO-style rows, block height expiry) | Actual Ergo boxes (reward tokens) sent to NFT owner, consumed as TX inputs |
-| **Race entry** | API validates + DB insert | User TX: entry fee to race box + snapshot stats |
+| **Race entry (single)** | API validates + DB insert | User TX: entry fee to race box + snapshot stats |
+| **Race entry (batch)** | Batch endpoint validates all N + DB inserts. Single TX with N treasury outputs (one per creature, each with R4-R6 registers). One miner fee. | User TX: spends race box → appends N stat snapshots to R5 `Coll[Coll[Byte]]`. Single TX, single proof covering N AVL lookups. Reduces UTXO contention (1 TX vs N competing for same race box). |
 | **Race resolution** | Admin calls API → DB update | Permissionless: anyone triggers → Contract reads `CONTEXT.headers(0).id` |
 | **Prize distribution** | DB ledger (manual payout) | Contract auto-creates payout output boxes |
 | **Leaderboard** | `season_leaderboard` table | AVL tree or extended creature tree |
@@ -357,6 +365,7 @@ PHASE 2 (Target — Smart Contracts)
 | **POST /creatures/register** | **No contract needed** — NFT ownership is native. Creature exists if the wallet holds the token. Base stats derived from on-chain metadata (packed-data box). | DB insert → AVL tree insert (first training TX auto-registers) |
 | **POST /train** | **Training Contract** — User builds TX: sends 0.01 ERG to pool box + AVL proof of stat update + optional boost reward box inputs. Contract validates: cooldown (`HEIGHT >= lastAction + 180`), 2 actions/day limit, diminishing returns (`gain = base × (1 - current/80)`), per-stat cap (80), total cap (300), fatigue cost. Boost reward inputs consumed in same TX. | Server validation → ErgoScript validation. Same formulas. |
 | **POST /races/:id/enter** | **Race Entry Contract** — User builds TX: sends entry fee to race box + snapshot stats from AVL read. Contract validates: ownership, not already entered, race not full. | Snapshot stored in race box registers instead of DB. |
+| **POST /races/:id/enter-batch** | **Same Race Entry Contract** — Single TX appends N stat snapshots to race box R5. Plasma service generates one proof covering N AVL lookups. Contract validates all N entries. | Batch is naturally better on-chain: 1 TX instead of N competing to spend the same race box UTXO. |
 | **POST /admin/races/resolve** | **Race Resolution Contract** — Anyone can trigger (no admin needed). Contract reads `CONTEXT.headers(0).id` for block hash RNG seed. Computes scores identically. Creates boost reward output boxes for 2nd–4th+ and bonus action marker for 1st. Distributes prize pool (50/30/20 split). | Phase 1: lazy auto-resolve on page load (wall-clock time). Phase 2: permissionless, block-height trigger. Payouts + boost rewards are TX outputs, not DB entries. |
 | **POST /admin/seasons/start** | **Season Contract** — New season box created with: AVL tree digest (all stats zeroed), prize pool = 0, end height. | Admin action → scheduled or governance vote. |
 | **POST /admin/seasons/end** | **Season Payout Contract** — Triggered when `HEIGHT >= season_end_height`. Reads leaderboard from AVL tree. Creates payout output boxes. | Admin trigger → automated by block height. |
@@ -394,12 +403,13 @@ PHASE 2 (Target — Smart Contracts)
 - Blake2b256 hashing, 32-byte digests — matches Ergo contract expectations
 - Confirmed by GetBlok Plasma team: standalone Scala service is the production-recommended path. WASM/sigma-rust has partial AVL support but lacks full batch update + persistent storage integration (high effort, Rust dev required)
 
-**CreatureState AVL Value (~26 bytes per creature):**
+**CreatureState AVL Value (~28 bytes per creature):**
 ```
 CreatureState {
   speed: Short, stamina: Short, acceleration: Short,
   agility: Short, heart: Short, focus: Short,
   fatigue: Short, sharpness: Short,
+  baseBudget: Short,                    // total base stat budget (60-120) — for rarity class verification
   lastActionHeight: Int,
   actionsToday: Byte, bonusActions: Byte,
   dayStartHeight: Int    // 720 blocks = 1 "day" for action reset
@@ -407,17 +417,23 @@ CreatureState {
 ```
 Custom `ByteConversion[CreatureState]` for Plasma serialization. Key = NFT token ID (`ErgoId`, 32 bytes).
 
+`baseBudget` is set once at creature registration (first training TX) and never changes. It enables on-chain rarity class verification — contracts check `baseBudget` range against race class boundaries (Rookie: 60-80, Contender: 85-95, Champion: 100-120) without needing off-chain trait data. See `PLAN-class-races.md`.
+
 **Race State: Pure UTXO (NOT AVL):**
 Races are short-lived, fixed-entrant entities — not a growing key-value set. Each race is a box:
-- R4: race params (type, max entries, entry fee, deadline height)
+- R4: race params (type, max entries, entry fee, deadline height, `rarityClass: Option[Coll[Byte]]`, `classWeight: Int`)
 - R5: `Coll[Coll[Byte]]` of entrant snapshots (token ID + 6 stats, appended per entry TX)
 - R6: deadline height
-- Entry TX: spends old race box → creates new race box with snapshot appended
-- Resolution TX: spends race box → reads `CONTEXT.headers(0).id` → creates reward + payout boxes
-- No Plasma/AVL involvement for races
+- Entry TX (single): spends old race box → creates new race box with snapshot appended. If `rarityClass` is set, contract validates entrant's `baseBudget` (from AVL tree read) falls within the class range.
+- Entry TX (batch): spends old race box → creates new race box with N snapshots appended in one TX. Plasma service generates single proof covering N AVL lookups. Reduces UTXO contention (only 1 TX can spend a given race box per block, so batching N entries avoids N-way contention). Phase 1 batch flow (N treasury outputs) maps to Phase 2 batch flow (N snapshot appends).
+- Resolution TX: spends race box → reads `CONTEXT.headers(0).id` → creates reward + payout + recovery pack boxes. League points weighted by `classWeight`.
+- No Plasma/AVL involvement for race state itself (snapshots stored in registers), but Plasma is read for stat verification at entry time
 
 **Boost Rewards: Actual UTXO Boxes:**
 Each boost becomes a real Ergo box with `HEIGHT` expiry in contract. At training time, user includes boost boxes as TX inputs — consumed in same TX. No AVL tree involvement.
+
+**Recovery Packs: Same UTXO Pattern (Class Races):**
+Recovery packs (earned from rarity class races) follow the identical UTXO box pattern as boosts. At race resolution, the Resolution Contract creates recovery reward output boxes sent to participant addresses. Each box contains: fatigue reduction amount (R4), creature token ID (R5), expiry height (R6). Player consumes recovery boxes as TX inputs during training — fatigue reduction applied in the same AVL update as stat changes. This avoids O(N) AVL tree writes at resolution time (resolution only creates output boxes, not tree updates). See `PLAN-class-races.md`.
 
 **Concurrency Model (multiple users training simultaneously):**
 Only one proof can be valid per tree state. If two users train at the same time against the same tree digest, only the first TX to confirm succeeds (second proof is stale). Solutions:
@@ -833,6 +849,198 @@ When `REQUIRE_FEES=true`, `train.ts` and `enter.ts` return HTTP 402 if no `txId`
 
 ### Phase 2 Compatibility
 Treasury box registers (R4-R6) are already written in Phase 1. When Phase 2 scanner arrives, it reads existing boxes to index game actions. The transition from "API writes credit_ledger" to "scanner writes credit_ledger" requires zero schema changes — only the data ingestion pipeline changes.
+
+---
+
+## Rarity Class Races + Entry Modal UX Improvements (2026-02-15)
+
+### Overview
+Rarity-restricted races that group creatures by power tier, with fractional league points and recovery rewards. Plus three UX improvements to the race entry modal: treatment guard, already-entered guard, and floating point display fix.
+
+### Rarity Classes
+Three class tiers based on creature rarity:
+
+| Class | Eligible Rarities | League Point Weight |
+|-------|-------------------|---------------------|
+| Rookie | Common, Uncommon, Rare | 1/7 (≈0.143×) |
+| Contender | Masterwork, Epic, Relic | 1/7 (≈0.143×) |
+| Champion | Legendary, Mythic, Cyberium | 1/7 (≈0.143×) |
+| Open (default) | All rarities | 1× (full points) |
+
+### League Points
+Primary leaderboard ranking metric. Open races award 7/5/3/1 points by position. Class races apply a `class_weight` multiplier (default 1/7), giving 1/0.71/0.43/0.14 points. League points column is the primary sort on the leaderboard, with win count as tiebreaker.
+
+### Recovery Rewards (UTXO-Style)
+Class races award fatigue reduction packs instead of training boosts:
+
+| Position | Fatigue Reduction |
+|----------|-------------------|
+| 1st | −8 fatigue |
+| 2nd | −5 fatigue |
+| 3rd | −4 fatigue |
+| 4th+ | −3 fatigue |
+
+Recovery rewards are discrete rows in `recovery_rewards` table. Consumed at training time — player selects which recovery packs to apply alongside boosts. Each pack subtracts its `fatigue_amount` from the creature's current fatigue.
+
+### Rarity Case Normalization Fix
+CyberPets JSON stores rarity as `"Common"` (capitalized) but all frontend type maps (`CLASS_RARITIES`, `rarityStyles`) use lowercase `"common"`. The backend `execute-action.ts` already lowercased for the entry guard, but the frontend comparison and API responses did not. Fixed by normalizing to lowercase at every layer:
+
+- **Loader parse time**: `cyberpets.ts` and `aneta-angels.ts` now `.toLowerCase()` rarity values
+- **API response layer**: `computeCreatureResponse()`, `leaderboard.ts`, `races/[id]/results.ts` all lowercase rarity
+- **Frontend**: `RaceEntryModal` lowercases for `CLASS_RARITIES` comparison
+- **Existing DB rows**: Run `UPDATE creatures SET rarity = LOWER(rarity) WHERE rarity != LOWER(rarity);`
+
+### Race Entry Modal UX Improvements
+
+**Treatment Guard** — Creatures currently in the Treatment Center are shown in the entry modal but disabled (opacity-50, cursor-not-allowed). A "In treatment" label with Clock icon appears. They are excluded from "Select All". Prevents wasted TX signatures on creatures the backend will reject.
+
+**Already-Entered Guard** — New `GET /api/v2/races/:id/entries?wallet=ADDRESS` endpoint returns creature IDs already entered in a race. Modal shows these creatures as disabled with an "Already entered" label in cyan. Prevents duplicate entry attempts.
+
+**Floating Point Fix** — `0.05 * 3 = 0.15000000000000002` was displayed in entry fee totals. Fixed with `roundFee()` helper using `Math.round(value * 1e8) / 1e8`. Also fixed nanoERG conversion in `Races.tsx` using `Math.round()`.
+
+### DB Migration (`migrations/016_rarity_class_races.sql`)
+```sql
+-- Rarity class column on races
+ALTER TABLE season_races ADD COLUMN rarity_class TEXT DEFAULT NULL;
+ALTER TABLE season_races ADD COLUMN class_weight NUMERIC(10,6) DEFAULT NULL;
+
+-- League points on leaderboard
+ALTER TABLE season_leaderboard ADD COLUMN league_points NUMERIC(10,4) NOT NULL DEFAULT 0;
+
+-- Recovery rewards table (UTXO-style fatigue packs)
+CREATE TABLE recovery_rewards (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creature_id UUID NOT NULL REFERENCES creatures(id),
+  season_id UUID NOT NULL REFERENCES seasons(id),
+  race_id UUID NOT NULL REFERENCES season_races(id),
+  fatigue_amount NUMERIC(5,2) NOT NULL,
+  spent_at TIMESTAMPTZ DEFAULT NULL,
+  spent_training_log_id UUID REFERENCES training_log(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### Backend Constants (`api/_lib/constants.ts`)
+```typescript
+CLASS_RARITIES = {
+  rookie: ['common', 'uncommon', 'rare'],
+  contender: ['masterwork', 'epic', 'relic'],
+  champion: ['legendary', 'mythic', 'cyberium'],
+};
+LEAGUE_POINTS_BY_POSITION = [7, 5, 3, 1];
+RECOVERY_BY_POSITION = [8, 5, 4, 3];
+DEFAULT_CLASS_WEIGHT = 1/7;
+```
+
+### Files Changed
+- `migrations/016_rarity_class_races.sql` — **NEW**: Rarity class columns, league points, recovery rewards table
+- `api/_lib/constants.ts` — `CLASS_RARITIES`, `LEAGUE_POINTS_BY_POSITION`, `RECOVERY_BY_POSITION`, `DEFAULT_CLASS_WEIGHT`
+- `api/_lib/resolve-race.ts` — Applies `class_weight` to league points, inserts `recovery_rewards` rows for class races
+- `api/_lib/execute-action.ts` — Race entry rarity guard (checks `race.rarity_class` vs creature rarity), accepts `recoveryRewardIds[]` for training, validates + consumes packs, subtracts fatigue
+- `api/_lib/helpers.ts` — `computeCreatureResponse()` lowercases rarity, fetches `recoveries[]` array
+- `api/_lib/collections/cyberpets.ts` — `parseCyberPetTraits()` lowercases rarity at parse time
+- `api/_lib/collections/aneta-angels.ts` — `getRarity()` lowercases return value
+- `api/v2/races/[id]/enter.ts` — Unchanged (delegates to `executeRaceEntry`)
+- `api/v2/races/[id]/entries.ts` — **NEW**: Lightweight endpoint returning creature IDs entered by wallet
+- `api/v2/races/[id]/results.ts` — Lowercases rarity in response
+- `api/v2/leaderboard.ts` — Lowercases rarity, includes `leaguePoints` in response (primary sort)
+- `api/v2/creatures/by-wallet/[address].ts` — Returns `recoveries[]` per creature
+- `api/v2/creatures/[id]/index.ts` — Returns `recoveries[]`
+- `api/v2/admin/races/create.ts` — Accepts `rarityClass` param, auto-sets `class_weight`
+- `src/types/game.ts` — Added `rarityClass`, `classWeight`, `leaguePoints` to `Race`/`LeaderboardEntry`; `RecoveryReward` type
+- `src/api/useRaces.ts` — Added `useRaceEntries` hook
+- `src/api/index.ts` — Exported `useRaceEntries`
+- `src/components/races/RaceCard.tsx` — Color-coded class badge (amber Rookie, violet Contender, cyan Champion)
+- `src/components/races/RaceEntryModal.tsx` — Rarity class filtering, treatment guard, already-entered guard, floating point fix (`roundFee()`), `useRaceEntries` integration
+- `src/pages/Races.tsx` — `Math.round()` for nanoERG conversion, rounded fee in result modal
+- `src/pages/Leaderboard.tsx` — League points column (primary sort), `LP` header
+- `src/pages/Admin.tsx` — Rarity class dropdown on race creation form
+
+### Single-TX Batch Race Entry — IMPLEMENTED
+Entering N creatures into a race now uses a single TX with N treasury output boxes (one per creature, each with its own R4-R6 registers). One wallet signature, one miner fee. See dedicated section below for full details.
+
+### Phase 2 Compatibility
+- `rarity_class` and `class_weight` columns carry forward — on-chain race creation can encode these in race config boxes
+- `recovery_rewards` mirrors the UTXO model — each pack is a "box" with fatigue value, consumed as TX input when training
+- `league_points` replaces simple win-count ranking — scanner can compute from on-chain race results
+- `baseBudget: Short` in CreatureState AVL struct enables on-chain rarity verification for class race entry guards
+
+---
+
+## Single-TX Batch Race Entry (2026-02-15)
+
+### Overview
+Entering N creatures into a race previously required N separate wallet signatures — one TX per creature, each paying its own miner fee (0.0011 ERG). For players with 6-10+ NFTs, this meant 6-10 sign popups and 6-10× miner fees. Now consolidated into a single TX with N treasury output boxes, one wallet signature, and one miner fee.
+
+### TX Structure: N Output Boxes
+Each creature gets its own treasury output box with independent R4-R6 registers:
+
+| Output | Value | R4 | R5 | R6 |
+|--------|-------|----|----|-----|
+| Treasury box 1 | `entryFee` | `"race"` | creature 1 token ID | race UUID |
+| Treasury box 2 | `entryFee` | `"race"` | creature 2 token ID | race UUID |
+| Treasury box N | `entryFee` | `"race"` | creature N token ID | race UUID |
+| Change box(es) | remainder | — | — | — |
+| Fee box | 0.0011 ERG | — | — | — |
+
+Why N boxes (not 1 aggregated box): each box is independently self-documenting on-chain, consistent with existing register schema, no complex `Coll[Coll[Byte]]` encoding needed, and each maps cleanly to a credit_ledger row.
+
+### Nautilus Flow
+1. Frontend calls `buildAndSubmitBatchEntryFeeTx(entries, treasuryErgoTree)` — builds single unsigned TX with N treasury outputs
+2. Nautilus shows **one** sign popup (user sees N output boxes + miner fee)
+3. Returns single `txId`
+4. Frontend calls `POST /api/v2/races/:id/enter-batch` with `{ creatureIds, walletAddress, txId }`
+
+### ErgoPay Flow
+1. Frontend calls `POST /api/v2/ergopay/tx/request` with `{ actionType: 'race_entry_fee', creatureIds: [...], raceId, walletAddress }`
+2. Backend validates all creatures, builds batch unsigned TX via `buildUnsignedBatchTx()`, stores `creatureIds` array in `action_payload`
+3. POSTs to `ergopay.duckdns.org/api/v1/reducedTx` — single QR/deep-link
+4. On payment confirmation, `status/[requestId].ts` loops `executeRaceEntry()` for each creature ID from `action_payload.creatureIds`
+
+### Alpha Mode (No Fees)
+Frontend calls `POST /api/v2/races/:id/enter-batch` with `{ creatureIds, walletAddress }` — no txId, batch endpoint processes all entries.
+
+### Batch Endpoint
+`POST /api/v2/races/:id/enter-batch` — all-or-nothing pre-validation:
+- Race must be open, not past deadline, have capacity for all N entries
+- All creatures validated: ownership, collection match, rarity class match, not already entered
+- If any creature fails: entire batch rejected with specific error
+- On success: loops `executeRaceEntry()` for each creature, all sharing same `txId`
+- Returns `{ success, entries: [{ creatureId, entryId }...], errors?: [...] }`
+
+### On-Chain Payment Detection (ErgoPay)
+Updated `detectPaymentOnChain()` to sum all TX outputs to treasury address (was checking for single-output exact match). Now works for both single and batch TXs:
+```
+totalToTreasury = sum of all outputs where address === treasuryAddress
+match = totalToTreasury >= expectedAmountNanoerg
+```
+
+### Files Changed
+- `src/lib/ergo/transactions.ts` — Added `buildAndSubmitBatchEntryFeeTx()` (N treasury outputs, shared UTXO selection, whale wallet overflow handling)
+- `api/v2/races/[id]/enter-batch.ts` — **NEW**: Batch entry endpoint with all-or-nothing validation
+- `api/_lib/ergo-tx-builder.ts` — Added `buildUnsignedBatchTx()` (server-side N-output TX for ErgoPay)
+- `api/v2/ergopay/tx/request.ts` — Extended `race_entry_fee` to accept `creatureIds[]` array, validate all creatures, build batch TX
+- `api/v2/ergopay/tx/status/[requestId].ts` — Batch execution (loop over `action_payload.creatureIds`), updated `detectPaymentOnChain()` to sum outputs
+- `src/pages/Races.tsx` — Replaced per-creature for-loop with single batch call (Nautilus, ErgoPay, alpha)
+- `src/api/useRaces.ts` — Added `useEnterRaceBatch()` hook
+- `src/api/index.ts` — Exported `useEnterRaceBatch`
+- `src/types/game.ts` — Added `EnterRaceBatchResponse` type
+- `src/lib/ergo/ergopay-tx.ts` — Made `creatureId` optional, added `creatureIds?: string[]` to request params
+- `src/components/races/RaceEntryModal.tsx` — Updated ErgoPay hint: "one payment for all creatures"
+
+### No DB Migrations Needed
+`credit_ledger` and `season_race_entries` already support multiple rows with the same `tx_id`. `ergopay_tx_requests.action_payload` is JSONB and already stores `creatureIds` array.
+
+### Verified On Mainnet
+Nautilus: 2 creatures entered in a single TX — Nautilus popup showed 2 × 0.05 ERG treasury outputs + 0.0011 ERG miner fee. Result modal showed "2 creatures entered" with single txId.
+
+### Phase 2 SC Compatibility
+Batch entry is **better** in Phase 2:
+- Reduces UTXO contention on race boxes — only 1 TX spends a given race box UTXO per block, so batching N entries into 1 TX is more efficient than N separate TXs competing for the same race box
+- AVL Plasma service can generate a single proof covering N creature stat lookups
+- Race Entry Contract validates all N entries in one TX: ownership via signing key, stats via AVL tree proof, snapshots appended to R5 (`Coll[Coll[Byte]]`)
+- The Phase 1 "N treasury output boxes" pattern doesn't carry forward directly (Phase 2 spends race boxes, not treasury), but the UX pattern (select N creatures → one sign → all entered) is identical
+- Backend batch endpoint (`enter-batch.ts`) can be adapted to build a single race-box-spending TX with N snapshot appends
 
 ---
 

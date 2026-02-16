@@ -240,6 +240,6 @@ export class AnetaAngelsLoader implements CollectionLoader {
   }
 
   getRarity(traits: Record<string, any>): string {
-    return traits.rarity_tier || 'Common';
+    return (traits.rarity_tier || 'Common').toLowerCase();
   }
 }

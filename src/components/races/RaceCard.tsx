@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Clock, Users, Coins } from 'lucide-react';
-import { Race, RaceType } from '@/types/game';
+import { Race, RaceType, RarityClass, CLASS_LABELS } from '@/types/game';
 import { formatCountdown } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,12 @@ const typeLabels: Record<RaceType, string> = {
   technical: 'Technical',
   mixed: 'Mixed',
   hazard: 'Hazard',
+};
+
+const classColors: Record<RarityClass, { bg: string; text: string; border: string }> = {
+  rookie: { bg: 'bg-green-500/15', text: 'text-green-400', border: 'border-green-500/30' },
+  contender: { bg: 'bg-blue-500/15', text: 'text-blue-400', border: 'border-blue-500/30' },
+  champion: { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' },
 };
 
 export function RaceCard({ race, onEnter, onViewDetails, onExpired }: RaceCardProps) {
@@ -87,6 +93,16 @@ export function RaceCard({ race, onEnter, onViewDetails, onExpired }: RaceCardPr
             )}>
               {typeLabels[race.raceType]}
             </span>
+            {race.rarityClass && (
+              <span className={cn(
+                'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border',
+                classColors[race.rarityClass].bg,
+                classColors[race.rarityClass].text,
+                classColors[race.rarityClass].border,
+              )}>
+                {CLASS_LABELS[race.rarityClass]}
+              </span>
+            )}
             {race.collectionName && (
               <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider bg-primary/10 text-primary/80 border border-primary/20">
                 {race.collectionName}

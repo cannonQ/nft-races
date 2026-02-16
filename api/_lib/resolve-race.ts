@@ -5,7 +5,13 @@
 import { supabase } from './supabase.js';
 import { getLatestErgoBlock } from './helpers.js';
 import { getGameConfig } from './config.js';
-import { nanoErgToErg, positionToRewardLabel } from './constants.js';
+import {
+  nanoErgToErg,
+  positionToRewardLabel,
+  LEAGUE_POINTS_BY_POSITION,
+  RECOVERY_BY_POSITION,
+  RECOVERY_EXPIRY_BLOCKS,
+} from './constants.js';
 import {
   computeRaceResult,
   applyRaceRewards,
@@ -182,7 +188,9 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
   // 10. Apply race reward boosts (bonus actions, discrete boost rewards)
   await applyRaceRewards(raceResult.results, race.season_id, raceId, blockHeight, supabase, mergedConfig);
 
-  // 11. Update season_leaderboard for each participant
+  // 11. Update season_leaderboard for each participant (with league points)
+  const classWeight = race.class_weight ?? 1.0;
+
   for (const result of raceResult.results) {
     const entryRow = entries.find((e: any) => e.creature_id === result.creatureId);
     if (!entryRow) continue;
@@ -190,6 +198,10 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
     const payoutNanoerg = result.position <= prizeDistribution.length && totalPool > 0
       ? Math.floor(totalPool * prizeDistribution[result.position - 1])
       : 0;
+
+    // League points: base points × class weight
+    const basePoints = LEAGUE_POINTS_BY_POSITION[Math.min(result.position - 1, LEAGUE_POINTS_BY_POSITION.length - 1)];
+    const leaguePointsEarned = Math.round(basePoints * classWeight * 100) / 100;
 
     const { data: existing } = await supabase
       .from('season_leaderboard')
@@ -207,6 +219,7 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
           shows: (existing.shows ?? 0) + (result.position === 3 ? 1 : 0),
           races_entered: (existing.races_entered ?? 0) + 1,
           total_earnings_nanoerg: (existing.total_earnings_nanoerg ?? 0) + payoutNanoerg,
+          league_points: Math.round(((existing.league_points ?? 0) + leaguePointsEarned) * 100) / 100,
         })
         .eq('id', existing.id);
     } else {
@@ -219,6 +232,23 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
         shows: result.position === 3 ? 1 : 0,
         races_entered: 1,
         total_earnings_nanoerg: payoutNanoerg,
+        league_points: leaguePointsEarned,
+      });
+    }
+  }
+
+  // 11b. Insert recovery rewards for class races
+  if (race.rarity_class) {
+    const recoveryExpiry = mergedConfig.recovery_expiry_blocks ?? RECOVERY_EXPIRY_BLOCKS;
+    for (const result of raceResult.results) {
+      const reduction = RECOVERY_BY_POSITION[Math.min(result.position - 1, RECOVERY_BY_POSITION.length - 1)];
+      await supabase.from('recovery_rewards').insert({
+        creature_id: result.creatureId,
+        season_id: race.season_id,
+        race_id: raceId,
+        fatigue_reduction: -reduction,
+        awarded_at_height: blockHeight,
+        expires_at_height: blockHeight + recoveryExpiry,
       });
     }
   }

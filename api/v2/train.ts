@@ -7,7 +7,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const { creatureId, activity, walletAddress, boostRewardIds, txId } = req.body ?? {};
+  const { creatureId, activity, walletAddress, boostRewardIds, recoveryRewardIds, txId } = req.body ?? {};
 
   if (!creatureId || !activity || !walletAddress) {
     return res.status(400).json({ error: 'creatureId, activity, and walletAddress are required' });
@@ -29,6 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       activity,
       walletAddress,
       boostRewardIds,
+      recoveryRewardIds,
       txId,
     });
     return res.status(200).json(result);

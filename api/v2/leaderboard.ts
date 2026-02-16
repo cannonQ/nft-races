@@ -27,6 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from('season_leaderboard')
       .select('*, creatures(name, token_id, rarity, metadata, collection_id)')
       .eq('season_id', seasonId)
+      .order('league_points', { ascending: false })
       .order('wins', { ascending: false })
       .order('places', { ascending: false })
       .order('shows', { ascending: false })
@@ -94,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       creatureId: row.creature_id,
       creatureName: getCreatureDisplayName(row.creatures?.metadata, row.creatures?.name ?? 'Unknown', loader),
       tokenId: row.creatures?.token_id ?? '',
-      rarity: row.creatures?.rarity ?? 'common',
+      rarity: (row.creatures?.rarity ?? 'common').toLowerCase(),
       imageUrl: getCreatureImageUrl(row.creatures?.metadata, loader),
       fallbackImageUrl: getCreatureFallbackImageUrl(row.creatures?.metadata, loader),
       ownerAddress: row.owner_address,
@@ -103,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       places: row.places ?? 0,
       shows: row.shows ?? 0,
       racesEntered: row.races_entered ?? 0,
+      leaguePoints: row.league_points ?? 0,
       avgScore: avgScores[row.creature_id] ?? 0,
       earnings: nanoErgToErg(row.total_earnings_nanoerg ?? 0),
     };

@@ -2,7 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { requireAdmin } from '../../../_lib/auth.js';
 import { getActiveSeason } from '../../../_lib/helpers.js';
-import { nanoErgToErg } from '../../../_lib/constants.js';
+import { nanoErgToErg, CLASS_RARITIES, DEFAULT_CLASS_WEIGHT } from '../../../_lib/constants.js';
+import type { RarityClass } from '../../../_lib/constants.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -21,10 +22,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       seasonId,
       collectionId,
       autoResolve,
+      rarityClass,
     } = req.body ?? {};
 
     if (!name || !raceType || !entryDeadline) {
       return res.status(400).json({ error: 'name, raceType, and entryDeadline are required' });
+    }
+
+    // Validate rarity class if provided
+    if (rarityClass && !CLASS_RARITIES[rarityClass as RarityClass]) {
+      return res.status(400).json({ error: `Invalid rarity class: ${rarityClass}. Valid: rookie, contender, champion` });
     }
 
     // Get active season — use collectionId to find the right season when provided
@@ -68,6 +75,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         auto_resolve: autoResolve ?? true,
         season_id: activeSeasonId,
         collection_id: activeCollectionId,
+        rarity_class: rarityClass || null,
+        class_weight: rarityClass ? DEFAULT_CLASS_WEIGHT : 1.0,
       })
       .select('*')
       .single();
@@ -87,6 +96,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         entryDeadline: race.entry_deadline,
         status: race.status,
         autoResolve: race.auto_resolve ?? true,
+        rarityClass: race.rarity_class ?? null,
+        classWeight: race.class_weight ?? 1.0,
       },
     });
   } catch (err) {

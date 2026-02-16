@@ -107,7 +107,7 @@ function parseCyberPetTraits(description: string): ParsedCyberPetTraits | null {
     }
 
     return {
-      rarity: traits['Rarity'] || 'Common',
+      rarity: (traits['Rarity'] || 'Common').toLowerCase(),
       pet: traits['Pet'] || 'Unknown',
       skinColor: traits['Skin Color'] || 'Unknown',
       background: traits['Background'] || 'Unknown',
