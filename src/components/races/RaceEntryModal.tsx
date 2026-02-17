@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertTriangle, Check, CheckCheck, Clock } from 'lucide-react';
 import {
   Dialog,
@@ -43,6 +43,13 @@ function roundFee(value: number): string {
 
 export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFees, walletType, submitting }: RaceEntryModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Reset selection when modal opens or race changes — handleClose() only fires
+  // on user-initiated close (Escape/Cancel), not when parent sets open=false.
+  useEffect(() => {
+    if (open) setSelected(new Set());
+  }, [open, race?.id]);
+
   const { address } = useWallet();
   const { data: creatures, loading } = useCreaturesByWallet(address);
   // Fetch which of my creatures are already entered in this race
