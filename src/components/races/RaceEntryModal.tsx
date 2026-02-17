@@ -57,12 +57,10 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
     address,
   );
 
-  if (!race) return null;
-
   // Filter creatures to match collection + rarity class
-  const allowedRarities = race.rarityClass ? CLASS_RARITIES[race.rarityClass] : null;
+  const allowedRarities = race?.rarityClass ? CLASS_RARITIES[race.rarityClass] : null;
   const creatureList = (creatures || []).filter(c => {
-    if (race.collectionId && c.collectionId !== race.collectionId) return false;
+    if (race?.collectionId && c.collectionId !== race.collectionId) return false;
     if (allowedRarities && !allowedRarities.includes(c.rarity.toLowerCase() as any)) return false;
     return true;
   });
@@ -72,16 +70,23 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
   // Only count selectable creatures (not in treatment, not already entered)
   const selectableCreatures = creatureList.filter(c => !c.treatment && !enteredSet.has(c.id));
 
+  // Stable string key so the effect dep doesn't change on every render
+  const enteredKey = (enteredCreatureIds ?? []).join(',');
+
   // Prune selected set when eligibility changes (e.g. enteredCreatureIds loads after Select All)
   useEffect(() => {
+    const entered = new Set(enteredCreatureIds ?? []);
     setSelected(prev => {
       const pruned = new Set([...prev].filter(id => {
         const c = creatureList.find(cr => cr.id === id);
-        return c && !c.treatment && !enteredSet.has(id);
+        return c && !c.treatment && !entered.has(id);
       }));
       return pruned.size !== prev.size ? pruned : prev;
     });
-  }, [enteredCreatureIds, creatureList.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enteredKey, creatureList.length]);
+
+  if (!race) return null;
 
   const toggleCreature = (id: string) => {
     const creature = creatureList.find(c => c.id === id);
