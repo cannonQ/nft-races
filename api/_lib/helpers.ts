@@ -5,6 +5,22 @@ import type { CollectionLoader } from './collections/types.js';
 
 const ERGO_EXPLORER_API = 'https://api.ergoplatform.com/api/v1';
 
+// ---------------------------------------------------------------------------
+// Input validation helpers
+// ---------------------------------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Validate a string is a valid UUID v4 format. */
+export function isValidUUID(val: unknown): val is string {
+  return typeof val === 'string' && UUID_RE.test(val);
+}
+
+/** Validate a string looks like an Ergo wallet address (base58, 30-60 chars). */
+export function isValidErgoAddr(val: unknown): val is string {
+  return typeof val === 'string' && /^[1-9A-HJ-NP-Za-km-z]{30,60}$/.test(val);
+}
+
 /** Fetch the latest Ergo block hash and height from Explorer. */
 export async function getLatestErgoBlock(): Promise<{ hash: string; height: number }> {
   const res = await fetch(`${ERGO_EXPLORER_API}/blocks?limit=1`, {

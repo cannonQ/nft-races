@@ -19,6 +19,9 @@ export function PetImage({ src, fallbackSrc, alt, className }: PetImageProps) {
     <img
       src={activeSrc}
       alt={alt}
+      loading="lazy"
+      width={64}
+      height={64}
       className={cn('object-cover', className)}
       onError={() => {
         if (!useFallback && fallbackSrc) {

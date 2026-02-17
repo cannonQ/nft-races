@@ -17,6 +17,7 @@ import { getGameConfig } from '../../../_lib/config.js';
 import { validateTrainingAction } from '../../../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../../../lib/ergo/server.js';
 import { buildUnsignedTx, buildUnsignedBatchTx, type TxMetadata } from '../../../_lib/ergo-tx-builder.js';
+import { checkRateLimit, getClientIp } from '../../../_lib/rate-limit.js';
 
 const ERGOPAY_BASE = 'https://ergopay.duckdns.org';
 
@@ -29,14 +30,19 @@ function getAppName(collectionName: string): string {
   }
 }
 
-/** Generate a short alphanumeric request ID (10 chars, like the ergopay service uses) */
+/** Generate a high-entropy request ID (32 hex chars = 128 bits) */
 function generateRequestId(): string {
-  return randomBytes(5).toString('hex').toUpperCase();
+  return randomBytes(16).toString('hex').toUpperCase();
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
+  }
+
+  const rl = checkRateLimit(`${getClientIp(req)}:ergopay-tx`, 10, 60_000);
+  if (rl.limited) {
+    return res.status(429).json({ error: 'Too many requests', retryAfter: rl.retryAfter });
   }
 
   if (!REQUIRE_FEES) {

@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { number } = req.query;
   const num = Array.isArray(number) ? number[0] : number;
 
-  if (!num || !/^\d+$/.test(num)) {
+  if (!num || !/^\d+$/.test(num) || parseInt(num, 10) > 10000) {
     return res.status(400).json({ error: 'Invalid pet number' });
   }
 

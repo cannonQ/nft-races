@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 
-// Allowed: Unicode letters, digits, spaces, hyphens, underscores. 2-20 chars.
-const NAME_REGEX = /^[\p{L}\p{N} _-]{2,20}$/u;
+// Allowed: ASCII letters, digits, spaces, hyphens, underscores. 2-20 chars.
+const NAME_REGEX = /^[a-zA-Z0-9 _-]{2,20}$/;
 
 function isErgoAddress(s: string): boolean {
   return s.length === 51 && s.startsWith('9');

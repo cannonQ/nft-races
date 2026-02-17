@@ -164,17 +164,17 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
   const totalPool = entryFee * entries.length;
   const prizeDistribution: number[] = mergedConfig.prize_distribution ?? [0.50, 0.30, 0.20];
 
-  // 9. Update each entry with results
-  for (const result of raceResult.results) {
+  // 9. Update each entry with results (B3-2: parallel updates)
+  await Promise.all(raceResult.results.map(result => {
     const entryRow = entries.find((e: any) => e.creature_id === result.creatureId);
-    if (!entryRow) continue;
+    if (!entryRow) return Promise.resolve();
 
     let payoutNanoerg = 0;
     if (result.position <= prizeDistribution.length && totalPool > 0) {
       payoutNanoerg = Math.floor(totalPool * prizeDistribution[result.position - 1]);
     }
 
-    await supabase
+    return supabase
       .from('season_race_entries')
       .update({
         finish_position: result.position,
@@ -182,83 +182,59 @@ export async function resolveRace(raceId: string): Promise<ResolveResult> {
         payout_nanoerg: payoutNanoerg,
       })
       .eq('id', entryRow.id);
-
-  }
+  }));
 
   // 10. Apply race reward boosts (bonus actions, discrete boost rewards)
   await applyRaceRewards(raceResult.results, race.season_id, raceId, blockHeight, supabase, mergedConfig);
 
-  // 11. Update season_leaderboard for each participant (with league points)
+  // 11. Update season_leaderboard using atomic upsert RPC (B4-3 + B3-2)
   const classWeight = race.class_weight ?? 1.0;
 
-  for (const result of raceResult.results) {
+  await Promise.all(raceResult.results.map(result => {
     const entryRow = entries.find((e: any) => e.creature_id === result.creatureId);
-    if (!entryRow) continue;
+    if (!entryRow) return Promise.resolve();
 
     const payoutNanoerg = result.position <= prizeDistribution.length && totalPool > 0
       ? Math.floor(totalPool * prizeDistribution[result.position - 1])
       : 0;
 
-    // League points: base points × class weight
     const basePoints = LEAGUE_POINTS_BY_POSITION[Math.min(result.position - 1, LEAGUE_POINTS_BY_POSITION.length - 1)];
     const leaguePointsEarned = Math.round(basePoints * classWeight * 100) / 100;
 
-    const { data: existing } = await supabase
-      .from('season_leaderboard')
-      .select('*')
-      .eq('season_id', race.season_id)
-      .eq('creature_id', result.creatureId)
-      .single();
+    return supabase.rpc('upsert_leaderboard_entry', {
+      p_season_id: race.season_id,
+      p_creature_id: result.creatureId,
+      p_owner_address: entryRow.owner_address,
+      p_position: result.position,
+      p_payout_nanoerg: payoutNanoerg,
+      p_league_points: leaguePointsEarned,
+    });
+  }));
 
-    if (existing) {
-      await supabase
-        .from('season_leaderboard')
-        .update({
-          wins: (existing.wins ?? 0) + (result.position === 1 ? 1 : 0),
-          places: (existing.places ?? 0) + (result.position === 2 ? 1 : 0),
-          shows: (existing.shows ?? 0) + (result.position === 3 ? 1 : 0),
-          races_entered: (existing.races_entered ?? 0) + 1,
-          total_earnings_nanoerg: (existing.total_earnings_nanoerg ?? 0) + payoutNanoerg,
-          league_points: Math.round(((existing.league_points ?? 0) + leaguePointsEarned) * 100) / 100,
-        })
-        .eq('id', existing.id);
-    } else {
-      await supabase.from('season_leaderboard').insert({
-        season_id: race.season_id,
-        creature_id: result.creatureId,
-        owner_address: entryRow.owner_address,
-        wins: result.position === 1 ? 1 : 0,
-        places: result.position === 2 ? 1 : 0,
-        shows: result.position === 3 ? 1 : 0,
-        races_entered: 1,
-        total_earnings_nanoerg: payoutNanoerg,
-        league_points: leaguePointsEarned,
-      });
-    }
-  }
-
-  // 11b. Insert recovery rewards for class races
+  // 11b. Insert recovery rewards for class races (B3-2: single batch insert)
   if (race.rarity_class) {
     const recoveryExpiry = mergedConfig.recovery_expiry_blocks ?? RECOVERY_EXPIRY_BLOCKS;
-    for (const result of raceResult.results) {
+    const recoveryRows = raceResult.results.map(result => {
       const reduction = RECOVERY_BY_POSITION[Math.min(result.position - 1, RECOVERY_BY_POSITION.length - 1)];
-      await supabase.from('recovery_rewards').insert({
+      return {
         creature_id: result.creatureId,
         season_id: race.season_id,
         race_id: raceId,
         fatigue_reduction: -reduction,
         awarded_at_height: blockHeight,
         expires_at_height: blockHeight + recoveryExpiry,
-      });
-    }
+      };
+    });
+    await supabase.from('recovery_rewards').insert(recoveryRows);
   }
 
-  // 12. Mark race as resolved
+  // 12. Mark race as resolved (A4-1: record block height for auditable RNG)
   const { error: resolveErr } = await supabase
     .from('season_races')
     .update({
       status: 'resolved',
       block_hash: blockHash,
+      resolve_at_height: blockHeight,
     })
     .eq('id', raceId);
 

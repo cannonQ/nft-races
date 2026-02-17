@@ -26,8 +26,8 @@ const positionConfig = {
     color: 'text-race-sprint',
     bg: 'bg-race-sprint/20',
     border: 'border-race-sprint/50',
-    height: 'h-32',
-    order: 'order-2',
+    height: 'h-12 md:h-32',
+    order: 'md:order-2',
     label: '1st',
   },
   2: {
@@ -35,8 +35,8 @@ const positionConfig = {
     color: 'text-muted-foreground',
     bg: 'bg-muted/30',
     border: 'border-muted-foreground/30',
-    height: 'h-24',
-    order: 'order-1',
+    height: 'h-10 md:h-24',
+    order: 'md:order-1',
     label: '2nd',
   },
   3: {
@@ -44,8 +44,8 @@ const positionConfig = {
     color: 'text-race-hazard',
     bg: 'bg-race-hazard/20',
     border: 'border-race-hazard/50',
-    height: 'h-20',
-    order: 'order-3',
+    height: 'h-8 md:h-20',
+    order: 'md:order-3',
     label: '3rd',
   },
 };
@@ -59,7 +59,7 @@ export function Podium({ results }: PodiumProps) {
   }
 
   return (
-    <div className="flex items-end justify-center gap-3 md:gap-6 py-8">
+    <div className="flex flex-col items-center gap-4 md:flex-row md:items-end md:justify-center md:gap-6 py-8">
       {topThree.map((result) => {
         const config = positionConfig[result.position as 1 | 2 | 3];
         if (!config) return null;
@@ -70,12 +70,12 @@ export function Podium({ results }: PodiumProps) {
         return (
           <div
             key={result.creatureId}
-            className={cn('flex flex-col items-center', config.order)}
+            className={cn('flex flex-col items-center w-full max-w-[280px] md:w-auto md:max-w-none', config.order)}
           >
             {/* Creature Card */}
             <div
               className={cn(
-                'cyber-card rounded-xl p-3 md:p-4 mb-2 text-center transition-all duration-300 min-w-[100px] md:min-w-[140px]',
+                'cyber-card rounded-xl p-3 md:p-4 mb-2 text-center transition-all duration-300 w-full md:w-auto md:min-w-[140px]',
                 isCurrentUser && 'ring-2 ring-primary/50'
               )}
             >

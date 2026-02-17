@@ -26,6 +26,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'signedTxId is required' });
   }
 
+  // Validate txId format — Ergo TX IDs are 64-char hex strings
+  if (!/^[0-9a-fA-F]{64}$/.test(detectedTxId)) {
+    return res.status(400).json({ error: 'Invalid transaction ID format' });
+  }
+
   try {
     // Update the request with the signed TX ID (only if still pending)
     const { data: updated, error: updateErr } = await supabase

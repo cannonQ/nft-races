@@ -14,67 +14,7 @@ import { supabase } from '../../../../_lib/supabase.js';
 import { executeTraining, executeRaceEntry, ActionError } from '../../../../_lib/execute-action.js';
 import { executeTreatmentStart } from '../../../../_lib/execute-treatment.js';
 import { TREASURY_ADDRESS } from '../../../../_lib/constants.js';
-
-const EXPLORER_API = 'https://api.ergoplatform.com/api/v1';
-
-// ── Blockchain fallback ────────────────────────────────────────────
-/**
- * Check the Ergo blockchain (mempool + confirmed) for a payment TX
- * matching the sender, treasury, and amount.
- */
-async function detectPaymentOnChain(
-  senderAddress: string,
-  treasuryAddress: string,
-  amountNanoerg: number,
-  createdAfterMs: number,
-): Promise<{ txId: string } | null> {
-  // Check if TX outputs to treasury sum to at least the expected amount.
-  // Works for both single-output and batch (N outputs) TXs.
-  function txMatchesPayment(tx: any): boolean {
-    const totalToTreasury = (tx.outputs || [])
-      .filter((o: any) => o.address === treasuryAddress)
-      .reduce((sum: number, o: any) => sum + (o.value ?? 0), 0);
-    return totalToTreasury >= amountNanoerg;
-  }
-
-  try {
-    // 1. Check mempool (unconfirmed) — catches TX before it confirms
-    try {
-      const mempoolResp = await fetch(
-        `${EXPLORER_API}/mempool/transactions/byAddress/${senderAddress}`,
-        { headers: { Accept: 'application/json' } },
-      );
-      if (mempoolResp.ok) {
-        const mempoolData = await mempoolResp.json();
-        const items = Array.isArray(mempoolData) ? mempoolData : (mempoolData.items || []);
-        for (const tx of items) {
-          if (txMatchesPayment(tx)) return { txId: tx.id };
-        }
-      }
-    } catch {
-      // mempool check is best-effort
-    }
-
-    // 2. Check recent confirmed TXs for the sender
-    const resp = await fetch(
-      `${EXPLORER_API}/addresses/${senderAddress}/transactions?limit=10&sortBy=height&sortDirection=desc`,
-      { headers: { Accept: 'application/json' } },
-    );
-    if (resp.ok) {
-      const data = await resp.json();
-      for (const tx of data.items || []) {
-        // Skip TXs from before the payment request was created
-        if (tx.timestamp && tx.timestamp < createdAfterMs) continue;
-        if (txMatchesPayment(tx)) return { txId: tx.id };
-      }
-    }
-
-    return null;
-  } catch (err) {
-    console.error('detectPaymentOnChain error:', err);
-    return null;
-  }
-}
+import { isTxIdUsed, detectPaymentOnChain } from '../../../../_lib/verify-tx.js';
 
 // ── Handler ────────────────────────────────────────────────────────
 
@@ -160,6 +100,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // ── Payment confirmed — execute game action ────────────────────
+
+    // 6c. Dedup check (A3-2/A3-3): reject if this TX was already consumed
+    if (await isTxIdUsed(detectedTxId)) {
+      await supabase
+        .from('ergopay_tx_requests')
+        .update({ status: 'failed', result_payload: { error: 'Payment TX already used' } })
+        .eq('id', requestId)
+        .eq('status', 'pending');
+
+      return res.status(200).json({
+        status: 'failed',
+        error: 'This payment transaction was already used for another action',
+      });
+    }
 
     // 7. Lock the row to prevent double-execution.
     // Only one concurrent request will succeed in this update.

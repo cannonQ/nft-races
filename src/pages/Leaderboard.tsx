@@ -215,7 +215,7 @@ export default function Leaderboard() {
                         </div>
                         <div>
                           {entry.imageUrl || entry.fallbackImageUrl ? (
-                            <PetImage src={entry.imageUrl} fallbackSrc={entry.fallbackImageUrl} alt="" className="w-7 h-7 rounded" />
+                            <PetImage src={entry.imageUrl} fallbackSrc={entry.fallbackImageUrl} alt={entry.creatureName} className="w-7 h-7 rounded" />
                           ) : (
                             <div className="w-7 h-7 rounded bg-muted/50" />
                           )}

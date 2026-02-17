@@ -60,21 +60,36 @@ export interface ExecuteRaceEntryResult {
 }
 
 // ============================================
+// Types (B2-1: replace `as any` with typed interface)
+// ============================================
+
+interface CreatureRow {
+  id: string;
+  token_id: string;
+  owner_address: string | null;
+  collection_id: string;
+  base_stats?: Record<string, number>;
+  rarity?: string;
+  ownership_verified_at?: string | null;
+}
+
+// ============================================
 // Shared validation: creature exists + NFT ownership
 // ============================================
+
+/** Max hours to trust cached ownership when Explorer is unavailable (B1-3) */
+const OWNERSHIP_STALENESS_HOURS = 24;
 
 async function verifyCreatureOwnership(
   creatureId: string,
   walletAddress: string,
-  selectFields: string = 'id, owner_address, token_id, collection_id'
-) {
-  const { data, error: creatureErr } = await supabase
+  selectFields: string = 'id, owner_address, token_id, collection_id, ownership_verified_at'
+): Promise<CreatureRow> {
+  const { data: creature, error: creatureErr } = await supabase
     .from('creatures')
     .select(selectFields)
     .eq('id', creatureId)
-    .single();
-
-  const creature = data as any;
+    .single<CreatureRow>();
 
   if (creatureErr || !creature) {
     throw new ActionError(400, 'Creature not found');
@@ -82,24 +97,33 @@ async function verifyCreatureOwnership(
 
   const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
   if (!ownership.ownsToken) {
-    // Explorer API was unreachable — trust the DB owner_address instead of rejecting
+    // Explorer API was unreachable — trust the DB owner_address with staleness check (B1-3)
     if (ownership.apiUnavailable) {
       if (creature.owner_address === walletAddress) {
-        console.warn(`Explorer API unavailable — trusting DB owner for creature ${creatureId}`);
+        const verifiedAt = creature.ownership_verified_at ? new Date(creature.ownership_verified_at) : null;
+        const staleMs = OWNERSHIP_STALENESS_HOURS * 60 * 60 * 1000;
+        if (!verifiedAt || (Date.now() - verifiedAt.getTime()) > staleMs) {
+          throw new ActionError(503, 'Ownership verification is temporarily unavailable and cached verification has expired. Please try again later.');
+        }
+        console.warn(`Explorer API unavailable — trusting cached verification (${Math.round((Date.now() - verifiedAt.getTime()) / 3600000)}h old) for creature ${creatureId}`);
       } else {
         throw new ActionError(503, 'Ownership verification temporarily unavailable. Please try again.');
       }
     } else {
       // Confirmed not owner — clear stale DB record
       if (creature.owner_address === walletAddress) {
-        await supabase.from('creatures').update({ owner_address: null }).eq('id', creatureId);
+        await supabase.from('creatures').update({ owner_address: null, ownership_verified_at: null }).eq('id', creatureId);
       }
       throw new ActionError(403, 'You no longer own this NFT on-chain');
     }
   }
 
-  if (creature.owner_address !== walletAddress) {
-    await supabase.from('creatures').update({ owner_address: walletAddress }).eq('id', creatureId);
+  // On-chain verification succeeded — update owner + timestamp (B1-3)
+  if (creature.owner_address !== walletAddress || ownership.ownsToken) {
+    await supabase.from('creatures').update({
+      owner_address: walletAddress,
+      ownership_verified_at: new Date().toISOString(),
+    }).eq('id', creatureId);
   }
 
   return creature;
@@ -265,7 +289,7 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
     throw new ActionError(500, 'Failed to record training action');
   }
 
-  // 10b. Mark boosts as spent
+  // 10b. Mark boosts as spent (B4-1/B1-2: throw on failure to prevent double-spend)
   if (validatedBoosts.length > 0) {
     const spentAt = new Date().toISOString();
     const { error: spendErr } = await supabase
@@ -275,10 +299,11 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
 
     if (spendErr) {
       console.error('Failed to mark boosts as spent:', spendErr);
+      throw new ActionError(500, 'Failed to consume boost rewards — training cancelled');
     }
   }
 
-  // 10b2. Mark recovery packs as consumed
+  // 10b2. Mark recovery packs as consumed (B4-1/B1-2: throw on failure)
   if (validatedRecoveries.length > 0) {
     const consumedAt = new Date().toISOString();
     const { error: consumeErr } = await supabase
@@ -288,6 +313,7 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
 
     if (consumeErr) {
       console.error('Failed to mark recovery packs as consumed:', consumeErr);
+      throw new ActionError(500, 'Failed to consume recovery packs — training cancelled');
     }
   }
 
@@ -376,7 +402,7 @@ export async function executeRaceEntry(params: ExecuteRaceEntryParams): Promise<
   const creature = await verifyCreatureOwnership(
     creatureId,
     walletAddress,
-    'id, token_id, owner_address, base_stats, collection_id'
+    'id, token_id, owner_address, base_stats, collection_id, ownership_verified_at'
   );
 
   // 2. Verify race exists and is open

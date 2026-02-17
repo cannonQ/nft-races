@@ -33,17 +33,21 @@ export interface LedgerEntry {
  * Record a shadow billing ledger entry.
  * Fire-and-forget: logs errors but never throws.
  * Primary actions (training, race entry, etc.) are never disrupted by a ledger failure.
+ *
+ * B3-3: balance_after_nanoerg is now best-effort (snapshot at insert time).
+ * Use getWalletBalance() for the authoritative balance — it uses SUM.
  */
 export async function recordLedgerEntry(entry: LedgerEntry): Promise<void> {
   try {
-    // Read current balance from latest entry (or 0 if first)
+    // Best-effort balance snapshot (may be slightly stale under concurrency — that's OK,
+    // getWalletBalance() uses SUM for authoritative reads)
     const { data: latest } = await supabase
       .from('credit_ledger')
       .select('balance_after_nanoerg')
       .eq('owner_address', entry.ownerAddress)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     const previousBalance = latest?.balance_after_nanoerg ?? 0;
     const newBalance = previousBalance + entry.amountNanoerg;
@@ -73,15 +77,22 @@ export async function recordLedgerEntry(entry: LedgerEntry): Promise<void> {
 
 /**
  * Get the current shadow balance for a wallet address.
+ * B3-3: Uses SUM(amount_nanoerg) for race-condition-safe balance.
+ * This is the authoritative balance — immune to concurrent insert ordering.
  */
 export async function getWalletBalance(ownerAddress: string): Promise<number> {
-  const { data } = await supabase
-    .from('credit_ledger')
-    .select('balance_after_nanoerg')
-    .eq('owner_address', ownerAddress)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+  const { data, error } = await supabase.rpc('get_wallet_balance', {
+    p_owner_address: ownerAddress,
+  });
 
-  return data?.balance_after_nanoerg ?? 0;
+  if (error) {
+    // Fallback to SUM query if RPC not yet deployed
+    const { data: rows } = await supabase
+      .from('credit_ledger')
+      .select('amount_nanoerg')
+      .eq('owner_address', ownerAddress);
+    return (rows ?? []).reduce((sum: number, r: any) => sum + (r.amount_nanoerg ?? 0), 0);
+  }
+
+  return data ?? 0;
 }

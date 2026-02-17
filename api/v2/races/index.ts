@@ -36,7 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Auto-resolve any expired open races with auto_resolve enabled (across all active seasons)
+    // Auto-resolve expired open races with auto_resolve enabled (across all active seasons).
+    // A4-3: Limit to 3 per page load to avoid long request times / timeouts.
     const now = new Date().toISOString();
     const { data: expiredRaces } = await supabase
       .from('season_races')
@@ -44,7 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .in('season_id', seasonIds)
       .eq('status', 'open')
       .eq('auto_resolve', true)
-      .lt('entry_deadline', now);
+      .lt('entry_deadline', now)
+      .order('entry_deadline', { ascending: true })
+      .limit(3);
 
     if (expiredRaces && expiredRaces.length > 0) {
       for (const expired of expiredRaces) {

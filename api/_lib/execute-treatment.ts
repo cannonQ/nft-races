@@ -52,10 +52,10 @@ export async function executeTreatmentStart(
 ): Promise<ExecuteTreatmentResult> {
   const { creatureId, treatmentType, walletAddress, txId } = params;
 
-  // 1. Verify creature + ownership
+  // 1. Verify creature + ownership (B1-3: staleness check on API unavailability)
   const { data: creature, error: creatureErr } = await supabase
     .from('creatures')
-    .select('id, owner_address, token_id, collection_id')
+    .select('id, owner_address, token_id, collection_id, ownership_verified_at')
     .eq('id', creatureId)
     .single();
 
@@ -63,22 +63,34 @@ export async function executeTreatmentStart(
     throw new ActionError(400, 'Creature not found');
   }
 
+  const STALENESS_HOURS = 24;
   const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
   if (!ownership.ownsToken) {
     if (ownership.apiUnavailable) {
-      if (creature.owner_address !== walletAddress) {
+      if (creature.owner_address === walletAddress) {
+        const verifiedAt = creature.ownership_verified_at ? new Date(creature.ownership_verified_at) : null;
+        const staleMs = STALENESS_HOURS * 60 * 60 * 1000;
+        if (!verifiedAt || (Date.now() - verifiedAt.getTime()) > staleMs) {
+          throw new ActionError(503, 'Ownership verification is temporarily unavailable and cached verification has expired. Please try again later.');
+        }
+        console.warn(`Explorer API unavailable — trusting cached verification for creature ${creatureId}`);
+      } else {
         throw new ActionError(503, 'Ownership verification temporarily unavailable. Please try again.');
       }
     } else {
       if (creature.owner_address === walletAddress) {
-        await supabase.from('creatures').update({ owner_address: null }).eq('id', creatureId);
+        await supabase.from('creatures').update({ owner_address: null, ownership_verified_at: null }).eq('id', creatureId);
       }
       throw new ActionError(403, 'You no longer own this NFT on-chain');
     }
   }
 
-  if (creature.owner_address !== walletAddress) {
-    await supabase.from('creatures').update({ owner_address: walletAddress }).eq('id', creatureId);
+  // On-chain verification succeeded — update owner + timestamp
+  if (creature.owner_address !== walletAddress || ownership.ownsToken) {
+    await supabase.from('creatures').update({
+      owner_address: walletAddress,
+      ownership_verified_at: new Date().toISOString(),
+    }).eq('id', creatureId);
   }
 
   // 2. Get active season

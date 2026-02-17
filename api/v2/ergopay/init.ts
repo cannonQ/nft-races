@@ -17,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .lt('expires_at', new Date().toISOString());
 
     // Create new session
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
     const { error: insertErr } = await supabase
       .from('ergopay_sessions')
       .insert({ id: sessionId, expires_at: expiresAt });

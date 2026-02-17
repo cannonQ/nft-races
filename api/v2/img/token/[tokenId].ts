@@ -9,7 +9,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { tokenId } = req.query;
   const tid = Array.isArray(tokenId) ? tokenId[0] : tokenId;
 
-  if (!tid || tid.length < 8) {
+  if (!tid || !/^[0-9a-fA-F]{64}$/.test(tid)) {
     return res.status(400).json({ error: 'Invalid token ID' });
   }
 

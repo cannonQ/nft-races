@@ -7,7 +7,7 @@
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 25 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). FAQ page explains all game mechanics. Currently in multi-user alpha testing.
+Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 25 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). **Security audit complete** — 37-finding audit across security, code quality, and UX. All critical/high/medium fixes applied: TX dedup, timing-safe auth, rate limiting, input validation, security headers, ownership staleness checks, race capacity triggers, atomic leaderboard upserts, parallel race resolution, and responsive podium layout. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
@@ -40,6 +40,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **Meditation** — Recovery training action: 0 stat gains, −25 fatigue, +15 sharpness. Uses a training action slot. Recovery-specific UI mode in activity cards, confirm modal, and result modal (hides stat boosts, shows condition changes).
 - **Treatment Center** — Three lockout-based recovery tiers: Stim Pack (6h, −20 fatigue), Cryo Pod (12h, −40 fatigue, sharpness→50), Full Reset (24h, fatigue→0, sharpness→30). Lazy completion model — effects applied when timer expires. Creatures locked from training/racing during treatment. Full ErgoPay + Nautilus + free-play fee flows. Treatment page with creature selection, tier cards, confirm/result dialogs with explorer TX links.
 - **Rarity class races** — Rookie (Common/Uncommon/Rare), Contender (Masterwork/Epic/Relic), Champion (Legendary/Mythic/Cyberium). Entry restricted by creature rarity. Fractional league points (1/7 weight vs open races). Recovery rewards (UTXO-style fatigue reduction packs) awarded from class race placements. Race entry modal filters by class eligibility, shows treatment/already-entered guards.
+- **Security hardening (audit complete)** — Timing-safe admin auth, input validation (UUID/address/token/name), TX dedup via `credit_ledger`, on-chain TX amount verification via Explorer API, security headers (X-Frame-Options, HSTS, nosniff, Referrer-Policy, Permissions-Policy), process-local rate limiting on all mutation endpoints, 24h ownership staleness check when Explorer unavailable, race capacity enforcement trigger, atomic leaderboard upsert RPC, SUM-based wallet balance (race-condition-safe), parallel race resolution (~3 queries instead of ~60), reconciliation script for ledger integrity, responsive podium layout on mobile.
 
 ### Open Items
 - [x] **Training cost (0.01 ERG)** — Real ERG payments via Nautilus. Treasury box registers (R4-R6) for on-chain traceability. Verified on mainnet.
@@ -140,6 +141,8 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `api/_lib/ergo-tx-builder.ts` | Server-side sigma serialization, Explorer UTXO fetching, unsigned TX builder with R4-R6 registers |
 | `api/_lib/execute-action.ts` | Shared training/race entry executor (used by API endpoints + ErgoPay callback) |
 | `api/_lib/execute-treatment.ts` | Treatment start + lazy completion logic (`executeTreatmentStart()`, `checkAndCompleteTreatment()`) |
+| `api/_lib/verify-tx.ts` | TX dedup (`isTxIdUsed()`), on-chain amount verification (`verifyTxOnChain()`), payment detection (`detectPaymentOnChain()`) |
+| `api/_lib/rate-limit.ts` | Process-local in-memory rate limiter (10-20 req/min/IP per action type) |
 
 ### Frontend Hooks (all wired to real API)
 
@@ -849,6 +852,98 @@ When `REQUIRE_FEES=true`, `train.ts` and `enter.ts` return HTTP 402 if no `txId`
 
 ### Phase 2 Compatibility
 Treasury box registers (R4-R6) are already written in Phase 1. When Phase 2 scanner arrives, it reads existing boxes to index game actions. The transition from "API writes credit_ledger" to "scanner writes credit_ledger" requires zero schema changes — only the data ingestion pipeline changes.
+
+---
+
+## Security Audit — Full Hardening Pass (2026-02-16)
+
+### Overview
+Comprehensive 37-finding security audit across three sections: A (Security & Auth), B (Code Quality & DB Patterns), C (Mobile/UX). All critical, high, and medium findings addressed. Audit document: `PLAN-racing-audit-results.md`.
+
+### Section A — Security & Auth (Batches 1–4)
+
+**Batch 1 (Quick wins):**
+- Timing-safe admin auth (`timingSafeEqual` in `api/_lib/auth.ts`)
+- `CRON_SECRET` length warning on startup (minimum 32 chars)
+- Input validation helpers: `isValidUUID()`, `isValidErgoAddr()`, `isValidTokenId()` in `api/_lib/validation.ts`
+- ASCII-only wallet profile names (2-20 chars, no unicode exploits)
+- Strict token/pet ID validation on all mutation endpoints
+- Reduced ErgoPay session TTL from 5 to 2 minutes
+- Increased ErgoPay requestId entropy from 5 to 16 bytes
+- Runtime env var checks on all endpoints
+
+**Batch 2 (TX validation):**
+- **NEW** `api/_lib/verify-tx.ts` — `isTxIdUsed()` dedup via `credit_ledger` (prevents replaying same txId), `verifyTxOnChain()` Explorer-based amount verification (soft-fail on unavailability), `detectPaymentOnChain()` extracted + dedup-aware
+- All 4 Nautilus endpoints (train, enter, enter-batch, treatment) + ErgoPay status/callback hardened with TX dedup + amount verification
+- ErgoPay callback validates 64-char hex txId format
+
+**Batch 3 (Infrastructure):**
+- Security headers in `vercel.json`: `X-Frame-Options: DENY`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (no camera/mic/geolocation)
+- `resolve_at_height` column on `season_races` (migration 018) — records block height at resolution time for auditable RNG
+- Auto-resolve limited to 3 races per page load (prevents DoS via accumulated expired races)
+
+**Batch 4 (Rate limiting):**
+- **NEW** `api/_lib/rate-limit.ts` — process-local in-memory rate limiter
+- Applied to all 5 mutation endpoints: train (10/min), enter (10/min), enter-batch (10/min), treatment (10/min), ergopay-tx-request (20/min)
+- Per-IP, per-action-type limiting with sliding window
+
+### Section B — Code Quality & DB Patterns (Batches 5–7)
+
+**Migration 019 (`migrations/019_audit_b_fixes.sql`):**
+- B1-3: `ownership_verified_at` column on `creatures` table
+- B3-1: 7 composite indexes for frequent query patterns (training log, race entries, boosts, ledger, leaderboard, recovery packs, TX dedup)
+- B4-2: `check_race_capacity()` trigger — prevents TOCTOU race on entry count check → insert
+- B4-3: `upsert_leaderboard_entry()` RPC with `ON CONFLICT` — atomic upsert eliminates read-then-write race condition
+- B3-3: `get_wallet_balance()` RPC — `SUM(amount_nanoerg)` immune to concurrent insert ordering
+
+**Code fixes:**
+- B2-1: `CreatureRow` typed interface in `execute-action.ts` (replaces `as any`)
+- B1-3: 24h ownership staleness check in `verifyCreatureOwnership()` — when Explorer API is unavailable, cached ownership expires after 24h. Updates `ownership_verified_at` on successful verification. Applied to both `execute-action.ts` and `execute-treatment.ts`
+- B4-1/B1-2: Boost and recovery marking now throws `ActionError(500)` on failure (prevents double-spend via silent failure)
+- B3-3: `recordLedgerEntry()` uses `.maybeSingle()` (handles empty result without error). `getWalletBalance()` uses SUM via RPC with JS fallback
+- B3-2: Race resolution parallelized — entry updates via `Promise.all`, leaderboard via RPC upsert, recovery inserts as single batch. ~60 sequential queries → ~3 parallel calls for 22-entry races
+
+**Research findings:**
+- B5-1: 5 unused Radix UI packages identified (alert-dialog, aspect-ratio, context-menu, hover-card, navigation-menu) — safe to remove
+- B5-2: `ergo-lib-wasm-nodejs` confirmed server-only (dynamic import in `lib/ergo/server.ts`, excluded from `tsconfig.app.json`) — no bundle impact
+- B1-1: Reconciliation script (`scripts/reconcile-ledger.ts`) — cross-refs training_log, race_entries, treatment_log against credit_ledger; checks balance_after_nanoerg drift
+
+### Section C — Mobile/UX (Easy Wins)
+
+- C1-1: Landing page decorative blur responsive sizing (`w-[300px] h-[300px] md:w-[600px] md:h-[600px]`)
+- C1-2: Podium component responsive layout — vertical stack on mobile (cards full-width, compact stands), side-by-side podium on desktop with 2nd-1st-3rd reordering
+- C2-2: `PetImage` component: `loading="lazy"` + explicit `width={64} height={64}` dimensions
+- C4-1: Leaderboard image alt text uses creature name instead of empty string
+
+**Passed items (complex/breaking/N/A):** C1-2 podium animation (CSS only), C2-1 skeleton loaders (new component work), C2-3 staleTime (hooks use custom useState/useEffect, not React Query), C2-4 optimistic updates (architecture change), C3-1/C3-2 touch targets (already adequate), C4-2/C4-3 reduced motion/focus trapping (low impact), C5-1/2/3 meta tags/OG image/manifest (deployment-time).
+
+### DB Migrations
+- `migrations/018_resolve_at_height.sql` — `resolve_at_height` column on `season_races`
+- `migrations/019_audit_b_fixes.sql` — Composite indexes, race capacity trigger, leaderboard upsert RPC, wallet balance RPC, ownership_verified_at column
+
+### New Files
+- `api/_lib/verify-tx.ts` — TX verification module (dedup + on-chain amount check)
+- `api/_lib/rate-limit.ts` — Process-local rate limiter
+- `scripts/reconcile-ledger.ts` — Ledger reconciliation script
+
+### Files Modified
+- `api/_lib/auth.ts` — Timing-safe comparison
+- `api/_lib/execute-action.ts` — Typed `CreatureRow`, ownership staleness, boost/recovery throw-on-fail
+- `api/_lib/execute-treatment.ts` — Same ownership staleness pattern
+- `api/_lib/credit-ledger.ts` — `.maybeSingle()`, SUM-based balance via RPC
+- `api/_lib/resolve-race.ts` — Parallel entry updates, RPC leaderboard upsert, batch recovery insert
+- `api/v2/train.ts` — TX dedup, rate limiting, input validation
+- `api/v2/races/[id]/enter.ts` — TX dedup, rate limiting, input validation
+- `api/v2/races/[id]/enter-batch.ts` — TX dedup, rate limiting, input validation
+- `api/v2/treatment/start.ts` — TX dedup, rate limiting, input validation
+- `api/v2/ergopay/tx/request.ts` — Rate limiting, input validation
+- `api/v2/ergopay/tx/status/[requestId].ts` — TX dedup in callback detection
+- `api/v2/ergopay/tx/callback/[requestId].ts` — 64-char hex txId validation
+- `vercel.json` — Security headers
+- `src/pages/Landing.tsx` — Responsive blur sizing
+- `src/components/races/Podium.tsx` — Responsive vertical/horizontal layout
+- `src/components/creatures/PetImage.tsx` — Lazy loading + dimensions
+- `src/pages/Leaderboard.tsx` — Alt text fix
 
 ---
 
