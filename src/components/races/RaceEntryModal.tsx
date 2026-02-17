@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Race, RaceType, CLASS_RARITIES, CLASS_LABELS } from '@/types/game';
-import type { RarityClass } from '@/types/game';
 import { useCreaturesByWallet, useRaceEntries } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { RarityBadge, ConditionGauge } from '@/components/creatures/StatBar';
@@ -72,6 +71,17 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
 
   // Only count selectable creatures (not in treatment, not already entered)
   const selectableCreatures = creatureList.filter(c => !c.treatment && !enteredSet.has(c.id));
+
+  // Prune selected set when eligibility changes (e.g. enteredCreatureIds loads after Select All)
+  useEffect(() => {
+    setSelected(prev => {
+      const pruned = new Set([...prev].filter(id => {
+        const c = creatureList.find(cr => cr.id === id);
+        return c && !c.treatment && !enteredSet.has(id);
+      }));
+      return pruned.size !== prev.size ? pruned : prev;
+    });
+  }, [enteredCreatureIds, creatureList.length]);
 
   const toggleCreature = (id: string) => {
     const creature = creatureList.find(c => c.id === id);
