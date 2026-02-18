@@ -146,7 +146,9 @@ export function useEnterRace(): MutationResponse<EnterRaceResponse> {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${response.status}`);
       }
-      return await response.json();
+      return await response.json().catch(() => {
+        throw new Error('Server returned an invalid response. The entry may have succeeded — please refresh and check the race.');
+      });
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to enter race');
       setError(error);
@@ -186,7 +188,9 @@ export function useEnterRaceBatch(): MutationResponse<EnterRaceBatchResponse> {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${response.status}`);
       }
-      return await response.json();
+      return await response.json().catch(() => {
+        throw new Error('Server returned an invalid response. The entries may have succeeded — please refresh and check the race.');
+      });
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to enter race');
       setError(error);

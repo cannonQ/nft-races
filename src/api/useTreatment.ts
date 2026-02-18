@@ -29,7 +29,9 @@ export function useTreatment(): MutationResponse<TreatmentStartResponse> {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${response.status}`);
       }
-      return await response.json();
+      return await response.json().catch(() => {
+        throw new Error('Server returned an invalid response. The treatment may have started — please refresh and check your creature.');
+      });
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Treatment failed');
       setError(error);
