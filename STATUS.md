@@ -39,7 +39,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **Fatigue/Sharpness rework** — Per-activity sharpness deltas (physical activities reduce, mental activities increase), wider race sharpness modifier (×0.80 to ×1.05), scaled fatigue decay tiers (3/day at low fatigue up to 15/day at high fatigue), 12h sharpness grace period then −15/day decay. All configurable via `game_config` JSON.
 - **Meditation** — Recovery training action: 0 stat gains, −25 fatigue, +15 sharpness. Uses a training action slot. Recovery-specific UI mode in activity cards, confirm modal, and result modal (hides stat boosts, shows condition changes).
 - **Treatment Center** — Three lockout-based recovery tiers: Stim Pack (6h, −20 fatigue), Cryo Pod (12h, −40 fatigue, sharpness→50), Full Reset (24h, fatigue→0, sharpness→30). Lazy completion model — effects applied when timer expires. Creatures locked from training/racing during treatment. Full ErgoPay + Nautilus + free-play fee flows. Treatment page with creature selection, tier cards, confirm/result dialogs with explorer TX links.
-- **Rarity class races** — Rookie (Common/Uncommon/Rare), Contender (Masterwork/Epic/Relic), Champion (Legendary/Mythic/Cyberium). Entry restricted by creature rarity. Fractional league points (1/7 weight vs open races). Recovery rewards (UTXO-style fatigue reduction packs) awarded from class race placements. Race entry modal filters by class eligibility, shows treatment/already-entered guards.
+- **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity. Per-collection rarity-to-class mapping via `game_config_overrides` (CyberPets: 3-3-3 split, Aneta Angels: 2-2-2 split). Fractional league points (1/7 weight vs open races). Recovery rewards (UTXO-style fatigue reduction packs) awarded from class race placements. Race entry modal filters by class eligibility, shows treatment/already-entered guards. Admin dropdown labels update dynamically when switching collections.
 - **Dual-currency token fees (CYPX + ERG)** — Per-collection `fee_token` config in `game_config_overrides` JSONB. PaymentSelector toggle in all confirm modals (training, race entry, treatment). Nautilus: client-side Babel box TX via Fleet SDK manual swap (`SConstant.from()` + `ErgoUnsignedInput`/`OutputBuilder`). ErgoPay: server-side Babel box TX in `ergo-tx-builder.ts` with token-aware UTXO selection, POSTed via `ergopay.duckdns.org` relay. Both flows verified on mainnet. Token TX verification on-chain via Explorer API. Credit ledger records `fee_token_id` + `fee_token_amount`. Admin can set per-race `entry_fee_token`. Wallet ledger shows token amounts. Health endpoint monitors Babel box liquidity per collection. CYPX Babel box created and funded on mainnet.
 - **Security hardening (audit complete)** — Timing-safe admin auth, input validation (UUID/address/token/name), TX dedup via `credit_ledger`, on-chain TX amount verification via Explorer API, security headers (X-Frame-Options, HSTS, nosniff, Referrer-Policy, Permissions-Policy), process-local rate limiting on all mutation endpoints, 24h ownership staleness check when Explorer unavailable, race capacity enforcement trigger, atomic leaderboard upsert RPC, SUM-based wallet balance (race-condition-safe), parallel race resolution (~3 queries instead of ~60), reconciliation script for ledger integrity, responsive podium layout on mobile.
 
@@ -964,6 +964,27 @@ ErgoPay relay (`ergopay.duckdns.org`) updated by partner to handle Babel swap TX
 14. **ErgoTree bytes must be preserved exactly** — Initial attempt converted Babel ErgoTree from `0x18c101` (with-size) to `0x10` (compact) header. Babel contract checks `selfOutput.propositionBytes == SELF.propositionBytes` — changing header bytes broke the script ("Script reduced to false"). Fix: use `babelBox.ergoTree` directly from on-chain box, never re-encode.
 15. **ErgoPay result banner showed ERG for token payments** — `handleErgoPaySuccess` callbacks in `Train.tsx` and `Races.tsx` now set `lastPaymentCurrency` based on `ergoPayTx?.tokenAmount` so "Payment Confirmed" banner shows "37 CYPX" instead of "0.01 ERG".
 16. **User-actionable error messages** — `request.ts` catch block returns 400 (not 500) for `Insufficient tokens`, `Insufficient funds`, and `Babel fee boxes depleted` errors.
+
+### Per-Collection Rarity Classes (2026-02-19)
+Rarity-to-class mapping moved from hardcoded CyberPets-only constant to per-collection `game_config_overrides`. Each collection defines which rarity tiers belong to Rookie/Contender/Champion.
+
+- **Migration 021**: `class_rarities` added to `game_config_overrides` for both collections
+  - CyberPets: 3-3-3 (common/uncommon/rare | masterwork/epic/relic | legendary/mythic/cyberium)
+  - Aneta Angels: 2-2-2 (common/uncommon | rare/epic | legendary/mythic)
+- **Backend**: `getClassRaritiesFromConfig(config)` helper in `constants.ts` reads from merged config with fallback. Entry guard in `execute-action.ts` uses per-collection mapping. Admin `create.ts` validates class name only (tier-level validation at entry time).
+- **Frontend**: `Rarity` type changed from hardcoded union to `string`. `getClassRarities(config)` resolver in `game.ts`. `RaceEntryModal` uses `useGameConfig(race.collectionId)` for per-collection filtering. Admin dropdown labels build dynamically from config — switching collections updates labels instantly.
+- **Config endpoint**: `class_rarities` added to `api/v2/config.ts` allowlist (endpoint cherry-picks keys — new config keys must be explicitly added).
+
+**Files changed:**
+- `migrations/021_class_rarities_per_collection.sql` — NEW
+- `api/_lib/constants.ts` — `getClassRaritiesFromConfig()` helper
+- `api/_lib/execute-action.ts` — Config-based entry guard
+- `api/v2/admin/races/create.ts` — Simplified validation
+- `api/v2/config.ts` — `class_rarities` in response
+- `src/types/game.ts` — `Rarity` → `string`, `getClassRarities()` resolver
+- `src/api/useGameConfig.ts` — `class_rarities` in `GameConfig` interface
+- `src/components/races/RaceEntryModal.tsx` — Per-collection filtering
+- `src/pages/Admin.tsx` — Dynamic dropdown labels
 
 ### Testing Checklist
 See [`TEST-token-fees.md`](TEST-token-fees.md) — 40+ items across 10 categories (pre-reqs, config, UI, Nautilus, ErgoPay, free-play, admin, ledger, TX verification, edge cases).
