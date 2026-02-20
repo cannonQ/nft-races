@@ -48,6 +48,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       feeToken: config.fee_token ?? null,
       // Babel config
       babel: config.babel ?? { enabled: false },
+      // Per-collection rarity class mapping (for class races)
+      class_rarities: config.class_rarities ?? null,
     });
   } catch (err) {
     console.error('GET /api/v2/config error:', err);

@@ -6,14 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { API_BASE } from '@/api/config';
+import { useGameConfig } from '@/api';
+import { getClassRarities } from '@/types/game';
 
 const RACE_TYPES = ['sprint', 'distance', 'technical', 'mixed', 'hazard'] as const;
-const RARITY_CLASSES = [
-  { value: '', label: 'Open (any rarity)' },
-  { value: 'rookie', label: 'Rookie (Common/Uncommon/Rare)' },
-  { value: 'contender', label: 'Contender (Masterwork/Epic/Relic)' },
-  { value: 'champion', label: 'Champion (Legendary/Mythic/Cyberium)' },
-] as const;
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export default function Admin() {
   const [secret, setSecret] = useState<string>('');
@@ -61,6 +61,16 @@ export default function Admin() {
   const [raceEntryFeeToken, setRaceEntryFeeToken] = useState('');
   const [autoResolve, setAutoResolve] = useState(true);
   const [creating, setCreating] = useState(false);
+
+  // Per-collection rarity class labels (dynamic based on selected collection)
+  const { data: raceGameConfig } = useGameConfig(raceCollectionId || undefined);
+  const classRarities = getClassRarities(raceGameConfig);
+  const RARITY_CLASSES = [
+    { value: '', label: 'Open (any rarity)' },
+    { value: 'rookie', label: `Rookie (${classRarities.rookie.map(capitalize).join('/')})` },
+    { value: 'contender', label: `Contender (${classRarities.contender.map(capitalize).join('/')})` },
+    { value: 'champion', label: `Champion (${classRarities.champion.map(capitalize).join('/')})` },
+  ];
 
   // Resolving state
   const [resolvingId, setResolvingId] = useState<string | null>(null);

@@ -38,6 +38,20 @@ export const CLASS_RARITIES: Record<RarityClass, string[]> = {
   champion: ['legendary', 'mythic', 'cyberium'],
 };
 
+/**
+ * Get the class rarities mapping from a merged game config.
+ * Falls back to the hardcoded CyberPets default if not found in config.
+ */
+export function getClassRaritiesFromConfig(
+  config: Record<string, any> | null | undefined
+): Record<RarityClass, string[]> {
+  const cr = config?.class_rarities;
+  if (cr && cr.rookie && cr.contender && cr.champion) {
+    return cr as Record<RarityClass, string[]>;
+  }
+  return CLASS_RARITIES;
+}
+
 export const CLASS_LABELS: Record<RarityClass, string> = {
   rookie: 'Rookie',
   contender: 'Contender',

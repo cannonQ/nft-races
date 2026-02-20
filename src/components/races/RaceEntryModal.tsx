@@ -9,8 +9,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Race, RaceType, CLASS_RARITIES, CLASS_LABELS, FeeToken, PaymentCurrency } from '@/types/game';
-import { useCreaturesByWallet, useRaceEntries } from '@/api';
+import { Race, RaceType, CLASS_LABELS, FeeToken, PaymentCurrency, getClassRarities } from '@/types/game';
+import { useCreaturesByWallet, useRaceEntries, useGameConfig } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { RarityBadge, ConditionGauge } from '@/components/creatures/StatBar';
 import { PaymentSelector } from '@/components/ui/PaymentSelector';
@@ -62,8 +62,10 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
     address,
   );
 
-  // Filter creatures to match collection + rarity class
-  const allowedRarities = race?.rarityClass ? CLASS_RARITIES[race.rarityClass] : null;
+  // Per-collection rarity class mapping
+  const { data: gameConfig } = useGameConfig(race?.collectionId);
+  const classRarities = getClassRarities(gameConfig);
+  const allowedRarities = race?.rarityClass ? classRarities[race.rarityClass] : null;
   const creatureList = (creatures || []).filter(c => {
     if (race?.collectionId && c.collectionId !== race.collectionId) return false;
     if (allowedRarities && !allowedRarities.includes(c.rarity.toLowerCase() as any)) return false;

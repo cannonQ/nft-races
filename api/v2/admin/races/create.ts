@@ -3,8 +3,7 @@ import { supabase } from '../../../_lib/supabase.js';
 import { requireAdmin } from '../../../_lib/auth.js';
 import { getActiveSeason } from '../../../_lib/helpers.js';
 import { getGameConfig } from '../../../_lib/config.js';
-import { nanoErgToErg, CLASS_RARITIES, DEFAULT_CLASS_WEIGHT } from '../../../_lib/constants.js';
-import type { RarityClass } from '../../../_lib/constants.js';
+import { nanoErgToErg, DEFAULT_CLASS_WEIGHT } from '../../../_lib/constants.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -31,8 +30,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'name, raceType, and entryDeadline are required' });
     }
 
-    // Validate rarity class if provided
-    if (rarityClass && !CLASS_RARITIES[rarityClass as RarityClass]) {
+    // Validate rarity class if provided (class names are universal; tier lists are per-collection)
+    const VALID_CLASSES = ['rookie', 'contender', 'champion'];
+    if (rarityClass && !VALID_CLASSES.includes(rarityClass)) {
       return res.status(400).json({ error: `Invalid rarity class: ${rarityClass}. Valid: rookie, contender, champion` });
     }
 
