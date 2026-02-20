@@ -51,6 +51,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Fetch real per-race prize earnings from race entries (excludes free-play shadow races).
+    // Only count races where real fees were paid (entry_fee_nanoerg > 0 AND at least one
+    // non-shadow credit_ledger entry exists for that race).
+    // Also fetch season-end payouts from credit_ledger.
+    let raceEarningsByCreature: Record<string, number> = {};
+    let payoutByCreature: Record<string, number> = {};
+
+    // 1. Per-race prizes: sum payout_nanoerg from race entries where the race had real fees
+    {
+      const { data: raceEntries } = await supabase
+        .from('season_race_entries')
+        .select('creature_id, payout_nanoerg, race_id, season_races!inner(entry_fee_nanoerg)')
+        .eq('season_races.season_id', seasonId)
+        .not('payout_nanoerg', 'is', null)
+        .gt('payout_nanoerg', 0);
+
+      if (raceEntries && raceEntries.length > 0) {
+        // Find which races had real (non-shadow) fee payments
+        const raceIds = [...new Set(raceEntries.map((e: any) => e.race_id))];
+        const { data: realFeeEntries } = await supabase
+          .from('credit_ledger')
+          .select('race_id')
+          .in('race_id', raceIds)
+          .eq('tx_type', 'race_entry_fee')
+          .eq('shadow', false);
+        const realRaceIds = new Set((realFeeEntries ?? []).map((e: any) => e.race_id));
+
+        for (const e of raceEntries) {
+          if (realRaceIds.has(e.race_id) && e.creature_id) {
+            raceEarningsByCreature[e.creature_id] = (raceEarningsByCreature[e.creature_id] ?? 0) + (e.payout_nanoerg ?? 0);
+          }
+        }
+      }
+    }
+
+    // 2. Season-end payouts from credit_ledger
+    {
+      const { data: payouts } = await supabase
+        .from('credit_ledger')
+        .select('creature_id, amount_nanoerg')
+        .eq('season_id', seasonId)
+        .eq('tx_type', 'season_payout');
+      for (const p of (payouts ?? [])) {
+        if (p.creature_id) {
+          payoutByCreature[p.creature_id] = (payoutByCreature[p.creature_id] ?? 0) + (p.amount_nanoerg ?? 0);
+        }
+      }
+    }
+
+    const hasRealEarnings = Object.keys(raceEarningsByCreature).length > 0 || Object.keys(payoutByCreature).length > 0;
+
     // Compute average scores from race entries
     const creatureIds = (data ?? []).map((r: any) => r.creature_id);
     let avgScores: Record<string, number> = {};
@@ -106,7 +157,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       racesEntered: row.races_entered ?? 0,
       leaguePoints: row.league_points ?? 0,
       avgScore: avgScores[row.creature_id] ?? 0,
-      earnings: nanoErgToErg(row.total_earnings_nanoerg ?? 0),
+      earnings: hasRealEarnings
+        ? nanoErgToErg((raceEarningsByCreature[row.creature_id] ?? 0) + (payoutByCreature[row.creature_id] ?? 0))
+        : nanoErgToErg(row.total_earnings_nanoerg ?? 0),
     };
     });
 

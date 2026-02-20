@@ -100,6 +100,11 @@ function PastSeasonRow({ season, address }: { season: Season; address: string | 
   const startStr = formatDateShort(season.startDate);
   const endStr = formatDateShort(season.endDate);
 
+  // Once leaderboard is loaded, compute total distributed (per-race fees + season payouts)
+  const totalDistributed = leaderboard
+    ? leaderboard.reduce((sum, e) => sum + e.earnings, 0)
+    : null;
+
   return (
     <div className="rounded-lg bg-muted/20 overflow-hidden">
       {/* Summary row */}
@@ -125,7 +130,7 @@ function PastSeasonRow({ season, address }: { season: Season; address: string | 
           </div>
         </div>
         <span className="font-mono text-sm font-semibold text-accent shrink-0 ml-2">
-          {season.prizePool.toFixed(2)} ERG
+          {(totalDistributed ?? season.prizePool).toFixed(2)} ERG
         </span>
       </button>
 
