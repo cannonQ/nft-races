@@ -175,6 +175,14 @@ export default function WalletLedger() {
                             </span>
                           )}
                         </div>
+                        {entry.raceName && entry.raceId && (
+                          <Link
+                            to={`/races/${entry.raceId}/results`}
+                            className="text-[10px] text-primary bg-primary/10 hover:bg-primary/20 px-1.5 py-0.5 rounded shrink-0 transition-colors"
+                          >
+                            {entry.raceName}
+                          </Link>
+                        )}
                         {entry.seasonName && (
                           <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
                             {entry.seasonName}

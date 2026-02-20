@@ -17,6 +17,7 @@ const CreatureProfile = lazy(() => import("./pages/CreatureProfile"));
 const Admin = lazy(() => import("./pages/Admin"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Treatment = lazy(() => import("./pages/Treatment"));
+const Seasons = lazy(() => import("./pages/Seasons"));
 const WalletLedger = lazy(() => import("./pages/WalletLedger"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -52,6 +53,7 @@ const App = () => (
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/creatures/:creatureId" element={<CreatureProfile />} />
               <Route path="/faq" element={<FAQ />} />
+              <Route path="/seasons" element={<Seasons />} />
               <Route path="/wallet" element={<WalletLedger />} />
               <Route path="/admin" element={<Admin />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

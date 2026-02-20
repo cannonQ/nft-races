@@ -960,6 +960,15 @@ export default function FAQ() {
                   Seasons may also introduce modifiers — rule changes that shake up the meta.
                   Each collection has its own independent season.
                 </p>
+                <p className="text-xs font-semibold uppercase tracking-wider pt-1">
+                  Prize Pool Distribution
+                </p>
+                <p>
+                  When a season ends, the prize pool is distributed based on <strong>open race
+                  performance only</strong>. Wins, places (2nd), and shows (3rd) from open races
+                  determine each creature's share of the 40% wins / 35% places / 25% shows pools.
+                  Class races do not contribute to prize pool payouts — they award recovery packs instead.
+                </p>
               </AccordionContent>
             </AccordionItem>
 

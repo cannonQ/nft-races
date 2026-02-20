@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('season_id', seasonId)
       .in('status', ['open', 'upcoming']);
 
-    // 3. Read leaderboard
+    // 3. Read full leaderboard (used for prestige — counts ALL races)
     const { data: standings } = await supabase
       .from('season_leaderboard')
       .select('*')
@@ -54,63 +54,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .order('places', { ascending: false })
       .order('shows', { ascending: false });
 
-    // 4. Compute prize pool payouts
-    const prizePool = season.prize_pool_nanoerg ?? 0;
-    const payouts: { ownerAddress: string; amount: number; pool: string; creatureId: string }[] = [];
+    // 3b. Fetch individual open-race finishes for per-race payout distribution.
+    // Class races award recovery rewards, not prize money.
+    // Each 1st/2nd/3rd finish in an open race generates its own traceable payout entry.
+    const { data: openRaceEntries } = await supabase
+      .from('season_race_entries')
+      .select('creature_id, owner_address, finish_position, race_id, season_races!inner(rarity_class)')
+      .eq('season_races.season_id', seasonId)
+      .eq('season_races.status', 'resolved')
+      .is('season_races.rarity_class', null)
+      .not('finish_position', 'is', null);
 
-    if (prizePool > 0 && standings && standings.length > 0) {
+    // 4. Compute prize pool payouts — per-race entries (each finish → its own ledger row with race_id)
+    const prizePool = season.prize_pool_nanoerg ?? 0;
+    const payouts: { ownerAddress: string; amount: number; pool: string; creatureId: string; raceId: string }[] = [];
+
+    const finishes = openRaceEntries ?? [];
+    if (prizePool > 0 && finishes.length > 0) {
       const winPool = Math.floor(prizePool * 0.40);
       const placePool = Math.floor(prizePool * 0.35);
       const showPool = Math.floor(prizePool * 0.25);
 
-      // Win pool: distribute to creatures with wins, proportional to win count
-      const winnersWithWins = standings.filter((s: any) => (s.wins ?? 0) > 0);
-      const totalWins = winnersWithWins.reduce((sum: number, s: any) => sum + (s.wins ?? 0), 0);
-      if (totalWins > 0) {
-        for (const s of winnersWithWins) {
-          const share = Math.floor(winPool * ((s.wins ?? 0) / totalWins));
-          if (share > 0) {
-            payouts.push({
-              ownerAddress: s.owner_address,
-              amount: share,
-              pool: 'wins',
-              creatureId: s.creature_id,
-            });
-          }
-        }
-      }
+      const totalWins = finishes.filter(e => e.finish_position === 1).length;
+      const totalPlaces = finishes.filter(e => e.finish_position === 2).length;
+      const totalShows = finishes.filter(e => e.finish_position === 3).length;
 
-      // Place pool: distribute to creatures with places, proportional
-      const withPlaces = standings.filter((s: any) => (s.places ?? 0) > 0);
-      const totalPlaces = withPlaces.reduce((sum: number, s: any) => sum + (s.places ?? 0), 0);
-      if (totalPlaces > 0) {
-        for (const s of withPlaces) {
-          const share = Math.floor(placePool * ((s.places ?? 0) / totalPlaces));
-          if (share > 0) {
-            payouts.push({
-              ownerAddress: s.owner_address,
-              amount: share,
-              pool: 'places',
-              creatureId: s.creature_id,
-            });
-          }
-        }
-      }
+      const perWinShare = totalWins > 0 ? Math.floor(winPool / totalWins) : 0;
+      const perPlaceShare = totalPlaces > 0 ? Math.floor(placePool / totalPlaces) : 0;
+      const perShowShare = totalShows > 0 ? Math.floor(showPool / totalShows) : 0;
 
-      // Show pool: distribute to creatures with shows, proportional
-      const withShows = standings.filter((s: any) => (s.shows ?? 0) > 0);
-      const totalShows = withShows.reduce((sum: number, s: any) => sum + (s.shows ?? 0), 0);
-      if (totalShows > 0) {
-        for (const s of withShows) {
-          const share = Math.floor(showPool * ((s.shows ?? 0) / totalShows));
-          if (share > 0) {
-            payouts.push({
-              ownerAddress: s.owner_address,
-              amount: share,
-              pool: 'shows',
-              creatureId: s.creature_id,
-            });
-          }
+      for (const e of finishes) {
+        let amount = 0;
+        let pool = '';
+        if (e.finish_position === 1 && perWinShare > 0) { amount = perWinShare; pool = 'wins'; }
+        else if (e.finish_position === 2 && perPlaceShare > 0) { amount = perPlaceShare; pool = 'places'; }
+        else if (e.finish_position === 3 && perShowShare > 0) { amount = perShowShare; pool = 'shows'; }
+
+        if (amount > 0) {
+          payouts.push({
+            ownerAddress: e.owner_address,
+            amount,
+            pool,
+            creatureId: e.creature_id,
+            raceId: e.race_id,
+          });
         }
       }
     }
@@ -122,6 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         txType: 'season_payout',
         amountNanoerg: p.amount,
         creatureId: p.creatureId,
+        raceId: p.raceId,
         seasonId,
         memo: `Season payout: ${p.pool} pool`,
       });
@@ -173,6 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amountNanoerg: p.amount,
         pool: p.pool,
         creatureId: p.creatureId,
+        raceId: p.raceId,
       })),
     });
   } catch (err) {

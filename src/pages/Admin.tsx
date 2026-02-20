@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, Plus, Trophy, RefreshCw, Pencil, X, Save, RotateCcw, Ban, Calendar, Sparkles, Power } from 'lucide-react';
+import { AlertCircle, Plus, Trophy, RefreshCw, Pencil, X, Save, RotateCcw, Ban, Calendar, Sparkles, Power, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,6 +50,11 @@ export default function Admin() {
   // End Season state
   const [confirmEndSeasonId, setConfirmEndSeasonId] = useState<string | null>(null);
   const [endingSeason, setEndingSeason] = useState(false);
+
+  // Past Season payout expansion
+  const [expandedSeasonId, setExpandedSeasonId] = useState<string | null>(null);
+  const [seasonPayoutsCache, setSeasonPayoutsCache] = useState<Record<string, any>>({});
+  const [loadingPayouts, setLoadingPayouts] = useState<string | null>(null);
 
   // Create Race form
   const [raceCollectionId, setRaceCollectionId] = useState('');
@@ -104,6 +109,27 @@ export default function Admin() {
     }
     return res;
   }, [secret]);
+
+  const toggleSeasonPayouts = useCallback(async (seasonId: string) => {
+    if (expandedSeasonId === seasonId) {
+      setExpandedSeasonId(null);
+      return;
+    }
+    setExpandedSeasonId(seasonId);
+    if (seasonPayoutsCache[seasonId]) return; // already loaded
+    setLoadingPayouts(seasonId);
+    try {
+      const res = await adminFetch(`${API_BASE}/admin/seasons/${seasonId}/payouts`);
+      if (res.ok) {
+        const data = await res.json();
+        setSeasonPayoutsCache(prev => ({ ...prev, [seasonId]: data }));
+      }
+    } catch {
+      // auth error handled by adminFetch
+    } finally {
+      setLoadingPayouts(null);
+    }
+  }, [expandedSeasonId, seasonPayoutsCache, adminFetch]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -685,22 +711,114 @@ export default function Admin() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {allSeasons.filter(s => s.status === 'completed').map((s: any) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between py-2 px-4 rounded-lg bg-muted/20"
-                  >
-                    <div>
-                      <span className="text-foreground font-semibold">{s.name}</span>
-                      <div className="flex gap-3 text-xs text-muted-foreground mt-1">
-                        <span>{s.collectionName}</span>
-                        <span>{new Date(s.startDate).toLocaleDateString()} — {new Date(s.endDate).toLocaleDateString()}</span>
-                        <span>{s.prizePool} ERG</span>
-                      </div>
+                {allSeasons.filter(s => s.status === 'completed').map((s: any) => {
+                  const isExpanded = expandedSeasonId === s.id;
+                  const payoutData = seasonPayoutsCache[s.id];
+                  const isLoading = loadingPayouts === s.id;
+
+                  return (
+                    <div key={s.id} className="rounded-lg bg-muted/20 overflow-hidden">
+                      {/* Clickable summary row */}
+                      <button
+                        type="button"
+                        onClick={() => toggleSeasonPayouts(s.id)}
+                        className="w-full flex items-center justify-between py-2 px-4 hover:bg-muted/40 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isLoading ? (
+                            <Loader2 className="w-4 h-4 text-muted-foreground animate-spin shrink-0" />
+                          ) : isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                          )}
+                          <div>
+                            <span className="text-foreground font-semibold">{s.name}</span>
+                            <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                              <span>{s.collectionName}</span>
+                              <span>{new Date(s.startDate).toLocaleDateString()} — {new Date(s.endDate).toLocaleDateString()}</span>
+                              <span>{s.prizePool} ERG</span>
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground uppercase">completed</span>
+                      </button>
+
+                      {/* Expanded payout detail */}
+                      {isExpanded && payoutData && (
+                        <div className="px-4 pb-4 pt-2 border-t border-border/30 space-y-4">
+                          {/* Pool breakdown */}
+                          <div className="grid grid-cols-3 gap-3">
+                            {(['wins', 'places', 'shows'] as const).map(pool => {
+                              const p = payoutData.pools?.[pool];
+                              const colors = { wins: 'text-accent', places: 'text-primary', shows: 'text-muted-foreground' };
+                              return (
+                                <div key={pool} className="rounded-lg bg-background/50 p-3 text-center">
+                                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{pool} ({p?.percentage ?? 0}%)</p>
+                                  <p className={`font-mono text-sm font-semibold ${colors[pool]}`}>
+                                    {(p?.totalErg ?? 0).toFixed(2)} ERG
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Stats line */}
+                          <p className="text-xs text-muted-foreground">
+                            {payoutData.payoutCount} payouts · {payoutData.uniqueWallets} unique wallets · {payoutData.totalPayoutsErg?.toFixed(2)} ERG total
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-muted/40 text-[10px] uppercase">shadow</span>
+                          </p>
+
+                          {/* Creature payout table */}
+                          {payoutData.creatures?.length > 0 && (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs text-muted-foreground uppercase border-b border-border/30">
+                                    <th className="text-left py-1.5 pr-2">Creature</th>
+                                    <th className="text-left py-1.5 pr-2">Owner</th>
+                                    <th className="text-center py-1.5 px-1">W</th>
+                                    <th className="text-center py-1.5 px-1">P</th>
+                                    <th className="text-center py-1.5 px-1">S</th>
+                                    <th className="text-right py-1.5 px-1">Wins</th>
+                                    <th className="text-right py-1.5 px-1">Places</th>
+                                    <th className="text-right py-1.5 px-1">Shows</th>
+                                    <th className="text-right py-1.5 pl-2">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {payoutData.creatures.map((c: any) => (
+                                    <tr key={c.creatureId} className="border-b border-border/10">
+                                      <td className="py-1.5 pr-2 text-foreground">{c.creatureName}</td>
+                                      <td className="py-1.5 pr-2 text-muted-foreground text-xs">
+                                        {c.ownerDisplayName || `${c.ownerAddress.slice(0, 8)}...`}
+                                      </td>
+                                      <td className="py-1.5 px-1 text-center text-xs">{c.wins}</td>
+                                      <td className="py-1.5 px-1 text-center text-xs">{c.places}</td>
+                                      <td className="py-1.5 px-1 text-center text-xs">{c.shows}</td>
+                                      <td className="py-1.5 px-1 text-right font-mono text-xs text-accent">
+                                        {c.winsPayoutErg > 0 ? c.winsPayoutErg.toFixed(2) : '—'}
+                                      </td>
+                                      <td className="py-1.5 px-1 text-right font-mono text-xs text-primary">
+                                        {c.placesPayoutErg > 0 ? c.placesPayoutErg.toFixed(2) : '—'}
+                                      </td>
+                                      <td className="py-1.5 px-1 text-right font-mono text-xs text-muted-foreground">
+                                        {c.showsPayoutErg > 0 ? c.showsPayoutErg.toFixed(2) : '—'}
+                                      </td>
+                                      <td className="py-1.5 pl-2 text-right font-mono text-sm font-semibold text-foreground">
+                                        {c.totalPayoutErg.toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <span className="text-xs text-muted-foreground uppercase">completed</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

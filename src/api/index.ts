@@ -7,6 +7,7 @@ export { API_BASE } from './config';
 // Season
 export { useCurrentSeason } from './useCurrentSeason';
 export { useSeasons } from './useSeasons';
+export { useAllSeasons } from './useAllSeasons';
 
 // Collections
 export { useCollections } from './useCollections';

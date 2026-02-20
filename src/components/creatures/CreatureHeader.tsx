@@ -100,9 +100,11 @@ export function CreatureHeader({ creature }: CreatureHeaderProps) {
               <div className="text-muted-foreground">
                 <span className="font-mono text-foreground">{winRate}%</span> win rate
               </div>
-              <div className="text-secondary font-mono font-semibold">
-                +{creature.totalEarnings.toLocaleString()}
-              </div>
+              {creature.totalEarnings > 0 && (
+                <div className="text-accent font-mono font-semibold">
+                  +{creature.totalEarnings.toFixed(2)} <span className="text-xs text-muted-foreground font-normal">ERG</span>
+                </div>
+              )}
             </div>
 
             {/* Training Status */}

@@ -378,9 +378,7 @@ export function computeCreatureResponse(
     actionCount: statsRow?.action_count ?? 0,
     raceCount: statsRow?.race_count ?? 0,
     totalRaces: (prestigeRow?.lifetime_races ?? 0) + (leaderboardRow?.races_entered ?? 0),
-    totalEarnings: nanoErgToErg(
-      (prestigeRow?.lifetime_earnings_nanoerg ?? 0) + (leaderboardRow?.total_earnings_nanoerg ?? 0)
-    ),
+    totalEarnings: nanoErgToErg(prestigeRow?.lifetime_earnings_nanoerg ?? 0),
     prestige: {
       tier: prestigeRow?.total_seasons ?? 0,
       lifetimeWins: (prestigeRow?.lifetime_wins ?? 0) + (leaderboardRow?.wins ?? 0),

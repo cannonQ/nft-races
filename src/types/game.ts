@@ -347,6 +347,7 @@ export interface LedgerEntry {
   creatureImageUrl: string | null;
   creatureFallbackImageUrl: string | null;
   raceId: string | null;
+  raceName: string | null;
   seasonId: string | null;
   seasonName: string | null;
   collectionId: string | null;
@@ -356,6 +357,7 @@ export interface LedgerEntry {
   shadow: boolean;
   feeTokenId: string | null;
   feeTokenAmount: number | null;
+  feeTokenName: string | null;
   createdAt: string;
 }
 
@@ -374,6 +376,45 @@ export interface CollectionPrizePool {
   prizePoolErg: number;
 }
 
+// Per-season payout summary for a wallet
+export interface SeasonPayoutSeason {
+  seasonId: string;
+  seasonName: string;
+  collectionName: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  prizePoolErg: number;
+  yourTotalErg: number;
+  yourWinsErg: number;
+  yourPlacesErg: number;
+  yourShowsErg: number;
+}
+
+// Season payout breakdown per creature (wallet ledger summary)
+export interface SeasonPayoutCreature {
+  seasonId: string;
+  seasonName: string;
+  creatureId: string;
+  creatureName: string;
+  creatureImageUrl: string | null;
+  creatureFallbackImageUrl: string | null;
+  wins: number;
+  places: number;
+  shows: number;
+  winsErg: number;
+  placesErg: number;
+  showsErg: number;
+  totalErg: number;
+}
+
+// Season payouts summary for a wallet
+export interface SeasonPayoutsSummary {
+  totalEarnedNanoerg: number;
+  totalEarnedErg: number;
+  seasons: SeasonPayoutSeason[];
+  byCreature: SeasonPayoutCreature[];
+}
+
 // Wallet ledger summary
 export interface WalletLedger {
   balance: number;
@@ -388,6 +429,7 @@ export interface WalletLedger {
   trainingCount: number;
   racesEntered: number;
   creatureSpending: CreatureSpending[];
+  seasonPayouts: SeasonPayoutsSummary;
   entries: LedgerEntry[];
 }
 

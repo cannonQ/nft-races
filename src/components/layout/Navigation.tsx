@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Dumbbell, Stethoscope, Flag, Trophy, HelpCircle, Wallet } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Stethoscope, Flag, Trophy, Calendar, HelpCircle, Wallet } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +12,7 @@ const navItems = [
 ];
 
 const secondaryItems = [
+  { path: '/seasons', label: 'Seasons', icon: Calendar },
   { path: '/wallet', label: 'Ledger', icon: Wallet },
   { path: '/faq', label: 'FAQ', icon: HelpCircle },
 ];
@@ -23,7 +24,7 @@ export function Navigation() {
   if (isMobile) {
     return (
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t border-sidebar-border">
-        <div className="grid grid-cols-7 py-2">
+        <div className="grid grid-cols-8 py-2">
           {[...navItems, ...secondaryItems].map((item) => {
             const isActive = location.pathname === item.path ||
               location.pathname.startsWith(item.path + '/');
