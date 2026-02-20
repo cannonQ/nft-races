@@ -15,7 +15,7 @@ import {
 } from '../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../lib/ergo/server.js';
 import { recordLedgerEntry } from './credit-ledger.js';
-import { TRAINING_FEE_NANOERG, REQUIRE_FEES, CLASS_RARITIES } from './constants.js';
+import { TRAINING_FEE_NANOERG, REQUIRE_FEES, getClassRaritiesFromConfig } from './constants.js';
 import type { RarityClass } from './constants.js';
 import { getUtcMidnightToday } from './helpers.js';
 
@@ -438,9 +438,11 @@ export async function executeRaceEntry(params: ExecuteRaceEntryParams): Promise<
     throw new ActionError(400, 'This creature cannot enter this race — collection mismatch');
   }
 
-  // 2c. Rarity class guard
+  // 2c. Rarity class guard (uses per-collection config)
   if (race.rarity_class) {
-    const allowedRarities = CLASS_RARITIES[race.rarity_class as RarityClass];
+    const raceConfig = await getGameConfig(raceCollectionId ?? undefined);
+    const classRarities = getClassRaritiesFromConfig(raceConfig);
+    const allowedRarities = classRarities[race.rarity_class as RarityClass];
     if (!allowedRarities) {
       throw new ActionError(400, `Unknown rarity class: ${race.rarity_class}`);
     }

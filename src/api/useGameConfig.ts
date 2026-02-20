@@ -41,6 +41,8 @@ export interface GameConfig {
   // Token fee support
   feeToken?: import('@/types/game').FeeToken | null;
   babel?: import('@/types/game').BabelConfig;
+  // Per-collection rarity class mapping
+  class_rarities?: Record<string, string[]>;
 }
 
 /**

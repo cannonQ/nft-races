@@ -11,17 +11,35 @@ export interface StatBlock {
 // Stat type key for type-safe stat access
 export type StatType = keyof StatBlock;
 
-// Rarity tiers for creatures
-export type Rarity = 'common' | 'uncommon' | 'rare' | 'masterwork' | 'epic' | 'relic' | 'legendary' | 'mythic' | 'cyberium';
+// Rarity tiers for creatures (string — each collection defines its own tiers)
+export type Rarity = string;
 
 // Rarity class for class-restricted races
 export type RarityClass = 'rookie' | 'contender' | 'champion';
 
-export const CLASS_RARITIES: Record<RarityClass, Rarity[]> = {
+// CyberPets fallback — not the canonical source for multi-collection
+export const CLASS_RARITIES_DEFAULT: Record<RarityClass, string[]> = {
   rookie: ['common', 'uncommon', 'rare'],
   contender: ['masterwork', 'epic', 'relic'],
   champion: ['legendary', 'mythic', 'cyberium'],
 };
+
+/** @deprecated Use getClassRarities(config) for per-collection support */
+export const CLASS_RARITIES = CLASS_RARITIES_DEFAULT;
+
+/**
+ * Get class rarities from a game config object (per-collection).
+ * Falls back to CyberPets default if config doesn't contain class_rarities.
+ */
+export function getClassRarities(
+  config: Record<string, any> | null | undefined
+): Record<RarityClass, string[]> {
+  const cr = config?.class_rarities;
+  if (cr && cr.rookie && cr.contender && cr.champion) {
+    return cr as Record<RarityClass, string[]>;
+  }
+  return CLASS_RARITIES_DEFAULT;
+}
 
 export const CLASS_LABELS: Record<RarityClass, string> = {
   rookie: 'Rookie',
