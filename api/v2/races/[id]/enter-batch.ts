@@ -44,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     entryFeeToken = race?.entry_fee_token ?? null;
 
     // Look up collection fee token config
-    const collectionId = race?.seasons?.collection_id;
+    const collectionId = (race?.seasons as any)?.collection_id;
     if (collectionId) {
       const mergedConfig = await getGameConfig(collectionId);
       feeToken = mergedConfig?.fee_token ?? null;
