@@ -11,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!requireAdmin(req, res)) return;
 
   try {
-    const { raceId, name, raceType, entryDeadline, maxEntries, autoResolve } = req.body ?? {};
+    const { raceId, name, raceType, entryDeadline, maxEntries, autoResolve, entryFeeToken } = req.body ?? {};
 
     if (!raceId) {
       return res.status(400).json({ error: 'raceId is required' });
@@ -39,6 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (entryDeadline !== undefined) updates.entry_deadline = entryDeadline;
     if (maxEntries !== undefined) updates.max_entries = maxEntries;
     if (autoResolve !== undefined) updates.auto_resolve = autoResolve;
+    if (entryFeeToken !== undefined) updates.entry_fee_token = entryFeeToken;
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
@@ -63,6 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: race.name,
         raceType: race.race_type,
         entryFee: nanoErgToErg(race.entry_fee_nanoerg ?? 0),
+        entryFeeToken: race.entry_fee_token ?? null,
         maxEntries: race.max_entries,
         entryDeadline: race.entry_deadline,
         status: race.status,

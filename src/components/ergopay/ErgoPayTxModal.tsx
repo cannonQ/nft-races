@@ -22,6 +22,10 @@ interface ErgoPayTxModalProps {
   description: string;
   onSuccess: (result: any, txId: string) => void;
   onExpired: () => void;
+  /** Token amount (shown instead of ERG when present) */
+  tokenAmount?: number;
+  /** Token display name (e.g. "CYPX") */
+  tokenName?: string;
 }
 
 type ModalState = 'waiting' | 'success' | 'expired' | 'failed';
@@ -35,6 +39,8 @@ export function ErgoPayTxModal({
   description,
   onSuccess,
   onExpired,
+  tokenAmount,
+  tokenName,
 }: ErgoPayTxModalProps) {
   const [state, setState] = useState<ModalState>('waiting');
   const [txId, setTxId] = useState<string | null>(null);
@@ -84,7 +90,10 @@ export function ErgoPayTxModal({
     };
   }, [open, requestId, onSuccess, onExpired]);
 
-  const ergAmount = (amount / 1_000_000_000).toFixed(4);
+  const ergAmount = `${amount / 1_000_000_000}`;
+  const displayAmount = tokenAmount != null && tokenName
+    ? `${tokenAmount} ${tokenName}`
+    : `${ergAmount} ERG`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -106,7 +115,7 @@ export function ErgoPayTxModal({
           <div className="cyber-card rounded-lg p-3 w-full">
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Amount</span>
-              <span className="font-mono text-primary font-semibold">{ergAmount} ERG</span>
+              <span className="font-mono text-primary font-semibold">{displayAmount}</span>
             </div>
           </div>
 

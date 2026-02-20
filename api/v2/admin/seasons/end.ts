@@ -115,9 +115,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 4b. Shadow billing: record season payouts (fire-and-forget)
+    // 4b. Shadow billing: record season payouts (must await in serverless)
     for (const p of payouts) {
-      recordLedgerEntry({
+      await recordLedgerEntry({
         ownerAddress: p.ownerAddress,
         txType: 'season_payout',
         amountNanoerg: p.amount,

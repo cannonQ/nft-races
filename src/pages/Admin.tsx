@@ -58,6 +58,7 @@ export default function Admin() {
   const [deadlineMinutes, setDeadlineMinutes] = useState(60);
   const [maxEntries, setMaxEntries] = useState(8);
   const [raceRarityClass, setRaceRarityClass] = useState('');
+  const [raceEntryFeeToken, setRaceEntryFeeToken] = useState('');
   const [autoResolve, setAutoResolve] = useState(true);
   const [creating, setCreating] = useState(false);
 
@@ -265,6 +266,7 @@ export default function Admin() {
           entryDeadline: deadline,
           maxEntries,
           autoResolve,
+          entryFeeToken: raceEntryFeeToken ? Number(raceEntryFeeToken) : undefined,
           collectionId: raceCollectionId || undefined,
           rarityClass: raceRarityClass || undefined,
         }),
@@ -273,6 +275,7 @@ export default function Admin() {
       if (!res.ok) throw new Error(data.error || 'Failed to create race');
       toast({ title: 'Race Created', description: `${data.race.name}` });
       setRaceName('');
+      setRaceEntryFeeToken('');
       loadData();
     } catch (err) {
       if ((err as Error).message !== 'Unauthorized') {
@@ -416,7 +419,7 @@ export default function Admin() {
   }
 
   const openRaces = races.filter(r => r.status === 'open');
-  const resolvedRaces = races.filter(r => r.status === 'resolved' || r.status === 'locked').slice(0, 10);
+  const resolvedRaces = races.filter(r => r.status === 'resolved' || r.status === 'locked');
   const cancelledRaces = races.filter(r => r.status === 'cancelled');
 
   return (
@@ -774,6 +777,17 @@ export default function Admin() {
                     <option key={rc.value} value={rc.value}>{rc.label}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Token Fee (optional)</label>
+                <input
+                  type="number"
+                  value={raceEntryFeeToken}
+                  onChange={e => setRaceEntryFeeToken(e.target.value)}
+                  min={0}
+                  placeholder="e.g. 100 CYPX"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
               </div>
             </div>
             <label className="flex items-center gap-2 cursor-pointer">

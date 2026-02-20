@@ -84,6 +84,67 @@ export async function verifyTxOnChain(
   }
 }
 
+// ── Token TX verification (dual-currency support) ───────────────
+
+/**
+ * Verify that a TX exists on-chain and its outputs to the treasury address
+ * contain at least the expected amount of a specific token.
+ *
+ * Same soft-fail pattern as verifyTxOnChain: if Explorer is unreachable
+ * or TX is in mempool, allow. Dedup via isTxIdUsed() is the hard guard.
+ */
+export async function verifyTokenTxOnChain(
+  txId: string,
+  treasuryAddress: string,
+  expectedTokenId: string,
+  expectedTokenAmount: bigint,
+): Promise<{ valid: boolean; reason?: string }> {
+  if (!/^[0-9a-fA-F]{64}$/.test(txId)) {
+    return { valid: false, reason: 'Invalid transaction ID format' };
+  }
+
+  try {
+    const resp = await fetch(`${EXPLORER_API}/transactions/${txId}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        console.warn(`verifyTokenTxOnChain: TX ${txId} not yet confirmed (soft-allowing)`);
+        return { valid: true };
+      }
+      console.warn(`verifyTokenTxOnChain: Explorer returned ${resp.status} for TX ${txId}`);
+      return { valid: true };
+    }
+
+    const tx = await resp.json();
+
+    // Sum all token amounts sent to treasury
+    let totalTokenToTreasury = 0n;
+    for (const output of (tx.outputs || [])) {
+      if (output.address !== treasuryAddress) continue;
+      for (const asset of (output.assets || [])) {
+        if (asset.tokenId === expectedTokenId) {
+          totalTokenToTreasury += BigInt(asset.amount ?? 0);
+        }
+      }
+    }
+
+    if (totalTokenToTreasury < expectedTokenAmount) {
+      return {
+        valid: false,
+        reason: `Insufficient token payment: expected ${expectedTokenAmount} of ${expectedTokenId}, found ${totalTokenToTreasury}`,
+      };
+    }
+
+    return { valid: true };
+  } catch (err) {
+    console.warn('verifyTokenTxOnChain: Explorer unreachable, soft-allowing:', err);
+    return { valid: true };
+  }
+}
+
 // ── A3-3: ErgoPay blockchain fallback (extracted + dedup) ─────────
 
 /**

@@ -44,6 +44,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       requireFees: REQUIRE_FEES,
       treasuryErgoTree: TREASURY_ERGO_TREE,
       trainingFeeNanoerg: TRAINING_FEE_NANOERG,
+      // Token fees (from collection config, null if ERG-only)
+      feeToken: config.fee_token ?? null,
+      // Babel config
+      babel: config.babel ?? { enabled: false },
     });
   } catch (err) {
     console.error('GET /api/v2/config error:', err);

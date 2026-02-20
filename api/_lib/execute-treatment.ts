@@ -32,6 +32,9 @@ export interface ExecuteTreatmentParams {
   treatmentType: string;
   walletAddress: string;
   txId?: string;
+  paymentCurrency?: 'erg' | 'token';
+  feeTokenId?: string;
+  feeTokenAmount?: number;
 }
 
 export interface ExecuteTreatmentResult {
@@ -50,7 +53,7 @@ export interface ExecuteTreatmentResult {
 export async function executeTreatmentStart(
   params: ExecuteTreatmentParams,
 ): Promise<ExecuteTreatmentResult> {
-  const { creatureId, treatmentType, walletAddress, txId } = params;
+  const { creatureId, treatmentType, walletAddress, txId, paymentCurrency, feeTokenId, feeTokenAmount } = params;
 
   // 1. Verify creature + ownership (B1-3: staleness check on API unavailability)
   const { data: creature, error: creatureErr } = await supabase
@@ -181,8 +184,8 @@ export async function executeTreatmentStart(
     // Don't throw — lockout is already set, log is secondary
   }
 
-  // 10. Record ledger entry
-  recordLedgerEntry({
+  // 10. Record ledger entry (must await — serverless kills process after response)
+  await recordLedgerEntry({
     ownerAddress: walletAddress,
     txType: 'treatment_fee',
     amountNanoerg: -treatmentDef.cost_nanoerg,
@@ -191,6 +194,8 @@ export async function executeTreatmentStart(
     memo: `Treatment: ${treatmentDef.name}`,
     txId,
     shadow: !txId,
+    feeTokenId: paymentCurrency === 'token' ? feeTokenId : undefined,
+    feeTokenAmount: paymentCurrency === 'token' ? feeTokenAmount : undefined,
   });
 
   return {

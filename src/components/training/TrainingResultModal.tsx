@@ -25,6 +25,9 @@ interface TrainingResultModalProps {
   txId?: string | null;
   /** Fee paid in ERG (e.g. 0.01) */
   feeErg?: number;
+  /** Token fee info (when paid with token instead of ERG) */
+  feeTokenName?: string;
+  feeTokenAmount?: number;
 }
 
 const statLabels: Record<StatType, string> = {
@@ -92,6 +95,8 @@ export function TrainingResultModal({
   trainResult,
   txId,
   feeErg,
+  feeTokenName,
+  feeTokenAmount,
 }: TrainingResultModalProps) {
   const [showAnimation, setShowAnimation] = useState(false);
 
@@ -383,7 +388,9 @@ export function TrainingResultModal({
                 Payment Confirmed
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {feeErg != null ? `${feeErg} ERG` : 'Fee'} paid on-chain
+                {feeTokenAmount != null && feeTokenName
+                  ? `${feeTokenAmount} ${feeTokenName}`
+                  : feeErg != null ? `${feeErg} ERG` : 'Fee'} paid on-chain
               </p>
             </div>
             <a

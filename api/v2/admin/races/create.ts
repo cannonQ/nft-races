@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../../../_lib/supabase.js';
 import { requireAdmin } from '../../../_lib/auth.js';
 import { getActiveSeason } from '../../../_lib/helpers.js';
+import { getGameConfig } from '../../../_lib/config.js';
 import { nanoErgToErg, CLASS_RARITIES, DEFAULT_CLASS_WEIGHT } from '../../../_lib/constants.js';
 import type { RarityClass } from '../../../_lib/constants.js';
 
@@ -19,6 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       entryDeadline,
       maxEntries = 8,
       entryFeeNanoerg,
+      entryFeeToken,
       seasonId,
       collectionId,
       autoResolve,
@@ -59,7 +61,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .select('entry_fee_nanoerg')
           .eq('id', season.collection_id)
           .single();
-        entryFee = collection?.entry_fee_nanoerg ?? 0;
+        const defaultFeeNanoerg = collection?.entry_fee_nanoerg ?? 0;
+
+        // Auto-calculate proportional ERG when admin sets a custom token fee
+        // but doesn't explicitly set the ERG fee.
+        // Rate derived from: default_race_entry_fee CYPX = defaultFeeNanoerg ERG
+        if (entryFeeToken && defaultFeeNanoerg > 0) {
+          const config = await getGameConfig(season.collection_id);
+          const feeTokenConfig = config?.fee_token;
+          const defaultTokenFee = feeTokenConfig?.default_race_entry_fee;
+          if (defaultTokenFee && defaultTokenFee > 0) {
+            entryFee = Math.round(entryFeeToken * (defaultFeeNanoerg / defaultTokenFee));
+          } else {
+            entryFee = defaultFeeNanoerg;
+          }
+        } else {
+          entryFee = defaultFeeNanoerg;
+        }
       }
     }
 
@@ -75,6 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         auto_resolve: autoResolve ?? true,
         season_id: activeSeasonId,
         collection_id: activeCollectionId,
+        entry_fee_token: entryFeeToken ?? null,
         rarity_class: rarityClass || null,
         class_weight: rarityClass ? DEFAULT_CLASS_WEIGHT : 1.0,
       })
@@ -92,6 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: race.name,
         raceType: race.race_type,
         entryFee: nanoErgToErg(race.entry_fee_nanoerg ?? 0),
+        entryFeeToken: race.entry_fee_token ?? null,
         maxEntries: race.max_entries,
         entryDeadline: race.entry_deadline,
         status: race.status,

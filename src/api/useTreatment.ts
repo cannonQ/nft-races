@@ -15,6 +15,7 @@ export function useTreatment(): MutationResponse<TreatmentStartResponse> {
     treatmentType: string,
     walletAddress: string,
     txId?: string,
+    paymentCurrency?: string,
   ): Promise<TreatmentStartResponse> => {
     setLoading(true);
     setError(null);
@@ -23,7 +24,7 @@ export function useTreatment(): MutationResponse<TreatmentStartResponse> {
       const response = await fetch(`${API_BASE}/treatment/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatureId, treatmentType, walletAddress, txId }),
+        body: JSON.stringify({ creatureId, treatmentType, walletAddress, txId, paymentCurrency }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

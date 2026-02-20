@@ -10,7 +10,7 @@ import { useWallet } from '@/context/WalletContext';
 import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { CollectionFilter } from '@/components/ui/CollectionFilter';
 import { trainingActivities as defaultActivities } from '@/data/trainingActivities';
-import { TrainingActivity, TrainResponse, Activity, StatBlock, StatType } from '@/types/game';
+import { TrainingActivity, TrainResponse, Activity, StatBlock, StatType, PaymentCurrency } from '@/types/game';
 import { CreatureTrainHeader } from '@/components/training/CreatureTrainHeader';
 import { ActivityCard } from '@/components/training/ActivityCard';
 import { TrainingConfirmModal } from '@/components/training/TrainingConfirmModal';
@@ -26,7 +26,7 @@ import { requestErgoPayTx, type ErgoPayTxRequest } from '@/lib/ergo/ergopay-tx';
 export default function Train() {
   const { creatureId } = useParams();
   const navigate = useNavigate();
-  const { address, walletType, buildAndSubmitEntryFee } = useWallet();
+  const { address, walletType, buildAndSubmitEntryFee, buildAndSubmitTokenFee } = useWallet();
   const [selectedActivity, setSelectedActivity] = useState<TrainingActivity | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showResult, setShowResult] = useState(false);
@@ -39,6 +39,7 @@ export default function Train() {
   const [currentBlockHeight, setCurrentBlockHeight] = useState<number | null>(null);
   // TX tracking for result modal
   const [lastTxId, setLastTxId] = useState<string | null>(null);
+  const [lastPaymentCurrency, setLastPaymentCurrency] = useState<PaymentCurrency | undefined>(undefined);
   // ErgoPay payment state
   const [ergoPayTx, setErgoPayTx] = useState<ErgoPayTxRequest | null>(null);
   const [showErgoPayModal, setShowErgoPayModal] = useState(false);
@@ -50,7 +51,7 @@ export default function Train() {
   const { data: collections } = useCollections();
   const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
   const { data: trainingLogs, loading: logsLoading, refetch: refetchLogs } = useTrainingLog(creatureId || null);
-  const { data: gameConfig } = useGameConfig();
+  const { data: gameConfig } = useGameConfig(creature?.collectionId);
   const train = useTrain();
 
   // Merge real gain values from game_config into activity definitions.
@@ -82,11 +83,12 @@ export default function Train() {
 
   const handleErgoPaySuccess = useCallback((result: any, txId: string) => {
     setShowErgoPayModal(false);
+    setLastPaymentCurrency(ergoPayTx?.tokenAmount != null ? 'token' : 'erg');
     setErgoPayTx(null);
     setLastTxId(txId || null);
     setTrainResult(result);
     setShowResult(true);
-  }, []);
+  }, [ergoPayTx]);
 
   const handleErgoPayExpired = useCallback(() => {
     setShowErgoPayModal(false);
@@ -222,6 +224,8 @@ export default function Train() {
   const requireFees = gameConfig?.requireFees ?? false;
   const treasuryErgoTree = gameConfig?.treasuryErgoTree ?? '';
   const trainingFeeNanoerg = gameConfig?.trainingFeeNanoerg ?? 10_000_000;
+  const feeToken = gameConfig?.feeToken ?? null;
+  const trainingFeeToken = feeToken?.training_fee ?? null;
 
   const snapshotPreTrainState = (selectedBoostIds: string[]) => {
     if (!creature) return;
@@ -232,7 +236,7 @@ export default function Train() {
     setPreTrainBoost(selectedBoostTotal);
   };
 
-  const handleConfirmTraining = async (selectedBoostIds: string[]) => {
+  const handleConfirmTraining = async (selectedBoostIds: string[], paymentCurrency?: PaymentCurrency) => {
     if (!selectedActivity || !creatureId || !address || !creature) return;
     // Keep confirm modal open — it shows "Signing..." while Nautilus is up.
     setTrainError(null);
@@ -244,6 +248,7 @@ export default function Train() {
       if (!requireFees) {
         // Alpha mode: no fees
         setLastTxId(null);
+        setLastPaymentCurrency(undefined);
         const result = await train.mutate(
           creatureId,
           selectedActivity.id as Activity,
@@ -254,19 +259,34 @@ export default function Train() {
         setShowConfirm(false);
         setShowResult(true);
       } else if (walletType === 'nautilus') {
-        // Nautilus: build TX locally, sign, submit, then call backend with txId
-        const txId = await buildAndSubmitEntryFee(trainingFeeNanoerg, treasuryErgoTree, {
+        let txId: string;
+        const metadata = {
           actionType: 'train',
           tokenId: creature.tokenId,
           context: selectedActivity.id,
-        });
+        };
+
+        if (paymentCurrency === 'token' && feeToken && trainingFeeToken) {
+          // Token payment via Babel box
+          txId = await buildAndSubmitTokenFee(
+            { tokenId: feeToken.token_id, amount: BigInt(trainingFeeToken) * BigInt(10 ** feeToken.decimals) },
+            treasuryErgoTree,
+            metadata,
+          );
+        } else {
+          // ERG payment
+          txId = await buildAndSubmitEntryFee(trainingFeeNanoerg, treasuryErgoTree, metadata);
+        }
+
         setLastTxId(txId);
+        setLastPaymentCurrency(paymentCurrency);
         const result = await train.mutate(
           creatureId,
           selectedActivity.id as Activity,
           address,
           selectedBoostIds.length > 0 ? selectedBoostIds : undefined,
           txId,
+          paymentCurrency,
         );
         setTrainResult(result);
         setShowConfirm(false);
@@ -281,6 +301,7 @@ export default function Train() {
           creatureId,
           activity: selectedActivity.id,
           boostRewardIds: selectedBoostIds.length > 0 ? selectedBoostIds : undefined,
+          paymentCurrency,
         });
         setErgoPayTx(txReq);
         setShowErgoPayModal(true);
@@ -304,6 +325,7 @@ export default function Train() {
     setSelectedActivity(null);
     setTrainResult(null);
     setLastTxId(null);
+    setLastPaymentCurrency(undefined);
     refetchCreature();
     refetchLogs();
   };
@@ -417,6 +439,9 @@ export default function Train() {
           requireFees={requireFees}
           walletType={walletType}
           submitting={isTraining}
+          feeToken={feeToken}
+          trainingFeeNanoerg={trainingFeeNanoerg}
+          trainingFeeToken={trainingFeeToken ?? undefined}
         />
 
         <TrainingResultModal
@@ -428,7 +453,9 @@ export default function Train() {
           preTrainStats={preTrainStats}
           trainResult={trainResult}
           txId={lastTxId}
-          feeErg={requireFees ? trainingFeeNanoerg / 1_000_000_000 : undefined}
+          feeErg={requireFees && lastPaymentCurrency !== 'token' ? trainingFeeNanoerg / 1_000_000_000 : undefined}
+          feeTokenName={lastPaymentCurrency === 'token' && feeToken ? feeToken.name : undefined}
+          feeTokenAmount={lastPaymentCurrency === 'token' && trainingFeeToken ? trainingFeeToken : undefined}
         />
 
         {ergoPayTx && (
@@ -441,6 +468,8 @@ export default function Train() {
             description="Training fee payment"
             onSuccess={handleErgoPaySuccess}
             onExpired={handleErgoPayExpired}
+            tokenAmount={ergoPayTx.tokenAmount}
+            tokenName={ergoPayTx.tokenName}
           />
         )}
       </div>

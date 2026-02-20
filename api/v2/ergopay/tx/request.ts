@@ -16,7 +16,7 @@ import { getActiveSeason, getOrCreateCreatureStats } from '../../../_lib/helpers
 import { getGameConfig } from '../../../_lib/config.js';
 import { validateTrainingAction } from '../../../../lib/training-engine.js';
 import { verifyNFTOwnership } from '../../../../lib/ergo/server.js';
-import { buildUnsignedTx, buildUnsignedBatchTx, type TxMetadata } from '../../../_lib/ergo-tx-builder.js';
+import { buildUnsignedTx, buildUnsignedBatchTx, buildUnsignedTokenFeeTx, buildUnsignedBatchTokenFeeTx, type TxMetadata } from '../../../_lib/ergo-tx-builder.js';
 import { checkRateLimit, getClientIp } from '../../../_lib/rate-limit.js';
 
 const ERGOPAY_BASE = 'https://ergopay.duckdns.org';
@@ -62,6 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     activity,
     boostRewardIds,
     treatmentType,
+    paymentCurrency,
   } = req.body ?? {};
 
   if (!actionType || !walletAddress) {
@@ -80,6 +81,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let dbCreatureId: string | null = null;
     // isBatch flag for race entry
     let isBatch = false;
+    // Token payment response fields
+    let tokenAmount: number | undefined;
+    let tokenName: string | undefined;
+    let feeTokenIdForPayload: string | undefined;
 
     if (actionType === 'training_fee') {
       // Validate training prerequisites (fail early before payment)
@@ -118,14 +123,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const appName = getAppName((creature as any).collections?.name || 'NFT');
       dbCreatureId = creatureId;
       amountNanoerg = TRAINING_FEE_NANOERG;
-      message = `${appName}: Training Fee (0.01 ERG)`;
       const metadata: TxMetadata = { actionType: 'train', tokenId: creature.token_id, context: activity };
-      unsignedTx = await buildUnsignedTx({
-        senderAddress: walletAddress,
-        treasuryAddress: TREASURY_ADDRESS,
-        amountNanoErg: amountNanoerg,
-        metadata,
-      });
+
+      if (paymentCurrency === 'token') {
+        const feeTokenConfig = mergedConfig?.fee_token;
+        if (!feeTokenConfig?.token_id || !feeTokenConfig.training_fee) {
+          return res.status(400).json({ error: 'Token payments not available for this collection' });
+        }
+        feeTokenIdForPayload = feeTokenConfig.token_id;
+        tokenAmount = feeTokenConfig.training_fee;
+        tokenName = feeTokenConfig.name || 'TOKEN';
+        const tokenDecimals = feeTokenConfig.decimals ?? 0;
+        message = `${appName}: Training Fee (${tokenAmount} ${tokenName})`;
+        unsignedTx = await buildUnsignedTokenFeeTx({
+          senderAddress: walletAddress,
+          treasuryAddress: TREASURY_ADDRESS,
+          feeTokenId: feeTokenConfig.token_id,
+          feeTokenAmount: BigInt(tokenAmount) * BigInt(10 ** tokenDecimals),
+          metadata,
+        });
+      } else {
+        message = `${appName}: Training Fee (0.01 ERG)`;
+        unsignedTx = await buildUnsignedTx({
+          senderAddress: walletAddress,
+          treasuryAddress: TREASURY_ADDRESS,
+          amountNanoErg: amountNanoerg,
+          metadata,
+        });
+      }
 
     } else if (actionType === 'race_entry_fee') {
       // Support both single creatureId and batch creatureIds[]
@@ -222,23 +247,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       dbCreatureId = resolvedIds[0];
       amountNanoerg = perEntryFee * resolvedIds.length;
-      const ergTotal = (amountNanoerg / 1_000_000_000).toFixed(4);
 
-      if (isBatch) {
-        message = `${appName}: Race Entry x${resolvedIds.length} (${ergTotal} ERG)`;
-        unsignedTx = await buildUnsignedBatchTx({
-          senderAddress: walletAddress,
-          treasuryAddress: TREASURY_ADDRESS,
-          entries: txEntries,
-        });
+      if (paymentCurrency === 'token') {
+        // Look up token fee config for the race's collection
+        const raceConfig = await getGameConfig(raceCollectionId ?? undefined);
+        const feeTokenConfig = raceConfig?.fee_token;
+        // Use race-specific token fee, fall back to collection default
+        const perEntryToken = race.entry_fee_token ?? feeTokenConfig?.default_race_entry_fee ?? null;
+        if (!feeTokenConfig?.token_id || !perEntryToken) {
+          return res.status(400).json({ error: 'Token payments not available for this race' });
+        }
+        feeTokenIdForPayload = feeTokenConfig.token_id;
+        tokenAmount = perEntryToken * resolvedIds.length;
+        tokenName = feeTokenConfig.name || 'TOKEN';
+        const raceTokenDecimals = feeTokenConfig.decimals ?? 0;
+        const rawPerEntry = BigInt(perEntryToken) * BigInt(10 ** raceTokenDecimals);
+
+        if (isBatch) {
+          message = `${appName}: Race Entry x${resolvedIds.length} (${tokenAmount} ${tokenName})`;
+          unsignedTx = await buildUnsignedBatchTokenFeeTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            feeTokenId: feeTokenConfig.token_id,
+            entries: txEntries.map(e => ({
+              feeTokenAmount: rawPerEntry,
+              metadata: e.metadata,
+            })),
+          });
+        } else {
+          message = `${appName}: Race Entry (${tokenAmount} ${tokenName})`;
+          unsignedTx = await buildUnsignedTokenFeeTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            feeTokenId: feeTokenConfig.token_id,
+            feeTokenAmount: rawPerEntry,
+            metadata: txEntries[0].metadata,
+          });
+        }
       } else {
-        message = `${appName}: Race Entry (${ergTotal} ERG)`;
-        unsignedTx = await buildUnsignedTx({
-          senderAddress: walletAddress,
-          treasuryAddress: TREASURY_ADDRESS,
-          amountNanoErg: perEntryFee,
-          metadata: txEntries[0].metadata,
-        });
+        const ergTotal = (amountNanoerg / 1_000_000_000).toFixed(4);
+        if (isBatch) {
+          message = `${appName}: Race Entry x${resolvedIds.length} (${ergTotal} ERG)`;
+          unsignedTx = await buildUnsignedBatchTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            entries: txEntries,
+          });
+        } else {
+          message = `${appName}: Race Entry (${ergTotal} ERG)`;
+          unsignedTx = await buildUnsignedTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            amountNanoErg: perEntryFee,
+            metadata: txEntries[0].metadata,
+          });
+        }
       }
 
     } else {
@@ -290,15 +353,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const appName = getAppName((creature as any).collections?.name || 'NFT');
-      const ergAmount = (amountNanoerg / 1_000_000_000).toFixed(4);
-      message = `${appName}: Treatment - ${treatmentDef.name} (${ergAmount} ERG)`;
       const metadata: TxMetadata = { actionType: 'treatment', tokenId: creature.token_id, context: treatmentType };
-      unsignedTx = await buildUnsignedTx({
-        senderAddress: walletAddress,
-        treasuryAddress: TREASURY_ADDRESS,
-        amountNanoErg: amountNanoerg,
-        metadata,
-      });
+
+      if (paymentCurrency === 'token') {
+        const feeTokenConfig = mergedConfig?.fee_token;
+        const treatmentToken = feeTokenConfig?.treatment_fees?.[treatmentType];
+        if (!feeTokenConfig?.token_id || !treatmentToken) {
+          return res.status(400).json({ error: 'Token payments not available for this treatment' });
+        }
+        feeTokenIdForPayload = feeTokenConfig.token_id;
+        tokenAmount = treatmentToken;
+        tokenName = feeTokenConfig.name || 'TOKEN';
+        const treatmentDecimals = feeTokenConfig.decimals ?? 0;
+        message = `${appName}: Treatment - ${treatmentDef.name} (${tokenAmount} ${tokenName})`;
+        unsignedTx = await buildUnsignedTokenFeeTx({
+          senderAddress: walletAddress,
+          treasuryAddress: TREASURY_ADDRESS,
+          feeTokenId: feeTokenConfig.token_id,
+          feeTokenAmount: BigInt(tokenAmount) * BigInt(10 ** treatmentDecimals),
+          metadata,
+        });
+      } else {
+        const ergAmount = (amountNanoerg / 1_000_000_000).toFixed(4);
+        message = `${appName}: Treatment - ${treatmentDef.name} (${ergAmount} ERG)`;
+        unsignedTx = await buildUnsignedTx({
+          senderAddress: walletAddress,
+          treasuryAddress: TREASURY_ADDRESS,
+          amountNanoErg: amountNanoerg,
+          metadata,
+        });
+      }
     }
 
     // Generate our own request ID (we insert into DB first, then reference in replyTo)
@@ -322,7 +406,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         boostRewardIds: boostRewardIds ?? null,
         treatmentType: treatmentType ?? null,
         creatureIds: isBatch ? resolvedCreatureIds : null,
+        paymentCurrency: paymentCurrency ?? null,
+        feeTokenId: feeTokenIdForPayload ?? null,
+        feeTokenAmount: tokenAmount ?? null,
       },
+      payment_currency: paymentCurrency === 'token' ? 'token' : 'erg',
       status: 'pending',
     });
 
@@ -336,16 +424,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const replyTo = `https://${host}/api/v2/ergopay/tx/callback/${requestId}`;
 
     // POST to ergopay.duckdns.org/api/v1/reducedTx
+    const reducedTxPayload = {
+      address: walletAddress,
+      message,
+      messageSeverity: 'INFORMATION',
+      replyTo,
+      unsignedTx,
+    };
+
     const reducedTxResp = await fetch(`${ERGOPAY_BASE}/api/v1/reducedTx`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: walletAddress,
-        message,
-        messageSeverity: 'INFORMATION',
-        replyTo,
-        unsignedTx,
-      }),
+      body: JSON.stringify(reducedTxPayload),
     });
 
     if (!reducedTxResp.ok) {
@@ -369,8 +459,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       requestId,
       ergoPayUrl,
       amount: amountNanoerg,
+      ...(tokenAmount != null && { tokenAmount }),
+      ...(tokenName && { tokenName }),
     });
-  } catch (err) {
+  } catch (err: any) {
+    const msg = err?.message ?? '';
+    // Surface wallet balance errors as 400 (user-actionable)
+    if (msg.includes('Insufficient tokens') || msg.includes('Insufficient funds') || msg.includes('Babel fee boxes depleted')) {
+      return res.status(400).json({ error: msg });
+    }
     console.error('POST /api/v2/ergopay/tx/request error:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }

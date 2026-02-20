@@ -428,3 +428,167 @@ export async function buildAndSubmitBatchEntryFeeTx(
 
   return await signAndSubmitTx(unsignedTx);
 }
+
+// ============================================
+// Token Fee TX Builder (Fleet SDK + BabelSwapPlugin)
+// ============================================
+
+/**
+ * Build, sign, and submit a token fee payment transaction using Babel boxes.
+ * The player pays with tokens (e.g. CYPX) instead of ERG.
+ * A Babel box covers the miner fee — player needs zero ERG.
+ *
+ * Uses Fleet SDK TransactionBuilder + BabelSwapPlugin.
+ *
+ * @param feeToken - { tokenId, amount } of the fee token to send to treasury
+ * @param treasuryErgoTree - ErgoTree of the treasury address
+ * @param metadata - On-chain register data (R4-R6)
+ * @returns Transaction ID
+ */
+export async function buildAndSubmitTokenFeeTx(
+  feeToken: { tokenId: string; amount: bigint },
+  treasuryErgoTree: string,
+  metadata?: TxMetadata,
+): Promise<string> {
+  // Lazy import Fleet SDK (tree-shaken, only loaded when token payments used)
+  const { TransactionBuilder, OutputBuilder, SAFE_MIN_BOX_VALUE, ErgoUnsignedInput } = await import('@fleet-sdk/core');
+  const { SConstant, SColl, SByte, SInt } = await import('@fleet-sdk/serializer');
+  const { findBabelBoxes, selectBabelBox } = await import('./babel');
+
+  if (!window.ergo) throw new Error('Wallet not connected');
+
+  // 1. Find a Babel box with enough ERG for miner fee + treasury min value
+  const babelBoxes = await findBabelBoxes(feeToken.tokenId);
+  const babelBox = selectBabelBox(babelBoxes, TX_FEE + MIN_NERG_BOX_VALUE);
+  if (!babelBox) {
+    throw new Error('Token payment temporarily unavailable — Babel fee boxes depleted. Pay with ERG instead.');
+  }
+
+  // 2. Calculate how many tokens to swap with Babel for ERG
+  // Read price directly from R5 (bypasses Fleet SDK's ErgoTree format validation
+  // which only accepts compact 0x10 header, but ergo-lib-wasm creates 0x18 header)
+  const tokenPrice = SConstant.from<bigint>(babelBox.additionalRegisters.R5).data;
+  const ergNeeded = BigInt(TX_FEE) + SAFE_MIN_BOX_VALUE;
+  const babelSwapTokens = ergNeeded / tokenPrice + 1n; // +1 for rounding safety
+
+  // 3. Get user UTXOs (need fee tokens + babel swap tokens)
+  const totalTokensNeeded = feeToken.amount + babelSwapTokens;
+  const utxos = await window.ergo.get_utxos({
+    tokens: [{ tokenId: feeToken.tokenId, amount: totalTokensNeeded.toString() }],
+  });
+  if (!utxos || utxos.length === 0) {
+    throw new Error('Not enough tokens in wallet');
+  }
+
+  // 4. Get block height + user change address
+  const blockHeight = await getCurrentHeight();
+  const changeAddress = await window.ergo.get_change_address();
+
+  // 5. Build registers for treasury output
+  const registers = metadata ? buildRegisters(metadata) : {};
+
+  // 6. Build TX with manual Babel swap (preserves original ErgoTree for valid boxId hash)
+  const treasuryOutput = new OutputBuilder(SAFE_MIN_BOX_VALUE, treasuryErgoTree)
+    .addTokens({ tokenId: feeToken.tokenId, amount: feeToken.amount })
+    .setAdditionalRegisters(registers);
+
+  const babelSwap = ({ addInputs, addOutputs }: any) => {
+    const input = new ErgoUnsignedInput(babelBox as any);
+    const changeAmount = BigInt(babelBox.value) - babelSwapTokens * tokenPrice;
+    const outputsLength = addOutputs(
+      OutputBuilder.from(input as any)
+        .setValue(changeAmount)
+        .addTokens({ tokenId: feeToken.tokenId, amount: babelSwapTokens })
+        .setAdditionalRegisters({ R6: SColl(SByte, input.boxId) }),
+    );
+    addInputs(input.setContextExtension({ 0: SInt(outputsLength - 1) }));
+  };
+
+  const unsignedTx = new TransactionBuilder(blockHeight)
+    .from(utxos as any)
+    .to(treasuryOutput)
+    .extend(babelSwap)
+    .payMinFee()
+    .sendChangeTo(changeAddress)
+    .build()
+    .toEIP12Object();
+
+  // 7. Sign and submit via Nautilus
+  return await signAndSubmitTx(unsignedTx);
+}
+
+/**
+ * Build, sign, and submit a batch token fee TX (N creatures, 1 TX).
+ * Each entry gets its own treasury output box with tokens + R4-R6 metadata.
+ * A single Babel box covers the one miner fee.
+ */
+export async function buildAndSubmitBatchTokenFeeTx(
+  entries: Array<{ feeTokenId: string; feeTokenAmount: bigint; metadata: TxMetadata }>,
+  treasuryErgoTree: string,
+): Promise<string> {
+  const { TransactionBuilder, OutputBuilder, SAFE_MIN_BOX_VALUE, ErgoUnsignedInput } = await import('@fleet-sdk/core');
+  const { SConstant, SColl, SByte, SInt } = await import('@fleet-sdk/serializer');
+  const { findBabelBoxes, selectBabelBox } = await import('./babel');
+
+  if (!window.ergo) throw new Error('Wallet not connected');
+  if (entries.length === 0) throw new Error('No entries provided');
+
+  const tokenId = entries[0].feeTokenId;
+  const totalFeeTokens = entries.reduce((sum, e) => sum + e.feeTokenAmount, 0n);
+
+  // 1. Find Babel box
+  const babelBoxes = await findBabelBoxes(tokenId);
+  const babelBox = selectBabelBox(babelBoxes, TX_FEE + MIN_NERG_BOX_VALUE * entries.length);
+  if (!babelBox) {
+    throw new Error('Token payment temporarily unavailable — Babel fee boxes depleted. Pay with ERG instead.');
+  }
+
+  // 2. Calculate babel swap tokens (cover miner fee + MIN_ERG per treasury output)
+  const tokenPrice = SConstant.from<bigint>(babelBox.additionalRegisters.R5).data;
+  const ergNeeded = BigInt(TX_FEE) + SAFE_MIN_BOX_VALUE * BigInt(entries.length);
+  const babelSwapTokens = ergNeeded / tokenPrice + 1n;
+
+  // 3. Get user UTXOs
+  const totalTokensNeeded = totalFeeTokens + babelSwapTokens;
+  const utxos = await window.ergo.get_utxos({
+    tokens: [{ tokenId, amount: totalTokensNeeded.toString() }],
+  });
+  if (!utxos || utxos.length === 0) {
+    throw new Error('Not enough tokens in wallet');
+  }
+
+  // 4. Block height + change address
+  const blockHeight = await getCurrentHeight();
+  const changeAddress = await window.ergo.get_change_address();
+
+  // 5. Build N treasury outputs
+  const treasuryOutputs = entries.map(entry =>
+    new OutputBuilder(SAFE_MIN_BOX_VALUE, treasuryErgoTree)
+      .addTokens({ tokenId: entry.feeTokenId, amount: entry.feeTokenAmount })
+      .setAdditionalRegisters(buildRegisters(entry.metadata)),
+  );
+
+  // 6. Build TX with manual Babel swap
+  const babelSwap = ({ addInputs, addOutputs }: any) => {
+    const input = new ErgoUnsignedInput(babelBox as any);
+    const changeAmount = BigInt(babelBox.value) - babelSwapTokens * tokenPrice;
+    const outputsLength = addOutputs(
+      OutputBuilder.from(input as any)
+        .setValue(changeAmount)
+        .addTokens({ tokenId, amount: babelSwapTokens })
+        .setAdditionalRegisters({ R6: SColl(SByte, input.boxId) }),
+    );
+    addInputs(input.setContextExtension({ 0: SInt(outputsLength - 1) }));
+  };
+
+  const unsignedTx = new TransactionBuilder(blockHeight)
+    .from(utxos as any)
+    .to(treasuryOutputs)
+    .extend(babelSwap)
+    .payMinFee()
+    .sendChangeTo(changeAddress)
+    .build()
+    .toEIP12Object();
+
+  return await signAndSubmitTx(unsignedTx);
+}

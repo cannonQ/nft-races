@@ -35,7 +35,9 @@ import { PetImage } from '@/components/creatures/PetImage';
 import { TreatmentTimer } from '@/components/creatures/TreatmentTimer';
 import { ErgoPayTxModal } from '@/components/ergopay/ErgoPayTxModal';
 import { requestErgoPayTx, type ErgoPayTxRequest } from '@/lib/ergo/ergopay-tx';
-import { TreatmentDef, TreatmentStartResponse } from '@/types/game';
+import { TreatmentDef, TreatmentStartResponse, PaymentCurrency } from '@/types/game';
+import { PaymentSelector } from '@/components/ui/PaymentSelector';
+import { buildAndSubmitTokenFeeTx } from '@/lib/ergo/transactions';
 import { cn } from '@/lib/utils';
 
 const EXPLORER_TX_URL = 'https://ergexplorer.com/transactions#';
@@ -74,6 +76,8 @@ export default function Treatment() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
 
+  // Payment currency toggle
+  const [paymentCurrency, setPaymentCurrency] = useState<PaymentCurrency>('erg');
   // ErgoPay
   const [ergoPayTx, setErgoPayTx] = useState<ErgoPayTxRequest | null>(null);
   const [showErgoPayModal, setShowErgoPayModal] = useState(false);
@@ -82,12 +86,13 @@ export default function Treatment() {
   const { data: userCreatures, loading: creaturesLoading } = useCreaturesByWallet(address);
   const { data: collections } = useCollections();
   const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
-  const { data: gameConfig } = useGameConfig();
+  const { data: gameConfig } = useGameConfig(creature?.collectionId);
   const treatmentMutation = useTreatment();
 
   const treatments = gameConfig?.treatments ?? {};
   const requireFees = gameConfig?.requireFees ?? false;
   const treasuryErgoTree = gameConfig?.treasuryErgoTree ?? '';
+  const feeToken = gameConfig?.feeToken ?? null;
 
   const handleErgoPaySuccess = useCallback((result: any, txId: string) => {
     setShowErgoPayModal(false);
@@ -220,6 +225,7 @@ export default function Treatment() {
     setSelectedTier({ key, def });
     setShowConfirm(true);
     setTreatmentError(null);
+    setPaymentCurrency(feeToken ? 'token' : 'erg');
   };
 
   const handleConfirm = async () => {
@@ -240,17 +246,33 @@ export default function Treatment() {
         setShowConfirm(false);
         setShowResult(true);
       } else if (walletType === 'nautilus') {
-        const txId = await buildAndSubmitEntryFee(selectedTier.def.cost_nanoerg, treasuryErgoTree, {
+        let txId: string;
+        const metadata = {
           actionType: 'treatment',
           tokenId: creature.tokenId,
           context: selectedTier.key,
-        });
+        };
+        const treatmentFeeToken = feeToken?.treatment_fees?.[selectedTier.key] ?? null;
+
+        if (paymentCurrency === 'token' && feeToken && treatmentFeeToken) {
+          // Token payment via Babel box
+          txId = await buildAndSubmitTokenFeeTx(
+            { tokenId: feeToken.token_id, amount: BigInt(treatmentFeeToken) * BigInt(10 ** feeToken.decimals) },
+            treasuryErgoTree,
+            metadata,
+          );
+        } else {
+          // ERG payment
+          txId = await buildAndSubmitEntryFee(selectedTier.def.cost_nanoerg, treasuryErgoTree, metadata);
+        }
+
         setLastTxId(txId);
         const result = await (treatmentMutation.mutate as any)(
           creatureId,
           selectedTier.key,
           address,
           txId,
+          paymentCurrency,
         );
         setTreatmentResult(result);
         setShowConfirm(false);
@@ -262,6 +284,7 @@ export default function Treatment() {
           walletAddress: address,
           creatureId,
           treatmentType: selectedTier.key,
+          paymentCurrency,
         });
         setErgoPayTx(txReq);
         setShowErgoPayModal(true);
@@ -409,9 +432,16 @@ export default function Treatment() {
 
                     <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">Cost</span>
-                      <span className="font-mono text-sm font-semibold text-foreground">
-                        {costErg} ERG
-                      </span>
+                      <div className="text-right">
+                        <span className="font-mono text-sm font-semibold text-foreground">
+                          {costErg} ERG
+                        </span>
+                        {feeToken?.treatment_fees?.[key] && (
+                          <span className="font-mono text-xs text-muted-foreground ml-1.5">
+                            / {feeToken.treatment_fees[key]} {feeToken.name}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 );
@@ -447,14 +477,32 @@ export default function Treatment() {
                     <span className="text-muted-foreground">Sharpness Effect</span>
                     <span className="font-mono text-primary">{describeSharpnessEffect(selectedTier.def)}</span>
                   </div>
-                  {requireFees && (
-                    <div className="flex justify-between pt-2 border-t border-border">
-                      <span className="text-muted-foreground">Cost</span>
-                      <span className="font-mono font-semibold text-foreground">
-                        {(selectedTier.def.cost_nanoerg / 1_000_000_000).toFixed(4)} ERG
-                      </span>
-                    </div>
-                  )}
+                  {requireFees && (() => {
+                    const treatmentTokenFee = feeToken?.treatment_fees?.[selectedTier.key] ?? null;
+                    const showTokenOption = feeToken && treatmentTokenFee && (walletType === 'nautilus' || walletType === 'ergopay');
+                    if (showTokenOption) {
+                      return (
+                        <div className="pt-2 border-t border-border">
+                          <p className="text-muted-foreground text-xs mb-2">Payment Method</p>
+                          <PaymentSelector
+                            feeToken={feeToken!}
+                            ergAmount={`${selectedTier.def.cost_nanoerg / 1_000_000_000}`}
+                            tokenAmount={treatmentTokenFee!}
+                            selected={paymentCurrency}
+                            onSelect={setPaymentCurrency}
+                          />
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex justify-between pt-2 border-t border-border">
+                        <span className="text-muted-foreground">Cost</span>
+                        <span className="font-mono font-semibold text-foreground">
+                          {selectedTier.def.cost_nanoerg / 1_000_000_000} ERG
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <p className="text-xs text-muted-foreground text-center">
@@ -477,7 +525,11 @@ export default function Treatment() {
                 disabled={isSubmitting}
                 className="bg-primary text-primary-foreground"
               >
-                {isSubmitting ? 'Starting...' : 'Start Treatment'}
+                {isSubmitting ? 'Starting...' : requireFees && selectedTier
+                  ? paymentCurrency === 'token' && feeToken?.treatment_fees?.[selectedTier.key]
+                    ? `Pay ${feeToken.treatment_fees[selectedTier.key]} ${feeToken.name}`
+                    : `Pay ${selectedTier.def.cost_nanoerg / 1_000_000_000} ERG`
+                  : 'Start Treatment'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -543,6 +595,8 @@ export default function Treatment() {
             description="Treatment fee payment"
             onSuccess={handleErgoPaySuccess}
             onExpired={handleErgoPayExpired}
+            tokenAmount={ergoPayTx.tokenAmount}
+            tokenName={ergoPayTx.tokenName}
           />
         )}
       </div>

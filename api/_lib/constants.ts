@@ -56,6 +56,9 @@ export const RECOVERY_BY_POSITION = [8, 5, 4, 3]; // 1st, 2nd, 3rd, 4th+
 /** Recovery reward expiry in blocks (~3 days at ~2 min/block) */
 export const RECOVERY_EXPIRY_BLOCKS = 2160;
 
+/** Minimum ERG value for a box containing tokens (protocol requirement) */
+export const MIN_TOKEN_BOX_NANOERG = 1_000_000;
+
 /** Convert nanoERG to ERG */
 export function nanoErgToErg(nanoErg: number): number {
   return nanoErg / 1_000_000_000;

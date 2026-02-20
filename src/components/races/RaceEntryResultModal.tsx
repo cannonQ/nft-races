@@ -29,6 +29,9 @@ interface RaceEntryResultModalProps {
   txId?: string | null;
   /** Fee paid in ERG (e.g. 0.05) */
   feeErg?: number;
+  /** Token fee info (when paid with token instead of ERG) */
+  feeTokenName?: string;
+  feeTokenAmount?: number;
 }
 
 export function RaceEntryResultModal({
@@ -38,6 +41,8 @@ export function RaceEntryResultModal({
   enteredCount,
   txId,
   feeErg,
+  feeTokenName,
+  feeTokenAmount,
 }: RaceEntryResultModalProps) {
   const [showAnimation, setShowAnimation] = useState(false);
 
@@ -131,7 +136,9 @@ export function RaceEntryResultModal({
                 Payment Confirmed
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {feeErg != null ? `${feeErg} ERG` : 'Fee'} paid on-chain
+                {feeTokenAmount != null && feeTokenName
+                  ? `${feeTokenAmount} ${feeTokenName}`
+                  : feeErg != null ? `${feeErg} ERG` : 'Fee'} paid on-chain
               </p>
             </div>
             <a

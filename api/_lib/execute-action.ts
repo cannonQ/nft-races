@@ -30,6 +30,9 @@ export interface ExecuteTrainingParams {
   boostRewardIds?: string[];
   recoveryRewardIds?: string[];
   txId?: string;
+  paymentCurrency?: 'erg' | 'token';
+  feeTokenId?: string;
+  feeTokenAmount?: number;
 }
 
 export interface ExecuteTrainingResult {
@@ -52,6 +55,9 @@ export interface ExecuteRaceEntryParams {
   creatureId: string;
   walletAddress: string;
   txId?: string;
+  paymentCurrency?: 'erg' | 'token';
+  feeTokenId?: string;
+  feeTokenAmount?: number;
 }
 
 export interface ExecuteRaceEntryResult {
@@ -147,7 +153,7 @@ export class ActionError extends Error {
 // ============================================
 
 export async function executeTraining(params: ExecuteTrainingParams): Promise<ExecuteTrainingResult> {
-  const { creatureId, activity, walletAddress, boostRewardIds, recoveryRewardIds, txId } = params;
+  const { creatureId, activity, walletAddress, boostRewardIds, recoveryRewardIds, txId, paymentCurrency, feeTokenId, feeTokenAmount } = params;
 
   // 1. Verify creature + ownership
   const creature = await verifyCreatureOwnership(creatureId, walletAddress);
@@ -317,8 +323,8 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
     }
   }
 
-  // 10c. Record ledger entry
-  recordLedgerEntry({
+  // 10c. Record ledger entry (must await — serverless kills process after response)
+  await recordLedgerEntry({
     ownerAddress: walletAddress,
     txType: 'training_fee',
     amountNanoerg: -TRAINING_FEE_NANOERG,
@@ -328,6 +334,8 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
     memo: `Training: ${activity}`,
     txId,
     shadow: !txId,
+    feeTokenId: paymentCurrency === 'token' ? feeTokenId : undefined,
+    feeTokenAmount: paymentCurrency === 'token' ? feeTokenAmount : undefined,
   });
 
   // 11. Update creature_stats
@@ -396,7 +404,7 @@ export async function executeTraining(params: ExecuteTrainingParams): Promise<Ex
 // ============================================
 
 export async function executeRaceEntry(params: ExecuteRaceEntryParams): Promise<ExecuteRaceEntryResult> {
-  const { raceId, creatureId, walletAddress, txId } = params;
+  const { raceId, creatureId, walletAddress, txId, paymentCurrency, feeTokenId, feeTokenAmount } = params;
 
   // 1. Verify creature + ownership
   const creature = await verifyCreatureOwnership(
@@ -523,10 +531,10 @@ export async function executeRaceEntry(params: ExecuteRaceEntryParams): Promise<
     throw new ActionError(500, 'Failed to create race entry');
   }
 
-  // 8. Record ledger entry
+  // 8. Record ledger entry (must await — serverless kills process after response)
   const entryFeeNanoerg = race.entry_fee_nanoerg ?? 0;
   if (entryFeeNanoerg > 0) {
-    recordLedgerEntry({
+    await recordLedgerEntry({
       ownerAddress: walletAddress,
       txType: 'race_entry_fee',
       amountNanoerg: -entryFeeNanoerg,
@@ -537,6 +545,8 @@ export async function executeRaceEntry(params: ExecuteRaceEntryParams): Promise<
       memo: `Race entry: ${race.name}`,
       txId,
       shadow: !txId,
+      feeTokenId: paymentCurrency === 'token' ? feeTokenId : undefined,
+      feeTokenAmount: paymentCurrency === 'token' ? feeTokenAmount : undefined,
     });
   }
 

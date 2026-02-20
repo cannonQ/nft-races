@@ -193,7 +193,10 @@ export default function WalletLedger() {
                             isDebit ? 'text-destructive' : 'text-accent'
                           )}
                         >
-                          {isDebit ? '' : '+'}{entry.amountErg.toFixed(2)} ERG
+                          {entry.feeTokenAmount
+                            ? `${isDebit ? '-' : '+'}${entry.feeTokenAmount} ${entry.feeTokenName ?? 'TOKEN'}`
+                            : `${isDebit ? '' : '+'}${entry.amountErg.toFixed(2)} ERG`
+                          }
                         </span>
                         {entry.txId ? (
                           <a

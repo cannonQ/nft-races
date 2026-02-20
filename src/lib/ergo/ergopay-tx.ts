@@ -12,6 +12,10 @@ export interface ErgoPayTxRequest {
   requestId: string;
   ergoPayUrl: string;
   amount: number;
+  /** Token amount (present when paymentCurrency === 'token') */
+  tokenAmount?: number;
+  /** Token display name (e.g. "CYPX") */
+  tokenName?: string;
 }
 
 export type ErgoPayTxStatus =
@@ -29,6 +33,7 @@ export interface RequestErgoPayTxParams {
   activity?: string;
   boostRewardIds?: string[];
   treatmentType?: string;
+  paymentCurrency?: 'erg' | 'token';
 }
 
 export async function requestErgoPayTx(params: RequestErgoPayTxParams): Promise<ErgoPayTxRequest> {

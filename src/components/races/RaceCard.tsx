@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Clock, Users, Coins } from 'lucide-react';
-import { Race, RaceType, RarityClass, CLASS_LABELS } from '@/types/game';
+import { Race, RaceType, RarityClass, CLASS_LABELS, FeeToken } from '@/types/game';
 import { formatCountdown } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ interface RaceCardProps {
   onEnter: (race: Race) => void;
   onViewDetails: (race: Race) => void;
   onExpired?: (race: Race) => void;
+  feeToken?: FeeToken | null;
 }
 
 const typeColors: Record<RaceType, { bg: string; text: string; border: string }> = {
@@ -34,7 +35,7 @@ const classColors: Record<RarityClass, { bg: string; text: string; border: strin
   champion: { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' },
 };
 
-export function RaceCard({ race, onEnter, onViewDetails, onExpired }: RaceCardProps) {
+export function RaceCard({ race, onEnter, onViewDetails, onExpired, feeToken }: RaceCardProps) {
   const [timeLeft, setTimeLeft] = useState(formatCountdown(race.entryDeadline));
   const typeStyle = typeColors[race.raceType];
   const isFull = race.entryCount >= race.maxEntries;
@@ -156,8 +157,17 @@ export function RaceCard({ race, onEnter, onViewDetails, onExpired }: RaceCardPr
         </div>
         <div className="flex items-center gap-1.5">
           <Coins className="w-3.5 h-3.5 text-race-sprint" />
-          <span className="font-mono text-foreground">{race.entryFee}</span>
-          <span className="text-muted-foreground">credits</span>
+          {race.entryFeeToken && feeToken ? (
+            <>
+              <span className="font-mono text-foreground">{race.entryFeeToken}</span>
+              <span className="text-muted-foreground">{feeToken.name}</span>
+            </>
+          ) : (
+            <>
+              <span className="font-mono text-foreground">{race.entryFee}</span>
+              <span className="text-muted-foreground">ERG</span>
+            </>
+          )}
         </div>
       </div>
 

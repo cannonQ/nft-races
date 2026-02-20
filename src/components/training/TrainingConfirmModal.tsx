@@ -9,7 +9,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CreatureWithStats, TrainingActivity, StatType } from '@/types/game';
+import { CreatureWithStats, TrainingActivity, StatType, FeeToken, PaymentCurrency } from '@/types/game';
+import { PaymentSelector } from '@/components/ui/PaymentSelector';
 import { cn } from '@/lib/utils';
 
 const PER_STAT_CAP = 80;
@@ -35,11 +36,14 @@ interface TrainingConfirmModalProps {
   creature: CreatureWithStats;
   activity: TrainingActivity | null;
   currentBlockHeight: number | null;
-  onConfirm: (selectedBoostIds: string[]) => void;
+  onConfirm: (selectedBoostIds: string[], paymentCurrency?: PaymentCurrency) => void;
   requireFees?: boolean;
   walletType?: 'nautilus' | 'ergopay' | null;
   /** When true, show spinner on button and prevent close (TX is being signed) */
   submitting?: boolean;
+  feeToken?: FeeToken | null;
+  trainingFeeNanoerg?: number;
+  trainingFeeToken?: number;
 }
 
 const statLabels: Record<StatType, string> = {
@@ -70,13 +74,20 @@ export function TrainingConfirmModal({
   requireFees,
   walletType,
   submitting,
+  feeToken,
+  trainingFeeNanoerg,
+  trainingFeeToken,
 }: TrainingConfirmModalProps) {
   const [selectedBoostIds, setSelectedBoostIds] = useState<Set<string>>(new Set());
+  const [paymentCurrency, setPaymentCurrency] = useState<PaymentCurrency>('erg');
 
-  // Reset selection when modal opens/closes
+  // Reset selection when modal opens — default to token if available
   useEffect(() => {
-    if (!open) setSelectedBoostIds(new Set());
-  }, [open]);
+    if (open) {
+      setSelectedBoostIds(new Set());
+      setPaymentCurrency(feeToken ? 'token' : 'erg');
+    }
+  }, [open, feeToken, walletType]);
 
   if (!activity) return null;
 
@@ -405,13 +416,27 @@ export function TrainingConfirmModal({
 
         {/* Fee Info (when fees enabled) */}
         {requireFees && (
-          <div className="cyber-card rounded-lg p-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Training Fee</span>
-              <span className="font-mono text-primary font-semibold">0.01 ERG</span>
-            </div>
+          <div className="space-y-2">
+            {feeToken && trainingFeeToken && (walletType === 'nautilus' || walletType === 'ergopay') ? (
+              <PaymentSelector
+                feeToken={feeToken}
+                ergAmount={`${(trainingFeeNanoerg ?? 10_000_000) / 1_000_000_000}`}
+                tokenAmount={trainingFeeToken}
+                selected={paymentCurrency}
+                onSelect={setPaymentCurrency}
+              />
+            ) : (
+              <div className="cyber-card rounded-lg p-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Training Fee</span>
+                  <span className="font-mono text-primary font-semibold">
+                    {(trainingFeeNanoerg ?? 10_000_000) / 1_000_000_000} ERG
+                  </span>
+                </div>
+              </div>
+            )}
             {walletType === 'ergopay' && (
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-[10px] text-muted-foreground">
                 You will be prompted to confirm payment in your wallet app.
               </p>
             )}
@@ -428,7 +453,7 @@ export function TrainingConfirmModal({
             Cancel
           </Button>
           <Button
-            onClick={() => !submitting && onConfirm(Array.from(selectedBoostIds))}
+            onClick={() => !submitting && onConfirm(Array.from(selectedBoostIds), requireFees ? paymentCurrency : undefined)}
             disabled={submitting}
             className={cn(
               'bg-primary text-primary-foreground hover:bg-primary/90',
@@ -442,7 +467,9 @@ export function TrainingConfirmModal({
               </>
             ) : (
               requireFees
-                ? (isRecovery ? 'Pay & Recover (0.01 ERG)' : 'Pay & Train (0.01 ERG)')
+                ? paymentCurrency === 'token' && feeToken && trainingFeeToken
+                  ? (isRecovery ? `Pay & Recover (${trainingFeeToken} ${feeToken.name})` : `Pay & Train (${trainingFeeToken} ${feeToken.name})`)
+                  : (isRecovery ? `Pay & Recover (${(trainingFeeNanoerg ?? 10_000_000) / 1_000_000_000} ERG)` : `Pay & Train (${(trainingFeeNanoerg ?? 10_000_000) / 1_000_000_000} ERG)`)
                 : (isRecovery ? 'Begin Recovery' : 'Start Training')
             )}
           </Button>

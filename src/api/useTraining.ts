@@ -57,6 +57,7 @@ export function useTrain(): MutationResponse<TrainResponse> {
     walletAddress: string,
     boostRewardIds?: string[],
     txId?: string,
+    paymentCurrency?: string,
   ): Promise<TrainResponse> => {
     setLoading(true);
     setError(null);
@@ -65,7 +66,7 @@ export function useTrain(): MutationResponse<TrainResponse> {
       const response = await fetch(`${API_BASE}/train`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatureId, activity, walletAddress, boostRewardIds, txId }),
+        body: JSON.stringify({ creatureId, activity, walletAddress, boostRewardIds, txId, paymentCurrency }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

@@ -38,6 +38,9 @@ export interface GameConfig {
   requireFees?: boolean;
   treasuryErgoTree?: string;
   trainingFeeNanoerg?: number;
+  // Token fee support
+  feeToken?: import('@/types/game').FeeToken | null;
+  babel?: import('@/types/game').BabelConfig;
 }
 
 /**

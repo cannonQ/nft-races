@@ -16,7 +16,7 @@ import {
   getBalance,
   signMessage as ergoSignMessage,
 } from '@/lib/ergo/client';
-import { buildAndSubmitEntryFeeTx, type TxMetadata } from '@/lib/ergo/transactions';
+import { buildAndSubmitEntryFeeTx, buildAndSubmitTokenFeeTx, type TxMetadata } from '@/lib/ergo/transactions';
 import {
   initErgoPaySession,
   pollErgoPayStatus,
@@ -57,6 +57,11 @@ interface WalletContextType {
   signMessage: (message: string) => Promise<SignedMessage>;
   buildAndSubmitEntryFee: (
     feeNanoErgs: number,
+    treasuryErgoTree: string,
+    metadata?: TxMetadata
+  ) => Promise<string>;
+  buildAndSubmitTokenFee: (
+    feeToken: { tokenId: string; amount: bigint },
     treasuryErgoTree: string,
     metadata?: TxMetadata
   ) => Promise<string>;
@@ -351,6 +356,17 @@ export function WalletProvider({ children }: WalletProviderProps) {
     [connected, walletType]
   );
 
+  const buildAndSubmitTokenFee = useCallback(
+    async (feeToken: { tokenId: string; amount: bigint }, treasuryErgoTree: string, metadata?: TxMetadata): Promise<string> => {
+      if (!connected) throw new Error('Wallet not connected');
+      if (walletType !== 'nautilus') {
+        throw new Error('Token transaction signing is not available with ErgoPay wallet');
+      }
+      return await buildAndSubmitTokenFeeTx(feeToken, treasuryErgoTree, metadata);
+    },
+    [connected, walletType]
+  );
+
   const canSign = walletType === 'nautilus';
   const canSubmitTx = walletType === 'nautilus';
 
@@ -370,6 +386,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         canSubmitTx,
         signMessage,
         buildAndSubmitEntryFee,
+        buildAndSubmitTokenFee,
         showWalletSelect,
         setShowWalletSelect,
         connectNautilusWallet,

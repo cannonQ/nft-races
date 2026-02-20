@@ -134,6 +134,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       let result: any;
 
+      // Extract token payment info from stored payload
+      const storedCurrency = txReq.payment_currency || txReq.action_payload?.paymentCurrency;
+      const storedFeeTokenId = txReq.action_payload?.feeTokenId;
+      const storedFeeTokenAmount = txReq.action_payload?.feeTokenAmount;
+
       if (txReq.action_type === 'training_fee') {
         result = await executeTraining({
           creatureId: txReq.creature_id,
@@ -142,6 +147,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           boostRewardIds: txReq.action_payload?.boostRewardIds || undefined,
           recoveryRewardIds: txReq.action_payload?.recoveryRewardIds || undefined,
           txId: detectedTxId,
+          paymentCurrency: storedCurrency || undefined,
+          feeTokenId: storedFeeTokenId || undefined,
+          feeTokenAmount: storedFeeTokenAmount || undefined,
         });
       } else if (txReq.action_type === 'race_entry_fee') {
         // Batch support: action_payload.creatureIds[] if present
@@ -154,6 +162,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               creatureId: cId,
               walletAddress: txReq.wallet_address,
               txId: detectedTxId,
+              paymentCurrency: storedCurrency || undefined,
+              feeTokenId: storedFeeTokenId || undefined,
+              feeTokenAmount: storedFeeTokenAmount || undefined,
             });
             entries.push({ creatureId: cId, entryId: entryResult.entryId });
           }
@@ -164,6 +175,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             creatureId: txReq.creature_id,
             walletAddress: txReq.wallet_address,
             txId: detectedTxId,
+            paymentCurrency: storedCurrency || undefined,
+            feeTokenId: storedFeeTokenId || undefined,
+            feeTokenAmount: storedFeeTokenAmount || undefined,
           });
         }
       } else if (txReq.action_type === 'treatment_fee') {
@@ -172,6 +186,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           treatmentType: txReq.action_payload?.treatmentType,
           walletAddress: txReq.wallet_address,
           txId: detectedTxId,
+          paymentCurrency: storedCurrency || undefined,
+          feeTokenId: storedFeeTokenId || undefined,
+          feeTokenAmount: storedFeeTokenAmount || undefined,
         });
       } else {
         throw new Error(`Unknown action_type: ${txReq.action_type}`);

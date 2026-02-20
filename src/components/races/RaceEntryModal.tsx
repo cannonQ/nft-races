@@ -9,10 +9,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Race, RaceType, CLASS_RARITIES, CLASS_LABELS } from '@/types/game';
+import { Race, RaceType, CLASS_RARITIES, CLASS_LABELS, FeeToken, PaymentCurrency } from '@/types/game';
 import { useCreaturesByWallet, useRaceEntries } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { RarityBadge, ConditionGauge } from '@/components/creatures/StatBar';
+import { PaymentSelector } from '@/components/ui/PaymentSelector';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -20,11 +21,12 @@ interface RaceEntryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   race: Race | null;
-  onConfirm: (creatureIds: string[]) => void;
+  onConfirm: (creatureIds: string[], paymentCurrency?: PaymentCurrency) => void;
   requireFees?: boolean;
   walletType?: 'nautilus' | 'ergopay' | null;
   /** When true, show spinner on button and prevent close (TX is being signed) */
   submitting?: boolean;
+  feeToken?: FeeToken | null;
 }
 
 const typeColors: Record<RaceType, string> = {
@@ -40,14 +42,17 @@ function roundFee(value: number): string {
   return (Math.round(value * 1e8) / 1e8).toString();
 }
 
-export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFees, walletType, submitting }: RaceEntryModalProps) {
+export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFees, walletType, submitting, feeToken }: RaceEntryModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [paymentCurrency, setPaymentCurrency] = useState<PaymentCurrency>('erg');
 
-  // Reset selection when modal opens or race changes — handleClose() only fires
-  // on user-initiated close (Escape/Cancel), not when parent sets open=false.
+  // Reset selection when modal opens or race changes
   useEffect(() => {
-    if (open) setSelected(new Set());
-  }, [open, race?.id]);
+    if (open) {
+      setSelected(new Set());
+      setPaymentCurrency(feeToken ? 'token' : 'erg');
+    }
+  }, [open, race?.id, feeToken, walletType]);
 
   const { address } = useWallet();
   const { data: creatures, loading } = useCreaturesByWallet(address);
@@ -113,7 +118,7 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
 
   const handleConfirm = () => {
     if (selected.size > 0 && !submitting) {
-      onConfirm(Array.from(selected));
+      onConfirm(Array.from(selected), requireFees ? paymentCurrency : undefined);
     }
   };
 
@@ -125,7 +130,12 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
 
   const allSelected = selectableCreatures.length > 0 && selected.size === selectableCreatures.length;
   const totalFee = race.entryFee * selected.size;
-  const unit = requireFees ? 'ERG' : 'credits';
+  const entryFeeToken = race.entryFeeToken ?? feeToken?.default_race_entry_fee ?? null;
+  const totalFeeToken = entryFeeToken ? entryFeeToken * selected.size : null;
+  const showTokenOption = requireFees && feeToken && entryFeeToken && (walletType === 'nautilus' || walletType === 'ergopay');
+  const unit = requireFees
+    ? paymentCurrency === 'token' && feeToken ? feeToken.name : 'ERG'
+    : 'credits';
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -141,19 +151,44 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
         </DialogHeader>
 
         <div className="py-4">
-          {/* Race Info */}
-          <div className="cyber-card rounded-lg p-3 mb-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Entry Fee</span>
-              <span className="font-mono text-foreground">
-                {selected.size > 1
-                  ? `${race.entryFee} x ${selected.size} = ${roundFee(totalFee)} ${unit}`
-                  : `${race.entryFee} ${unit}`
-                }
-              </span>
-            </div>
+          {/* Race Info + Payment Selector */}
+          <div className="space-y-2 mb-4">
+            {showTokenOption ? (
+              <>
+                <PaymentSelector
+                  feeToken={feeToken!}
+                  ergAmount={selected.size > 1
+                    ? `${race.entryFee} x ${selected.size} = ${roundFee(totalFee)}`
+                    : `${race.entryFee}`
+                  }
+                  tokenAmount={selected.size > 1
+                    ? totalFeeToken!
+                    : entryFeeToken!
+                  }
+                  selected={paymentCurrency}
+                  onSelect={setPaymentCurrency}
+                />
+                {selected.size > 1 && paymentCurrency === 'token' && (
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    {entryFeeToken} x {selected.size} = {totalFeeToken} {feeToken!.name}
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="cyber-card rounded-lg p-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Entry Fee</span>
+                  <span className="font-mono text-foreground">
+                    {selected.size > 1
+                      ? `${race.entryFee} x ${selected.size} = ${roundFee(totalFee)} ${unit}`
+                      : `${race.entryFee} ${unit}`
+                    }
+                  </span>
+                </div>
+              </div>
+            )}
             {requireFees && walletType === 'ergopay' && selected.size > 1 && (
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-[10px] text-muted-foreground">
                 ErgoPay: one payment for all creatures.
               </p>
             )}
@@ -284,7 +319,11 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
                   ? `Enter ${selected.size} Creatures`
                   : `Confirm Entry`
                 }
-                {selected.size > 0 && ` (${roundFee(totalFee)} ${unit})`}
+                {selected.size > 0 && (
+                  paymentCurrency === 'token' && feeToken && totalFeeToken
+                    ? ` (${totalFeeToken} ${feeToken.name})`
+                    : ` (${roundFee(totalFee)} ${unit})`
+                )}
               </>
             )}
           </Button>

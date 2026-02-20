@@ -147,6 +147,7 @@ export interface Race {
   name: string;
   raceType: RaceType;
   entryFee: number;
+  entryFeeToken?: number | null;
   maxEntries: number;
   entryCount: number;
   entryDeadline: string;
@@ -249,6 +250,24 @@ export interface Collection {
   name: string;
 }
 
+// Fee token config (from collection's game_config_overrides)
+export interface FeeToken {
+  token_id: string;
+  name: string;
+  decimals: number;
+  training_fee: number;
+  default_race_entry_fee: number;
+  treatment_fees: Record<string, number>;
+}
+
+// Babel config
+export interface BabelConfig {
+  enabled: boolean;
+}
+
+// Payment currency choice
+export type PaymentCurrency = 'erg' | 'token';
+
 // Leaderboard entry
 export interface LeaderboardEntry {
   rank: number;
@@ -317,6 +336,8 @@ export interface LedgerEntry {
   memo: string | null;
   txId: string | null;
   shadow: boolean;
+  feeTokenId: string | null;
+  feeTokenAmount: number | null;
   createdAt: string;
 }
 

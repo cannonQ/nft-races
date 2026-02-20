@@ -1,13 +1,13 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-15
+**Date:** 2026-02-17
 **Phase:** 1 (DB + API — Launch Day)
 
 ---
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 25 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). **Security audit complete** — 37-finding audit across security, code quality, and UX. All critical/high/medium fixes applied: TX dedup, timing-safe auth, rate limiting, input validation, security headers, ownership staleness checks, race capacity triggers, atomic leaderboard upserts, parallel race resolution, and responsive podium layout. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
+Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 25 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). **Dual-currency token fees** — Collections can define a fee token (e.g. CYPX) alongside ERG. Players choose payment currency via PaymentSelector toggle. Token payments use Babel boxes (EIP-0031) for zero-ERG UX — miner fee covered by pre-funded Babel boxes. Full Nautilus + ErgoPay support (both verified on mainnet). Health endpoint monitors Babel box liquidity. **Security audit complete** — 37-finding audit across security, code quality, and UX. All critical/high/medium fixes applied: TX dedup, timing-safe auth, rate limiting, input validation, security headers, ownership staleness checks, race capacity triggers, atomic leaderboard upserts, parallel race resolution, and responsive podium layout. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
@@ -40,6 +40,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **Meditation** — Recovery training action: 0 stat gains, −25 fatigue, +15 sharpness. Uses a training action slot. Recovery-specific UI mode in activity cards, confirm modal, and result modal (hides stat boosts, shows condition changes).
 - **Treatment Center** — Three lockout-based recovery tiers: Stim Pack (6h, −20 fatigue), Cryo Pod (12h, −40 fatigue, sharpness→50), Full Reset (24h, fatigue→0, sharpness→30). Lazy completion model — effects applied when timer expires. Creatures locked from training/racing during treatment. Full ErgoPay + Nautilus + free-play fee flows. Treatment page with creature selection, tier cards, confirm/result dialogs with explorer TX links.
 - **Rarity class races** — Rookie (Common/Uncommon/Rare), Contender (Masterwork/Epic/Relic), Champion (Legendary/Mythic/Cyberium). Entry restricted by creature rarity. Fractional league points (1/7 weight vs open races). Recovery rewards (UTXO-style fatigue reduction packs) awarded from class race placements. Race entry modal filters by class eligibility, shows treatment/already-entered guards.
+- **Dual-currency token fees (CYPX + ERG)** — Per-collection `fee_token` config in `game_config_overrides` JSONB. PaymentSelector toggle in all confirm modals (training, race entry, treatment). Nautilus: client-side Babel box TX via Fleet SDK manual swap (`SConstant.from()` + `ErgoUnsignedInput`/`OutputBuilder`). ErgoPay: server-side Babel box TX in `ergo-tx-builder.ts` with token-aware UTXO selection, POSTed via `ergopay.duckdns.org` relay. Both flows verified on mainnet. Token TX verification on-chain via Explorer API. Credit ledger records `fee_token_id` + `fee_token_amount`. Admin can set per-race `entry_fee_token`. Wallet ledger shows token amounts. Health endpoint monitors Babel box liquidity per collection. CYPX Babel box created and funded on mainnet.
 - **Security hardening (audit complete)** — Timing-safe admin auth, input validation (UUID/address/token/name), TX dedup via `credit_ledger`, on-chain TX amount verification via Explorer API, security headers (X-Frame-Options, HSTS, nosniff, Referrer-Policy, Permissions-Policy), process-local rate limiting on all mutation endpoints, 24h ownership staleness check when Explorer unavailable, race capacity enforcement trigger, atomic leaderboard upsert RPC, SUM-based wallet balance (race-condition-safe), parallel race resolution (~3 queries instead of ~60), reconciliation script for ledger integrity, responsive podium layout on mobile.
 
 ### Open Items
@@ -852,6 +853,129 @@ When `REQUIRE_FEES=true`, `train.ts` and `enter.ts` return HTTP 402 if no `txId`
 
 ### Phase 2 Compatibility
 Treasury box registers (R4-R6) are already written in Phase 1. When Phase 2 scanner arrives, it reads existing boxes to index game actions. The transition from "API writes credit_ledger" to "scanner writes credit_ledger" requires zero schema changes — only the data ingestion pipeline changes.
+
+---
+
+## Token Fee Support — Dual-Currency with Babel Boxes (2026-02-17)
+
+### Overview
+Per-collection dual-currency payment system. Collections can define a fee token (e.g. CYPX for CyberPets) alongside ERG. Players choose which currency to pay with via a toggle in all confirm modals. Token payments use Babel boxes (EIP-0031) so players need zero ERG — miner fee covered by pre-funded Babel box liquidity.
+
+### Fee Schedule (CyberPets — CYPX)
+Reference rate: 0.05 ERG = 187 CYPX (3,740 CYPX/ERG). Admin-set per season, no oracle.
+
+| Action | ERG | CYPX |
+|--------|-----|------|
+| Training / Meditation | 0.01 | 37 |
+| Race Entry (default) | 0.05 | 187 |
+| Stim Pack | 0.005 | 19 |
+| Cryo Pod | 0.01 | 37 |
+| Full Reset | 0.02 | 75 |
+
+### Architecture
+- **Config source**: `collections.game_config_overrides` JSONB → `fee_token` object with `token_id`, `name`, `decimals`, `training_fee`, `default_race_entry_fee`, `treatment_fees`, `entry_fees` (nanoErg→token mapping)
+- **Config endpoint**: `GET /api/v2/config?collectionId=` returns `feeToken` object (null if ERG-only collection)
+- **Nautilus**: Client-side Babel TX via custom babel swap (`SConstant.from()` + manual `ErgoUnsignedInput`/`OutputBuilder`). Fleet SDK `BabelSwapPlugin` bypassed — its `isValidBabelContract` rejects on-chain boxes with `0x18c101` ErgoTree header.
+- **ErgoPay**: Server-side Babel TX builder (`buildUnsignedTokenFeeTx` / `buildUnsignedBatchTokenFeeTx` in `ergo-tx-builder.ts`). Token-aware UTXO selection via `fetchAllUtxos()` + `selectBoxes()` — prioritizes boxes containing the required token, then adds ERG-only boxes if needed. Unsigned TX POSTed to `ergopay.duckdns.org/api/v1/reducedTx` relay (updated to handle context extensions + ErgoTree-based outputs). Verified on mainnet — 37 CYPX training fee paid via mobile wallet.
+- **TX verification**: `verifyTokenTxOnChain()` checks token outputs to treasury via Explorer API
+- **Credit ledger**: `fee_token_id` + `fee_token_amount` columns record which currency was used. `recordLedgerEntry()` MUST be `await`ed — Vercel serverless kills process after response, un-awaited inserts silently lost.
+- **Health monitoring**: `/api/health` queries Babel boxes per collection, reports usable box count + liquidity
+- **Default currency**: Both Nautilus and ErgoPay default to CYPX (token) when fee_token config exists
+- **Race fee auto-calculation**: Admin sets custom `entryFeeToken` → ERG auto-calculated proportionally from rate (`default_race_entry_fee` / collection `entry_fee_nanoerg`). E.g., 500 CYPX → ~0.134 ERG.
+
+### DB Migration (`migrations/020_token_fee_support.sql`)
+```sql
+ALTER TABLE season_races ADD COLUMN entry_fee_token BIGINT DEFAULT NULL;
+ALTER TABLE credit_ledger ADD COLUMN fee_token_id TEXT DEFAULT NULL;
+ALTER TABLE credit_ledger ADD COLUMN fee_token_amount BIGINT DEFAULT NULL;
+ALTER TABLE ergopay_tx_requests ADD COLUMN payment_currency TEXT NOT NULL DEFAULT 'erg';
+```
+
+### Files Changed
+
+**Backend:**
+- `api/_lib/babel-discovery.ts` — **NEW**: Server-side Babel box discovery, selection, price extraction, sigma SInt serialization
+- `api/_lib/ergo-tx-builder.ts` — Added `buildUnsignedTokenFeeTx()`, `buildUnsignedBatchTokenFeeTx()` with Babel box inputs; token-aware UTXO selection (`fetchAllUtxos()` + `selectBoxes()`)
+- `api/_lib/verify-tx.ts` — Added `verifyTokenTxOnChain()` for token amount verification
+- `api/_lib/constants.ts` — Added `MIN_TOKEN_BOX_NANOERG`
+- `api/v2/config.ts` — Returns `feeToken` from merged collection config
+- `api/v2/train.ts` — Token-aware fee gate + TX verification branch
+- `api/v2/races/[id]/enter.ts` — Token-aware fee gate + TX verification branch
+- `api/v2/races/[id]/enter-batch.ts` — Token-aware fee gate + TX verification branch
+- `api/v2/treatment/start.ts` — Token-aware fee gate + TX verification branch
+- `api/_lib/execute-action.ts` — `recordLedgerEntry()` calls now `await`ed (2 sites); token fee fields passed to ledger
+- `api/_lib/execute-treatment.ts` — `recordLedgerEntry()` call now `await`ed
+- `api/v2/ergopay/tx/request.ts` — Accepts `paymentCurrency`, builds token TXs when `'token'`, stores in `action_payload`. User-actionable error messages surfaced for insufficient tokens/funds/depleted Babel boxes.
+- `api/v2/ergopay/tx/status/[requestId].ts` — Passes `paymentCurrency`/`feeTokenId`/`feeTokenAmount` to executors
+- `api/v2/admin/races/create.ts` — Accepts `entryFeeToken` param; auto-calculates proportional ERG from config rate when no explicit ERG fee
+- `api/v2/admin/races/update.ts` — Accepts `entryFeeToken` param
+- `api/v2/admin/seasons/end.ts` — `recordLedgerEntry()` call now `await`ed
+- `api/v2/races/index.ts` — Returns `entryFeeToken` in race mapping; limits bumped to 100/50
+- `api/v2/races/[id]/enter.ts` — Fallback to `default_race_entry_fee` when `entryFeeToken` null
+- `api/v2/races/[id]/enter-batch.ts` — Same fallback
+- `api/v2/wallet/[address]/ledger.ts` — Returns `feeTokenId`/`feeTokenAmount`/`feeTokenName` per entry (name resolved from collection config)
+- `api/health.ts` — Rewritten: Babel box monitoring per collection (box count, usable boxes, token price, health status)
+
+**Frontend:**
+- `src/lib/ergo/babel.ts` — **NEW**: Client-side Babel box discovery + selection
+- `src/lib/ergo/transactions.ts` — Added `buildAndSubmitTokenFeeTx()`, `buildAndSubmitBatchTokenFeeTx()` using custom babel swap (manual `ErgoUnsignedInput`/`OutputBuilder`)
+- `src/components/ui/PaymentSelector.tsx` — **NEW**: Token/ERG toggle component
+- `src/components/training/TrainingConfirmModal.tsx` — PaymentSelector integration (Nautilus only), ERG formatting cleanup
+- `src/components/training/TrainingResultModal.tsx` — `feeTokenName`/`feeTokenAmount` props for token fee display
+- `src/components/races/RaceEntryModal.tsx` — PaymentSelector integration (Nautilus only), fallback to `default_race_entry_fee`
+- `src/components/races/RaceEntryResultModal.tsx` — `feeTokenName`/`feeTokenAmount` props for token fee display
+- `src/components/races/RaceCard.tsx` — Shows token fee (e.g., "500 CYPX") when `entryFeeToken` set, accepts `feeToken` prop
+- `src/pages/Treatment.tsx` — PaymentSelector integration (Nautilus only), ERG formatting cleanup
+- `src/pages/Train.tsx` — Token TX branch + ErgoPay token params + `lastPaymentCurrency` state for result modal
+- `src/pages/Races.tsx` — Token TX branch + ErgoPay token params + `lastPaymentCurrency` state + passes `feeToken` to RaceCard
+- `src/pages/Admin.tsx` — `entryFeeToken` field on race creation; removed `.slice(0,10)` on resolved races
+- `src/pages/WalletLedger.tsx` — Shows `feeTokenName` (resolved from backend) instead of generic "TOKEN"
+- `src/components/ergopay/ErgoPayTxModal.tsx` — Token amount display, ERG formatting cleanup
+- `src/lib/ergo/ergopay-tx.ts` — `tokenAmount`/`tokenName` on `ErgoPayTxRequest`
+- `src/context/WalletContext.tsx` — Added `buildAndSubmitTokenFee`
+- `src/types/game.ts` — Added `FeeToken`, `PaymentCurrency`, extended `GameConfig`/`Race`/`LedgerEntry`
+
+**New Dependency:**
+- `@fleet-sdk/babel-fees-plugin` (EIP-0031 Babel box support for Fleet SDK TX builder)
+
+### Pre-Requisite: Babel Box Creation
+Token payments require at least one funded Babel box on-chain for the CYPX token. Babel box created and verified on mainnet. Explorer returns boxes with dual ErgoTree format (`0x10` compact or `0x18c101` with-size header) — babel-discovery searches both variants.
+
+### Live Testing Fixes (2026-02-17)
+Issues found and fixed during mainnet testing:
+
+1. **`recordLedgerEntry()` not awaited** — Vercel serverless killed process after response, credit_ledger entries silently lost. Added `await` to all 4 call sites (`execute-action.ts` x2, `execute-treatment.ts`, `admin/seasons/end.ts`).
+2. **Result modals showed ERG instead of CYPX** — `TrainingResultModal` and `RaceEntryResultModal` now accept `feeTokenName`/`feeTokenAmount` props, display "37 CYPX paid on-chain" when token payment used.
+3. **Race entry modal missing CYPX toggle** — `race.entryFeeToken` null for races created before token feature. Fallback to `feeToken?.default_race_entry_fee` in `RaceEntryModal.tsx` + `Races.tsx` + backend `enter.ts`/`enter-batch.ts`.
+4. **Default payment currency was ERG** — Changed to CYPX (token) for Nautilus when fee_token config exists. ErgoPay stays ERG-only.
+5. **Wallet ledger showed "-37 TOKEN"** — Backend now builds `tokenIdToName` mapping from collection configs, returns `feeTokenName` per entry.
+6. **Race entry built ERG TX when CYPX selected** — Parent handler in `Races.tsx` was missing the `entryFeeToken` fallback, so condition fell through to ERG. Fixed.
+7. **ERG amounts showed trailing zeros** — Removed `.toFixed(4)` from all ERG displays (TrainingConfirmModal, Treatment, ErgoPayTxModal).
+8. **ErgoPay 502 on token payments** — Babel swap TX structure (context extensions, ErgoTree outputs) incompatible with `ergopay.duckdns.org` relay. PaymentSelector hidden for ErgoPay, server-side guard rejects `paymentCurrency: 'token'`. **RESOLVED** — relay updated, guard removed, PaymentSelector re-enabled. See fix #12+.
+9. **Race fee ERG/CYPX mismatch** — Admin setting `entryFeeToken: 500` left ERG at default 0.05. Now auto-calculates proportional ERG from config rate.
+10. **RaceCard showed "credits" not token fee** — Now shows "500 CYPX" when `entryFeeToken` set, falls back to ERG.
+11. **Races pagination** — Backend limits bumped from 20→100 (resolved) and 20→50 (cancelled). Admin `.slice(0,10)` on resolved races removed.
+
+### ErgoPay Babel TX Fixes (2026-02-19)
+ErgoPay relay (`ergopay.duckdns.org`) updated by partner to handle Babel swap TXs. Server-side token payment guard removed, PaymentSelector re-enabled for ErgoPay wallet type. Verified on mainnet — 37 CYPX training fee paid via mobile wallet.
+
+12. **ErgoPay relay updated** — Partner added support for `input.extension` (context extensions) and `output.ergoTree` (script-based outputs). Both required for Babel swap TXs. Server-side guard in `ergopay/tx/request.ts` removed, PaymentSelector shown for all wallet types.
+13. **Token-aware UTXO selection** — `fetchUtxos()` split into `fetchAllUtxos()` + `selectBoxes()`. Babel TXs require sender boxes containing the fee token — original ERG-only selection caused relay `NotEnoughTokensError`. New selection prioritizes token-bearing boxes, then adds ERG-only boxes if needed.
+14. **ErgoTree bytes must be preserved exactly** — Initial attempt converted Babel ErgoTree from `0x18c101` (with-size) to `0x10` (compact) header. Babel contract checks `selfOutput.propositionBytes == SELF.propositionBytes` — changing header bytes broke the script ("Script reduced to false"). Fix: use `babelBox.ergoTree` directly from on-chain box, never re-encode.
+15. **ErgoPay result banner showed ERG for token payments** — `handleErgoPaySuccess` callbacks in `Train.tsx` and `Races.tsx` now set `lastPaymentCurrency` based on `ergoPayTx?.tokenAmount` so "Payment Confirmed" banner shows "37 CYPX" instead of "0.01 ERG".
+16. **User-actionable error messages** — `request.ts` catch block returns 400 (not 500) for `Insufficient tokens`, `Insufficient funds`, and `Babel fee boxes depleted` errors.
+
+### Testing Checklist
+See [`TEST-token-fees.md`](TEST-token-fees.md) — 40+ items across 10 categories (pre-reqs, config, UI, Nautilus, ErgoPay, free-play, admin, ledger, TX verification, edge cases).
+
+### Technical Reference
+See [`Ergo-Pay-Update-Babel-Fees.md`](Ergo-Pay-Update-Babel-Fees.md) — comprehensive Babel payment documentation covering both Nautilus and ErgoPay flows, common pitfalls, box selection strategies, and sigma serialization details.
+
+### Phase 2 SC Compatibility
+- Season box R5 includes `feeTokenId: Option[Coll[Byte]]` + fee amounts — contracts read this to validate payments
+- Training/race contracts check: if `feeTokenId.isDefined`, validate token amount in treasury output; else validate ERG amount
+- Babel boxes are orthogonal to game contracts — separate input/output pair in TX, invisible to game logic
+- Scanner reads treasury box tokens (not just ERG value) to index `credit_ledger` entries
 
 ---
 

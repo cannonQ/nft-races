@@ -174,6 +174,7 @@ export function useEnterRaceBatch(): MutationResponse<EnterRaceBatchResponse> {
     creatureIds: string[],
     walletAddress: string,
     txId?: string,
+    paymentCurrency?: string,
   ): Promise<EnterRaceBatchResponse> => {
     setLoading(true);
     setError(null);
@@ -182,7 +183,7 @@ export function useEnterRaceBatch(): MutationResponse<EnterRaceBatchResponse> {
       const response = await fetch(`${API_BASE}/races/${raceId}/enter-batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatureIds, walletAddress, txId }),
+        body: JSON.stringify({ creatureIds, walletAddress, txId, paymentCurrency }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

@@ -74,14 +74,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .in('season_id', seasonIds)
         .in('status', ['resolved', 'locked'])
         .order('created_at', { ascending: false })
-        .limit(20),
+        .limit(100),
       supabase
         .from('season_races')
         .select('*, season_race_entries(count)')
         .in('season_id', seasonIds)
         .eq('status', 'cancelled')
         .order('created_at', { ascending: false })
-        .limit(20),
+        .limit(50),
     ]);
 
     function mapRace(race: any) {
@@ -91,6 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: race.name,
         raceType: race.race_type,
         entryFee: nanoErgToErg(race.entry_fee_nanoerg ?? 0),
+        entryFeeToken: race.entry_fee_token ?? null,
         maxEntries: race.max_entries,
         entryCount: race.season_race_entries?.[0]?.count ?? 0,
         entryDeadline: race.entry_deadline,

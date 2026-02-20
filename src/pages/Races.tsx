@@ -10,13 +10,13 @@ import { CollectionFilter } from '@/components/ui/CollectionFilter';
 import { useRaces, useEnterRace, useEnterRaceBatch, useCollections, useGameConfig, useCreaturesByWallet } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { useCollectionFilter } from '@/hooks/useCollectionFilter';
-import { Race } from '@/types/game';
+import { Race, PaymentCurrency } from '@/types/game';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { ErgoPayTxModal } from '@/components/ergopay/ErgoPayTxModal';
 import { requestErgoPayTx, type ErgoPayTxRequest } from '@/lib/ergo/ergopay-tx';
-import { buildAndSubmitBatchEntryFeeTx } from '@/lib/ergo/transactions';
+import { buildAndSubmitBatchEntryFeeTx, buildAndSubmitBatchTokenFeeTx } from '@/lib/ergo/transactions';
 
 export default function Races() {
   const [selectedRace, setSelectedRace] = useState<Race | null>(null);
@@ -27,7 +27,7 @@ export default function Races() {
   const { address, walletType } = useWallet();
   const { data: races, loading, refetch: refetchRaces } = useRaces();
   const { data: collections } = useCollections();
-  const { data: gameConfig } = useGameConfig();
+  const { data: gameConfig } = useGameConfig(selectedRace?.collectionId);
   const enterRace = useEnterRace();
   const enterRaceBatch = useEnterRaceBatch();
   const { data: creatures } = useCreaturesByWallet(address);
@@ -36,12 +36,14 @@ export default function Races() {
   const [showResultModal, setShowResultModal] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
   const [lastEnteredCount, setLastEnteredCount] = useState(0);
+  const [lastPaymentCurrency, setLastPaymentCurrency] = useState<PaymentCurrency | undefined>(undefined);
   // ErgoPay payment state
   const [ergoPayTx, setErgoPayTx] = useState<ErgoPayTxRequest | null>(null);
   const [showErgoPayModal, setShowErgoPayModal] = useState(false);
 
   const requireFees = gameConfig?.requireFees ?? false;
   const treasuryErgoTree = gameConfig?.treasuryErgoTree ?? '';
+  const feeToken = gameConfig?.feeToken ?? null;
 
   const openRaces = useMemo(() => (races?.filter(r => r.status === 'open' && matchesCollection(r.collectionId)) || []), [races, matchesCollection]);
   const runningRaces = useMemo(() => (races?.filter(r => r.status === 'running' && matchesCollection(r.collectionId)) || []), [races, matchesCollection]);
@@ -64,7 +66,7 @@ export default function Races() {
     setShowDetailsModal(true);
   };
 
-  const handleConfirmEntry = async (creatureIds: string[]) => {
+  const handleConfirmEntry = async (creatureIds: string[], paymentCurrency?: PaymentCurrency) => {
     if (!selectedRace || !address || creatureIds.length === 0) return;
     // Keep entry modal open — it shows "Signing..." while Nautilus is up.
     setEntryError(null);
@@ -75,24 +77,44 @@ export default function Races() {
         // Alpha mode: no fees — batch endpoint, no txId
         const result = await enterRaceBatch.mutate(selectedRace.id, creatureIds, address);
         setLastTxId(null);
+        setLastPaymentCurrency(undefined);
         setLastEnteredCount(result.entries.length);
         if (result.errors && result.errors.length > 0) {
           setEntryError(`${result.errors.length} failed: ${result.errors[0].error}`);
         }
       } else if (walletType === 'nautilus') {
-        // Nautilus: build 1 TX with N treasury outputs, sign once, batch endpoint
+        let txId: string;
         const entryFeeNanoerg = Math.round((selectedRace.entryFee ?? 0) * 1_000_000_000);
-        const entries = creatureIds.map(creatureId => ({
-          entryFeeNanoErgs: entryFeeNanoerg,
-          metadata: {
-            actionType: 'race',
-            tokenId: (creatures || []).find(c => c.id === creatureId)?.tokenId ?? '',
-            context: selectedRace.id,
-          },
-        }));
-        const txId = await buildAndSubmitBatchEntryFeeTx(entries, treasuryErgoTree);
-        const result = await enterRaceBatch.mutate(selectedRace.id, creatureIds, address, txId);
+        const entryFeeToken = selectedRace.entryFeeToken ?? feeToken?.default_race_entry_fee ?? null;
+
+        if (paymentCurrency === 'token' && feeToken && entryFeeToken) {
+          // Token payment via Babel box
+          const entries = creatureIds.map(creatureId => ({
+            feeTokenId: feeToken.token_id,
+            feeTokenAmount: BigInt(entryFeeToken) * BigInt(10 ** feeToken.decimals),
+            metadata: {
+              actionType: 'race',
+              tokenId: (creatures || []).find(c => c.id === creatureId)?.tokenId ?? '',
+              context: selectedRace.id,
+            },
+          }));
+          txId = await buildAndSubmitBatchTokenFeeTx(entries, treasuryErgoTree);
+        } else {
+          // ERG payment
+          const entries = creatureIds.map(creatureId => ({
+            entryFeeNanoErgs: entryFeeNanoerg,
+            metadata: {
+              actionType: 'race',
+              tokenId: (creatures || []).find(c => c.id === creatureId)?.tokenId ?? '',
+              context: selectedRace.id,
+            },
+          }));
+          txId = await buildAndSubmitBatchEntryFeeTx(entries, treasuryErgoTree);
+        }
+
+        const result = await enterRaceBatch.mutate(selectedRace.id, creatureIds, address, txId, paymentCurrency);
         setLastTxId(txId);
+        setLastPaymentCurrency(paymentCurrency);
         setLastEnteredCount(result.entries.length);
         if (result.errors && result.errors.length > 0) {
           setEntryError(`${result.errors.length} failed: ${result.errors[0].error}`);
@@ -105,6 +127,7 @@ export default function Races() {
           walletAddress: address,
           creatureIds,
           raceId: selectedRace.id,
+          paymentCurrency,
         });
         setErgoPayTx(txReq);
         setShowErgoPayModal(true);
@@ -128,11 +151,12 @@ export default function Races() {
 
   const handleErgoPayEntrySuccess = useCallback((_result: any, txId: string) => {
     setShowErgoPayModal(false);
+    setLastPaymentCurrency(ergoPayTx?.tokenAmount != null ? 'token' : 'erg');
     setErgoPayTx(null);
     setLastTxId(txId || null);
     // lastEnteredCount already set when ErgoPay flow started
     setShowResultModal(true);
-  }, []);
+  }, [ergoPayTx]);
 
   const handleErgoPayEntryExpired = useCallback(() => {
     setShowErgoPayModal(false);
@@ -190,7 +214,7 @@ export default function Races() {
                       className="animate-slide-up"
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
-                      <RaceCard race={race} onEnter={handleEnterRace} onViewDetails={handleViewDetails} />
+                      <RaceCard race={race} onEnter={handleEnterRace} onViewDetails={handleViewDetails} feeToken={feeToken} />
                     </div>
                   ))}
                 </div>
@@ -210,7 +234,7 @@ export default function Races() {
                       className="animate-slide-up"
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
-                      <RaceCard race={race} onEnter={handleEnterRace} onViewDetails={handleViewDetails} onExpired={handleRaceExpired} />
+                      <RaceCard race={race} onEnter={handleEnterRace} onViewDetails={handleViewDetails} feeToken={feeToken} onExpired={handleRaceExpired} />
                     </div>
                   ))}
                 </div>
@@ -281,6 +305,7 @@ export default function Races() {
           requireFees={requireFees}
           walletType={walletType}
           submitting={isEntering}
+          feeToken={feeToken}
         />
 
         {/* Entry Result Modal */}
@@ -291,13 +316,19 @@ export default function Races() {
             if (!open) {
               setSelectedRace(null);
               setLastTxId(null);
+              setLastPaymentCurrency(undefined);
               refetchRaces();
             }
           }}
           race={selectedRace}
           enteredCount={lastEnteredCount}
           txId={lastTxId}
-          feeErg={requireFees && selectedRace ? Math.round(selectedRace.entryFee * lastEnteredCount * 1e8) / 1e8 : undefined}
+          feeErg={requireFees && lastPaymentCurrency !== 'token' && selectedRace ? Math.round(selectedRace.entryFee * lastEnteredCount * 1e8) / 1e8 : undefined}
+          feeTokenName={lastPaymentCurrency === 'token' && feeToken ? feeToken.name : undefined}
+          feeTokenAmount={lastPaymentCurrency === 'token' && feeToken && selectedRace
+            ? (selectedRace.entryFeeToken ?? feeToken.default_race_entry_fee ?? 0) * lastEnteredCount
+            : undefined
+          }
         />
 
         {ergoPayTx && (
@@ -310,6 +341,8 @@ export default function Races() {
             description="Race entry fee payment"
             onSuccess={handleErgoPayEntrySuccess}
             onExpired={handleErgoPayEntryExpired}
+            tokenAmount={ergoPayTx.tokenAmount}
+            tokenName={ergoPayTx.tokenName}
           />
         )}
       </div>

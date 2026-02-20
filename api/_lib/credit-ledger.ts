@@ -27,6 +27,8 @@ export interface LedgerEntry {
   memo?: string;
   txId?: string;               // on-chain transaction ID (when real payment made)
   shadow?: boolean;            // true = no real tx, false = real payment. Defaults to true.
+  feeTokenId?: string;         // token ID if paid with token (null = ERG)
+  feeTokenAmount?: number;     // amount in token units
 }
 
 /**
@@ -65,6 +67,8 @@ export async function recordLedgerEntry(entry: LedgerEntry): Promise<void> {
       memo: entry.memo ?? null,
       shadow: entry.shadow ?? true,
       tx_id: entry.txId ?? null,
+      fee_token_id: entry.feeTokenId ?? null,
+      fee_token_amount: entry.feeTokenAmount ?? null,
     });
 
     if (error) {

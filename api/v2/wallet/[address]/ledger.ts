@@ -4,6 +4,7 @@ import { nanoErgToErg } from '../../../_lib/constants.js';
 import { getWalletBalance } from '../../../_lib/credit-ledger.js';
 import { getActiveSeasons, getCreatureImageUrl, getCreatureFallbackImageUrl, getCreatureDisplayName } from '../../../_lib/helpers.js';
 import { getLoaderBySlug } from '../../../_lib/collections/registry.js';
+import { getGameConfig } from '../../../_lib/config.js';
 import type { CollectionLoader } from '../../../_lib/collections/types.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -137,6 +138,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       seasonNameMap[s.id] = s.name ?? 'Season';
     }
 
+    // Build tokenId → name lookup from collection fee_token configs
+    const tokenIdToName: Record<string, string> = {};
+    const uniqueCollectionIds = [...new Set(seasons.map((s: any) => s.collection_id).filter(Boolean))];
+    for (const colId of uniqueCollectionIds) {
+      const cfg = await getGameConfig(colId);
+      if (cfg?.fee_token?.token_id && cfg?.fee_token?.name) {
+        tokenIdToName[cfg.fee_token.token_id] = cfg.fee_token.name;
+      }
+    }
+
     return res.status(200).json({
       balance,
       balanceErg: nanoErgToErg(balance),
@@ -171,6 +182,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           memo: e.memo,
           txId: e.tx_id ?? null,
           shadow: e.shadow ?? true,
+          feeTokenId: e.fee_token_id ?? null,
+          feeTokenAmount: e.fee_token_amount ?? null,
+          feeTokenName: e.fee_token_id ? (tokenIdToName[e.fee_token_id] ?? null) : null,
           createdAt: e.created_at,
         };
       }),
