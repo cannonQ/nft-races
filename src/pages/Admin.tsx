@@ -4,10 +4,13 @@ import { AlertCircle, Plus, Trophy, RefreshCw, Pencil, X, Save, RotateCcw, Ban, 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { API_BASE } from '@/api/config';
 import { useGameConfig } from '@/api';
 import { getClassRarities } from '@/types/game';
+import { ScheduleBuilder } from '@/components/admin/ScheduleBuilder';
+import { CsvImport } from '@/components/admin/CsvImport';
 
 const RACE_TYPES = ['sprint', 'distance', 'technical', 'mixed', 'hazard'] as const;
 
@@ -769,6 +772,55 @@ export default function Admin() {
                             <span className="ml-2 px-1.5 py-0.5 rounded bg-muted/40 text-[10px] uppercase">shadow</span>
                           </p>
 
+                          {/* Race history */}
+                          {payoutData.races?.length > 0 && (
+                            <div>
+                              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                                Races ({payoutData.races.length})
+                              </p>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-xs text-muted-foreground uppercase border-b border-border/30">
+                                      <th className="text-left py-1.5 pr-2">Name</th>
+                                      <th className="text-left py-1.5 px-2">Type</th>
+                                      <th className="text-left py-1.5 px-2">Class</th>
+                                      <th className="text-center py-1.5 px-2">Entries</th>
+                                      <th className="text-left py-1.5 px-2">Status</th>
+                                      <th className="text-left py-1.5 pl-2">Deadline</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {payoutData.races.map((r: any) => (
+                                      <tr key={r.id} className="border-b border-border/10">
+                                        <td className="py-1.5 pr-2 text-foreground">{r.name}</td>
+                                        <td className="py-1.5 px-2 text-muted-foreground uppercase text-xs">{r.raceType}</td>
+                                        <td className="py-1.5 px-2 text-xs">
+                                          {r.rarityClass ? (
+                                            <span className="text-yellow-400 uppercase font-semibold">{r.rarityClass}</span>
+                                          ) : (
+                                            <span className="text-muted-foreground">Open</span>
+                                          )}
+                                        </td>
+                                        <td className="py-1.5 px-2 text-center text-xs">{r.entryCount}/{r.maxEntries}</td>
+                                        <td className="py-1.5 px-2 text-xs">
+                                          <span className={
+                                            r.status === 'resolved' ? 'text-accent' :
+                                            r.status === 'cancelled' ? 'text-destructive' :
+                                            'text-muted-foreground'
+                                          }>{r.status}</span>
+                                        </td>
+                                        <td className="py-1.5 pl-2 text-xs text-muted-foreground">
+                                          {new Date(r.entryDeadline).toLocaleDateString()}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Creature payout table */}
                           {payoutData.creatures?.length > 0 && (
                             <div className="overflow-x-auto">
@@ -826,114 +878,144 @@ export default function Admin() {
 
         {/* ═══════════ RACE MANAGEMENT ═══════════ */}
 
-        {/* Create Race */}
+        {/* Create Races — Tabbed: Single | Schedule Builder | CSV Import */}
         <Card className="cyber-card">
           <CardHeader>
             <CardTitle className="font-display text-lg flex items-center gap-2">
               <Plus className="w-5 h-5" />
-              Create Race
+              Create Races
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {activeSeasons.length > 1 && (
-                <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Collection</label>
-                  <select
-                    value={raceCollectionId}
-                    onChange={e => setRaceCollectionId(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  >
-                    <option value="">All / Default</option>
-                    {activeSeasons.map((s: any) => (
-                      <option key={s.collectionId} value={s.collectionId}>{s.collectionName}</option>
-                    ))}
-                  </select>
+          <CardContent>
+            <Tabs defaultValue="single" className="w-full">
+              <TabsList className="mb-4">
+                <TabsTrigger value="single">Single Race</TabsTrigger>
+                <TabsTrigger value="schedule">Schedule Builder</TabsTrigger>
+                <TabsTrigger value="csv">CSV Import</TabsTrigger>
+              </TabsList>
+
+              {/* ── Single Race (existing form) ── */}
+              <TabsContent value="single" className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {activeSeasons.length > 1 && (
+                    <div>
+                      <label className="block text-sm text-muted-foreground mb-1">Collection</label>
+                      <select
+                        value={raceCollectionId}
+                        onChange={e => setRaceCollectionId(e.target.value)}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      >
+                        <option value="">All / Default</option>
+                        {activeSeasons.map((s: any) => (
+                          <option key={s.collectionId} value={s.collectionId}>{s.collectionName}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Race Name</label>
+                    <input
+                      type="text"
+                      value={raceName}
+                      onChange={e => setRaceName(e.target.value)}
+                      placeholder="e.g. Sprint Showdown #1"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Race Type</label>
+                    <select
+                      value={raceType}
+                      onChange={e => setRaceType(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      {RACE_TYPES.map(t => (
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Deadline (minutes from now)</label>
+                    <input
+                      type="number"
+                      value={deadlineMinutes}
+                      onChange={e => setDeadlineMinutes(Number(e.target.value))}
+                      min={1}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Max Entries</label>
+                    <input
+                      type="number"
+                      value={maxEntries}
+                      onChange={e => setMaxEntries(Number(e.target.value))}
+                      min={2}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Rarity Class</label>
+                    <select
+                      value={raceRarityClass}
+                      onChange={e => setRaceRarityClass(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      {RARITY_CLASSES.map(rc => (
+                        <option key={rc.value} value={rc.value}>{rc.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">Token Fee (optional)</label>
+                    <input
+                      type="number"
+                      value={raceEntryFeeToken}
+                      onChange={e => setRaceEntryFeeToken(e.target.value)}
+                      min={0}
+                      placeholder="e.g. 100 CYPX"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
                 </div>
-              )}
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">Race Name</label>
-                <input
-                  type="text"
-                  value={raceName}
-                  onChange={e => setRaceName(e.target.value)}
-                  placeholder="e.g. Sprint Showdown #1"
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">Race Type</label>
-                <select
-                  value={raceType}
-                  onChange={e => setRaceType(e.target.value)}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoResolve}
+                    onChange={e => setAutoResolve(e.target.checked)}
+                    className="w-4 h-4 rounded border-border bg-background accent-primary"
+                  />
+                  <span className="text-sm text-muted-foreground">Auto-resolve when deadline passes</span>
+                </label>
+                <Button
+                  onClick={handleCreateRace}
+                  disabled={creating || !raceName.trim()}
+                  className="glow-cyan"
                 >
-                  {RACE_TYPES.map(t => (
-                    <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">Deadline (minutes from now)</label>
-                <input
-                  type="number"
-                  value={deadlineMinutes}
-                  onChange={e => setDeadlineMinutes(Number(e.target.value))}
-                  min={1}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  {creating ? 'Creating...' : 'Create Race'}
+                </Button>
+              </TabsContent>
+
+              {/* ── Schedule Builder ── */}
+              <TabsContent value="schedule">
+                <ScheduleBuilder
+                  secret={secret}
+                  collections={collections}
+                  activeSeasons={activeSeasons}
+                  onCreated={loadData}
                 />
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">Max Entries</label>
-                <input
-                  type="number"
-                  value={maxEntries}
-                  onChange={e => setMaxEntries(Number(e.target.value))}
-                  min={2}
-                  max={20}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              </TabsContent>
+
+              {/* ── CSV Import ── */}
+              <TabsContent value="csv">
+                <CsvImport
+                  secret={secret}
+                  collections={collections}
+                  activeSeasons={activeSeasons}
+                  onCreated={loadData}
                 />
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">Rarity Class</label>
-                <select
-                  value={raceRarityClass}
-                  onChange={e => setRaceRarityClass(e.target.value)}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  {RARITY_CLASSES.map(rc => (
-                    <option key={rc.value} value={rc.value}>{rc.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">Token Fee (optional)</label>
-                <input
-                  type="number"
-                  value={raceEntryFeeToken}
-                  onChange={e => setRaceEntryFeeToken(e.target.value)}
-                  min={0}
-                  placeholder="e.g. 100 CYPX"
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoResolve}
-                onChange={e => setAutoResolve(e.target.checked)}
-                className="w-4 h-4 rounded border-border bg-background accent-primary"
-              />
-              <span className="text-sm text-muted-foreground">Auto-resolve when deadline passes</span>
-            </label>
-            <Button
-              onClick={handleCreateRace}
-              disabled={creating || !raceName.trim()}
-              className="glow-cyan"
-            >
-              {creating ? 'Creating...' : 'Create Race'}
-            </Button>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
@@ -995,7 +1077,6 @@ export default function Admin() {
                               value={editMaxEntries}
                               onChange={e => setEditMaxEntries(Number(e.target.value))}
                               min={2}
-                              max={20}
                               className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                             />
                           </div>

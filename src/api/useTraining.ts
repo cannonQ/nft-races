@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrainingLogEntry, TrainResponse, Activity, ApiResponse, MutationResponse } from '@/types/game';
+import { TrainingLogEntry, TrainResponse, BatchTrainResponse, BatchTrainCreatureInput, Activity, ApiResponse, MutationResponse } from '@/types/game';
 import { API_BASE } from './config';
 
 /**
@@ -85,4 +85,46 @@ export function useTrain(): MutationResponse<TrainResponse> {
   }, []);
 
   return { mutate: mutate as (...args: unknown[]) => Promise<TrainResponse>, loading, error };
+}
+
+/**
+ * Execute batch training for multiple creatures
+ * POST ${API_BASE}/train-batch
+ */
+export function useTrainBatch(): MutationResponse<BatchTrainResponse> {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const mutate = useCallback(async (
+    creatures: BatchTrainCreatureInput[],
+    walletAddress: string,
+    txId?: string,
+    paymentCurrency?: string,
+  ): Promise<BatchTrainResponse> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/train-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creatures, walletAddress, txId, paymentCurrency }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${response.status}`);
+      }
+      return await response.json().catch(() => {
+        throw new Error('Server returned an invalid response. The training may have succeeded — please refresh and check your creatures.');
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Batch training failed');
+      setError(error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { mutate: mutate as (...args: unknown[]) => Promise<BatchTrainResponse>, loading, error };
 }

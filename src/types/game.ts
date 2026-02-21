@@ -245,6 +245,22 @@ export interface TrainResponse {
   nextActionAt: string | null;
 }
 
+// Batch training input (per creature)
+export interface BatchTrainCreatureInput {
+  creatureId: string;
+  activity: string;
+  boostRewardIds?: string[];
+  recoveryRewardIds?: string[];
+}
+
+// Batch training mutation response
+export interface BatchTrainResponse {
+  success: boolean;
+  partial?: boolean;
+  results: Array<{ creatureId: string; result: TrainResponse }>;
+  errors?: Array<{ creatureId: string; error: string }>;
+}
+
 // Season data
 export interface Season {
   id: string;

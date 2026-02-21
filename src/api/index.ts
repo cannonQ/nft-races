@@ -20,9 +20,10 @@ export {
 } from './useCreatures';
 
 // Training
-export { 
-  useTrainingLog, 
-  useTrain 
+export {
+  useTrainingLog,
+  useTrain,
+  useTrainBatch,
 } from './useTraining';
 
 // Races
@@ -64,6 +65,8 @@ export type {
   RaceResults,
   TrainingLogEntry,
   TrainResponse,
+  BatchTrainCreatureInput,
+  BatchTrainResponse,
   Season,
   Collection,
   LeaderboardEntry,
