@@ -127,11 +127,27 @@ export async function signAndSubmitTx(transactionToSign: unknown): Promise<strin
 // ============================================
 
 /**
+ * Calculate the total ERG needed for change boxes based on token count in selected UTXOs.
+ */
+function calcChangeCost(inputs: ErgoBox[]): number {
+  const changeAssets = collectChangeAssets(inputs);
+  const numChangeBoxes = Math.max(1, Math.ceil(changeAssets.length / MAX_TOKENS_PER_BOX));
+  let cost = minBoxValue(Math.min(changeAssets.length, MAX_TOKENS_PER_BOX));
+  for (let i = 1; i < numChangeBoxes; i++) {
+    const chunkSize = Math.min(MAX_TOKENS_PER_BOX, changeAssets.length - i * MAX_TOKENS_PER_BOX);
+    cost += minBoxValue(chunkSize);
+  }
+  return cost;
+}
+
+/**
  * Get UTXOs from the connected wallet that cover the required nanoErgs amount.
- * Returns the input boxes and the total excess ERG (for change calculation).
+ * If the initial selection carries many tokens (raising the change box cost),
+ * retries with a higher amount to ensure sufficient ERG for the change output.
  */
 async function getWalletUtxos(
-  requiredNanoErgs: number
+  requiredNanoErgs: number,
+  feeAndPayment: number,
 ): Promise<{ inputs: ErgoBox[]; totalInputValue: number }> {
   if (!window.ergo) throw new Error('Wallet not connected');
 
@@ -140,18 +156,41 @@ async function getWalletUtxos(
   });
 
   if (!utxos || utxos.length === 0) {
-    throw new Error('Not enough balance in wallet');
+    throw new Error('Not enough ERG in wallet');
   }
 
-  const totalInputValue = utxos.reduce(
+  let totalInputValue = utxos.reduce(
     (sum, box) => sum + parseInt(box.value, 10),
     0
   );
 
-  if (totalInputValue < requiredNanoErgs) {
-    throw new Error(
-      `Insufficient funds. Need ${requiredNanoErgs} nanoERG, have ${totalInputValue}`
-    );
+  // Check if the selected UTXOs carry enough ERG for the actual change cost
+  const actualChangeCost = calcChangeCost(utxos);
+  const actualRequired = feeAndPayment + actualChangeCost;
+
+  if (totalInputValue < actualRequired) {
+    // Retry with the real amount needed (tokens made change box more expensive)
+    const retry = await window.ergo.get_utxos({
+      nanoErgs: actualRequired.toString(),
+    });
+
+    if (!retry || retry.length === 0) {
+      const shortfall = (actualRequired - totalInputValue) / 1e9;
+      throw new Error(
+        `Insufficient ERG. Your wallet's UTXOs carry many tokens, requiring ~${(actualChangeCost / 1e9).toFixed(4)} ERG for the change output. Need ~${shortfall.toFixed(4)} more ERG.`
+      );
+    }
+
+    totalInputValue = retry.reduce((sum, box) => sum + parseInt(box.value, 10), 0);
+
+    if (totalInputValue < actualRequired) {
+      const shortfall = (actualRequired - totalInputValue) / 1e9;
+      throw new Error(
+        `Insufficient ERG. Your wallet's UTXOs carry many tokens, requiring ~${(actualChangeCost / 1e9).toFixed(4)} ERG for the change output. Need ~${shortfall.toFixed(4)} more ERG.`
+      );
+    }
+
+    return { inputs: retry, totalInputValue };
   }
 
   return { inputs: utxos, totalInputValue };
@@ -244,9 +283,10 @@ export async function buildAndSubmitEntryFeeTx(
 ): Promise<string> {
   if (!window.ergo) throw new Error('Wallet not connected');
 
-  // 1. Collect input UTXOs (initial estimate — may need more for extra change boxes)
-  const initialRequired = entryFeeNanoErgs + TX_FEE + CHANGE_BOX_VALUE;
-  const { inputs, totalInputValue } = await getWalletUtxos(initialRequired);
+  // 1. Collect input UTXOs (token-aware: retries if selected boxes carry many tokens)
+  const feeAndPayment = entryFeeNanoErgs + TX_FEE;
+  const initialRequired = feeAndPayment + CHANGE_BOX_VALUE;
+  const { inputs, totalInputValue } = await getWalletUtxos(initialRequired, feeAndPayment);
 
   // 2. Get current block height
   const blockHeight = await getCurrentHeight();
@@ -269,8 +309,12 @@ export async function buildAndSubmitEntryFeeTx(
 
   // 6. Calculate total change ERG and verify sufficient funds
   const totalChangeErg = totalInputValue - entryFeeNanoErgs - TX_FEE;
-  if (totalChangeErg < minBoxValue(Math.min(changeAssets.length, MAX_TOKENS_PER_BOX)) + overflowBoxCost) {
-    throw new Error('Insufficient funds after fees');
+  const requiredChangeCost = minBoxValue(Math.min(changeAssets.length, MAX_TOKENS_PER_BOX)) + overflowBoxCost;
+  if (totalChangeErg < requiredChangeCost) {
+    const shortfall = ((requiredChangeCost - totalChangeErg) / 1e9).toFixed(4);
+    throw new Error(
+      `Insufficient ERG for change output. Your wallet holds ${changeAssets.length} token types — need ~${shortfall} more ERG. Try consolidating UTXOs or adding ERG to your wallet.`
+    );
   }
 
   // 7. Build output boxes
@@ -352,10 +396,11 @@ export async function buildAndSubmitBatchEntryFeeTx(
   if (!window.ergo) throw new Error('Wallet not connected');
   if (entries.length === 0) throw new Error('No entries provided');
 
-  // 1. Calculate total ERG needed
+  // 1. Calculate total ERG needed (token-aware: retries if selected boxes carry many tokens)
   const totalEntryFee = entries.reduce((sum, e) => sum + e.entryFeeNanoErgs, 0);
-  const initialRequired = totalEntryFee + TX_FEE + CHANGE_BOX_VALUE;
-  const { inputs, totalInputValue } = await getWalletUtxos(initialRequired);
+  const feeAndPayment = totalEntryFee + TX_FEE;
+  const initialRequired = feeAndPayment + CHANGE_BOX_VALUE;
+  const { inputs, totalInputValue } = await getWalletUtxos(initialRequired, feeAndPayment);
 
   // 2. Get current block height
   const blockHeight = await getCurrentHeight();
@@ -375,8 +420,12 @@ export async function buildAndSubmitBatchEntryFeeTx(
   }
 
   const totalChangeErg = totalInputValue - totalEntryFee - TX_FEE;
-  if (totalChangeErg < minBoxValue(Math.min(changeAssets.length, MAX_TOKENS_PER_BOX)) + overflowBoxCost) {
-    throw new Error('Insufficient funds after fees');
+  const requiredChangeCost = minBoxValue(Math.min(changeAssets.length, MAX_TOKENS_PER_BOX)) + overflowBoxCost;
+  if (totalChangeErg < requiredChangeCost) {
+    const shortfall = ((requiredChangeCost - totalChangeErg) / 1e9).toFixed(4);
+    throw new Error(
+      `Insufficient ERG for change output. Your wallet holds ${changeAssets.length} token types — need ~${shortfall} more ERG. Try consolidating UTXOs or adding ERG to your wallet.`
+    );
   }
 
   // 6. Build N treasury output boxes (one per entry)
