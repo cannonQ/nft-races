@@ -1,13 +1,13 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-19
+**Date:** 2026-02-21
 **Phase:** 1 (DB + API — Beta Season)
 
 ---
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 27 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). **Dual-currency token fees** — Collections can define a fee token (e.g. CYPX) alongside ERG. Players choose payment currency via PaymentSelector toggle. Token payments use Babel boxes (EIP-0031) for zero-ERG UX — miner fee covered by pre-funded Babel boxes. Full Nautilus + ErgoPay support (both verified on mainnet). Health endpoint monitors Babel box liquidity. **Security audit complete** — 37-finding audit across security, code quality, and UX. All critical/high/medium fixes applied: TX dedup, timing-safe auth, rate limiting, input validation, security headers, ownership staleness checks, race capacity triggers, atomic leaderboard upserts, parallel race resolution, and responsive podium layout. **Season payout views** — Admin can expand past seasons to see full payout breakdown by pool (wins/places/shows) and per-creature. Dashboard shows user's confirmed season earnings. Leaderboard earnings accurately separate real payments from free-play shadow entries. **Public Seasons page** — browsable archive of active and completed seasons with collection filters, expandable leaderboards, and real ERG earnings. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
+Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 27 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). **Batch training** — Train up to 20 creatures in a single TX with per-creature activity overrides, auto-applied boosts/recovery packs, and grid matrix UI. Same N-output TX structure as batch race entry. Nautilus ERG + CYPX verified on mainnet. ErgoPay verified on live preview branch. **Dual-currency token fees** — Collections can define a fee token (e.g. CYPX) alongside ERG. Players choose payment currency via PaymentSelector toggle. Token payments use Babel boxes (EIP-0031) for zero-ERG UX — miner fee covered by pre-funded Babel boxes. Full Nautilus + ErgoPay support (both verified on mainnet). Health endpoint monitors Babel box liquidity. **Security audit complete** — 37-finding audit across security, code quality, and UX. All critical/high/medium fixes applied: TX dedup, timing-safe auth, rate limiting, input validation, security headers, ownership staleness checks, race capacity triggers, atomic leaderboard upserts, parallel race resolution, and responsive podium layout. **Season payout views** — Admin can expand past seasons to see full payout breakdown by pool (wins/places/shows) and per-creature. Dashboard shows user's confirmed season earnings. Leaderboard earnings accurately separate real payments from free-play shadow entries. **Public Seasons page** — browsable archive of active and completed seasons with collection filters, expandable leaderboards, and real ERG earnings. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
@@ -29,6 +29,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
 - **Real ERG payments (Nautilus)** — Training (0.01 ERG) and race entry fees paid via Nautilus `sign_tx()`. Treasury box registers R4-R6 encode action type, NFT token ID, and context for on-chain verifiability. Credit ledger records `shadow=false` + `tx_id` for real payments. Both training and race entry verified on mainnet. Whale wallet support: change tokens split across multiple boxes for wallets with 100+ token types.
 - **Single-TX batch race entry** — Entering N creatures into a race uses one TX with N treasury output boxes (each with its own R4-R6 registers). One wallet signature, one miner fee. Works for Nautilus, ErgoPay, and alpha (no-fee) modes. Verified on mainnet: 2 creatures × 0.05 ERG = 2 output boxes at treasury, single txId.
+- **Single-TX batch training** — Train up to 20 creatures in one TX. Grid matrix UI with per-creature activity radio buttons, default activity pills, auto-apply boosts/recovery packs, expandable detail rows. Same N-output TX structure as batch race entry (R4=train, R5=tokenId, R6=activity per output). Same-collection enforced. Nautilus ERG + CYPX verified on mainnet. ErgoPay verified on live preview. Endpoint: `POST /api/v2/train-batch`.
 - **ErgoPay TX flow** — Full reduced TX pipeline with R4-R6 registers. Server-side TX builder fetches UTXOs from Explorer API, builds unsigned TX with sigma-serialized registers, POSTs to `ergopay.duckdns.org/api/v1/reducedTx`. Wallet callback (`replyTo`) + blockchain fallback for payment detection. Verified on mainnet — registers decode correctly on ergexplorer (R4: train, R5: token ID, R6: mental_prep).
 - **TX UX polish** — Confirm modals stay open with "Signing..." spinner while Nautilus is signing (no page flash). Result modals show animated success state + "Payment Confirmed" banner with truncated txId linking to ergexplorer.com. Data refetch deferred to modal close to prevent background flicker. Training result: stat gain animations + progress bars. Race entry result: entry count gauge (X/Y) with animated fill bar. Wallet Ledger entries show explorer link icons for on-chain transactions.
 - **Credit ledger** — Tracks training fees, race entry fees, and season payouts per wallet. Supports both shadow (alpha) and real payments (`shadow` flag + `tx_id` column)
@@ -104,6 +105,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | 14 | `POST /api/v2/treatment/start` | `api/v2/treatment/start.ts` | Start treatment — validates creature state, applies lockout |
 | 15 | `POST /api/v2/ergopay/tx/request` | `api/v2/ergopay/tx/request.ts` | Create ErgoPay payment request (training, race entry, or treatment fees) |
 | 16 | `POST /api/v2/races/:id/enter-batch` | `api/v2/races/[id]/enter-batch.ts` | Batch enter N creatures into race (single txId, all-or-nothing validation) |
+| 17 | `POST /api/v2/train-batch` | `api/v2/train-batch.ts` | Batch train up to 20 creatures (single txId, same collection, partial success 207) |
 
 ### Admin POST Endpoints (Bearer token auth)
 
@@ -173,6 +175,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `useSeasons` | `GET /api/v2/seasons/current` | Query (array) |
 | `useRaceEntries` | `GET /api/v2/races/:id/entries` | Query |
 | `useEnterRaceBatch` | `POST /api/v2/races/:id/enter-batch` | Mutation |
+| `useTrainBatch` | `POST /api/v2/train-batch` | Mutation |
 | `useTreatment` | `POST /api/v2/treatment/start` | Mutation |
 | `useAllSeasons` | `GET /api/v2/seasons` | Query |
 
@@ -1328,6 +1331,74 @@ Batch entry is **better** in Phase 2:
 - Race Entry Contract validates all N entries in one TX: ownership via signing key, stats via AVL tree proof, snapshots appended to R5 (`Coll[Coll[Byte]]`)
 - The Phase 1 "N treasury output boxes" pattern doesn't carry forward directly (Phase 2 spends race boxes, not treasury), but the UX pattern (select N creatures → one sign → all entered) is identical
 - Backend batch endpoint (`enter-batch.ts`) can be adapted to build a single race-box-spending TX with N snapshot appends
+
+---
+
+## Single-TX Batch Training (2026-02-21)
+
+### Overview
+Training N creatures previously required N separate wallet signatures — one TX per creature. Batch training consolidates into a single TX with N treasury output boxes (same pattern as batch race entry), one wallet signature, and one miner fee. Max 20 creatures per batch, all must be from the same collection (same fee config).
+
+### TX Structure: N Output Boxes
+Each creature gets its own treasury output box with independent R4-R6 registers:
+
+| Output | Value | R4 | R5 | R6 |
+|--------|-------|----|----|-----|
+| Treasury box 1 | `trainingFee` | `"train"` | creature 1 token ID | activity (e.g. `"sprint_drills"`) |
+| Treasury box 2 | `trainingFee` | `"train"` | creature 2 token ID | activity (e.g. `"agility_course"`) |
+| Treasury box N | `trainingFee` | `"train"` | creature N token ID | activity |
+| Change box(es) | remainder | — | — | — |
+| Fee box | 0.0011 ERG | — | — | — |
+
+Per-creature activities — each creature can have a different activity (unlike batch race entry where context is always the raceId).
+
+### Frontend UI — Grid Matrix
+`BatchTrainingView` component with:
+- **Default activity pills** — pre-select a column for all creatures (per-creature radio overrides)
+- **Grid radio matrix** — one row per creature, one radio per activity column (Sprint/Dist/Agility/Gate/Cross/Mental/Meditate)
+- **Auto-apply all boosts** — global toggle, boost `▲` indicator per creature shows total multiplier
+- **Expandable detail rows** — click creature to see/override individual boost toggles, recovery packs, stat preview
+- **Disabled rows** — creatures in treatment, on cooldown, or with no actions remaining shown greyed out
+- **Select All / Deselect All** checkbox
+- **Same-collection guard** — warning banner when mixed collections detected
+- **Payment summary** — `N × fee = total` with ERG/CYPX toggle
+
+### Batch Endpoint
+`POST /api/v2/train-batch` — partial success model (207):
+- Rate limited: 10 req/min/IP
+- All creatures must be same collection
+- Max 20 creatures per batch
+- TX verification: `isTxIdUsed()` + `verifyTxOnChain()` / `verifyTokenTxOnChain()` for total amount
+- Loops `executeTraining()` per creature — partial success returns 207 with mixed results/errors
+- Returns `{ success, partial?, results: [{ creatureId, result }], errors?: [{ creatureId, error }] }`
+
+### ErgoPay Flow
+- `request.ts` extended `training_fee` branch: accepts `creatures[]` array, pre-validates ALL atomically (reject entire batch on any failure)
+- `status/[requestId].ts` batch execution: loops `executeTraining()` for each creature from `action_payload.creatures`
+- Reuses existing `buildUnsignedBatchTx()` / `buildUnsignedBatchTokenFeeTx()` for N treasury outputs
+
+### Files Changed
+- `api/v2/train-batch.ts` — **NEW**: Batch training endpoint
+- `src/components/training/BatchTrainingView.tsx` — **NEW**: Grid matrix UI
+- `src/components/training/BatchTrainingResultModal.tsx` — **NEW**: Per-creature result display
+- `api/v2/ergopay/tx/request.ts` — Extended training_fee for batch creatures array
+- `api/v2/ergopay/tx/status/[requestId].ts` — Batch training execution path
+- `src/pages/Train.tsx` — Batch mode toggle, submission flows (Nautilus ERG/CYPX + ErgoPay)
+- `src/api/useTraining.ts` — Added `useTrainBatch()` hook
+- `src/api/index.ts` — Exported `useTrainBatch`
+- `src/types/game.ts` — Added `BatchTrainCreatureInput`, `BatchTrainResponse` types
+- `src/lib/ergo/ergopay-tx.ts` — Added `creatures?` param to ErgoPay request
+
+### Verified
+- **Nautilus CYPX**: 4 creatures × 37 CYPX = 148 CYPX — 4 treasury outputs with correct R4/R5/R6, different activities per creature (sprint_drills, distance_runs, agility_course). Single Babel box consumed.
+- **Nautilus ERG**: 2 creatures × 0.01 ERG — confirmed on mainnet.
+- **ErgoPay CYPX**: 3 creatures × 37 CYPX = 111 CYPX — verified on live preview branch via mobile wallet.
+- **Collection mismatch**: Mixed CyberPets + Aneta Angels correctly rejected.
+- **Insufficient tokens**: Human-readable error ("Insufficient tokens: need 740012 raw units, wallet has 329960").
+- **Cooldown/no-actions**: UI disables rows — cannot select ineligible creatures.
+
+### Phase 2 SC Compatibility
+Same as batch race entry — N treasury outputs map to N creature state transitions. R4/R5/R6 register encoding is already the language the SC will speak. ErgoPay atomic pre-validation mirrors SC all-or-nothing validation.
 
 ---
 
