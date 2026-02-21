@@ -1,13 +1,13 @@
 # CyberPets Racing — Build Status & Roadmap
 
-**Date:** 2026-02-17
-**Phase:** 1 (DB + API — Launch Day)
+**Date:** 2026-02-19
+**Phase:** 1 (DB + API — Beta Season)
 
 ---
 
 ## Current State
 
-Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 25 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). **Dual-currency token fees** — Collections can define a fee token (e.g. CYPX) alongside ERG. Players choose payment currency via PaymentSelector toggle. Token payments use Babel boxes (EIP-0031) for zero-ERG UX — miner fee covered by pre-funded Babel boxes. Full Nautilus + ErgoPay support (both verified on mainnet). Health endpoint monitors Babel box liquidity. **Security audit complete** — 37-finding audit across security, code quality, and UX. All critical/high/medium fixes applied: TX dedup, timing-safe auth, rate limiting, input validation, security headers, ownership staleness checks, race capacity triggers, atomic leaderboard upserts, parallel race resolution, and responsive podium layout. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
+Full game loop is operational: wallet connect → auto-discover NFTs → train → enter races → view results. **Multi-collection support live** — CyberPets and Aneta Angels (4406 tokens) both playable with independent seasons, leaderboards, and stat systems. All 27 API endpoints built, all frontend hooks wired, admin page for race management. Races auto-resolve when their deadline passes (lazy resolution on page load). **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity with reduced league points and recovery rewards. **Batch race entry** — N creatures entered in one TX with one wallet signature and one miner fee (Nautilus + ErgoPay + alpha). **Dual-currency token fees** — Collections can define a fee token (e.g. CYPX) alongside ERG. Players choose payment currency via PaymentSelector toggle. Token payments use Babel boxes (EIP-0031) for zero-ERG UX — miner fee covered by pre-funded Babel boxes. Full Nautilus + ErgoPay support (both verified on mainnet). Health endpoint monitors Babel box liquidity. **Security audit complete** — 37-finding audit across security, code quality, and UX. All critical/high/medium fixes applied: TX dedup, timing-safe auth, rate limiting, input validation, security headers, ownership staleness checks, race capacity triggers, atomic leaderboard upserts, parallel race resolution, and responsive podium layout. **Season payout views** — Admin can expand past seasons to see full payout breakdown by pool (wins/places/shows) and per-creature. Dashboard shows user's confirmed season earnings. Leaderboard earnings accurately separate real payments from free-play shadow entries. **Public Seasons page** — browsable archive of active and completed seasons with collection filters, expandable leaderboards, and real ERG earnings. FAQ page explains all game mechanics. Currently in multi-user alpha testing.
 
 ### What Works
 - Nautilus wallet connect/disconnect with auto-reconnect
@@ -42,6 +42,9 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **Rarity class races** — Rookie/Contender/Champion classes restrict entry by creature rarity. Per-collection rarity-to-class mapping via `game_config_overrides` (CyberPets: 3-3-3 split, Aneta Angels: 2-2-2 split). Fractional league points (1/7 weight vs open races). Recovery rewards (UTXO-style fatigue reduction packs) awarded from class race placements. Race entry modal filters by class eligibility, shows treatment/already-entered guards. Admin dropdown labels update dynamically when switching collections.
 - **Dual-currency token fees (CYPX + ERG)** — Per-collection `fee_token` config in `game_config_overrides` JSONB. PaymentSelector toggle in all confirm modals (training, race entry, treatment). Nautilus: client-side Babel box TX via Fleet SDK manual swap (`SConstant.from()` + `ErgoUnsignedInput`/`OutputBuilder`). ErgoPay: server-side Babel box TX in `ergo-tx-builder.ts` with token-aware UTXO selection, POSTed via `ergopay.duckdns.org` relay. Both flows verified on mainnet. Token TX verification on-chain via Explorer API. Credit ledger records `fee_token_id` + `fee_token_amount`. Admin can set per-race `entry_fee_token`. Wallet ledger shows token amounts. Health endpoint monitors Babel box liquidity per collection. CYPX Babel box created and funded on mainnet.
 - **Security hardening (audit complete)** — Timing-safe admin auth, input validation (UUID/address/token/name), TX dedup via `credit_ledger`, on-chain TX amount verification via Explorer API, security headers (X-Frame-Options, HSTS, nosniff, Referrer-Policy, Permissions-Policy), process-local rate limiting on all mutation endpoints, 24h ownership staleness check when Explorer unavailable, race capacity enforcement trigger, atomic leaderboard upsert RPC, SUM-based wallet balance (race-condition-safe), parallel race resolution (~3 queries instead of ~60), reconciliation script for ledger integrity, responsive podium layout on mobile.
+- **Season payout views** — Admin: expandable past seasons with full payout breakdown (wins 40% / places 35% / shows 25% pools), per-creature table sorted by total payout. Dashboard: Season Earnings card showing user's confirmed earnings with per-creature pool breakdown. Wallet ledger extended with `seasonPayouts` aggregation. Creature profile shows confirmed prestige earnings only (excludes current season speculative amounts).
+- **Public Seasons page** (`/seasons`) — Collection filter pills, active season cards with prize pool + modifier, expandable past season rows with lazy-loaded leaderboard tables. Leaderboard shows rank, creature (image + rarity + link), owner (display name), W/P/S, league points, and real ERG earnings. Total distributed ERG computed from real earnings (per-race fee redistribution + season-end payouts), excluding free-play shadow entries.
+- **Earnings accuracy** — Leaderboard ERG column now separates real from shadow earnings. Per-race prizes cross-referenced with `credit_ledger` to include only races with real (non-shadow) fee payments. Season-end payouts from `credit_ledger` `season_payout` entries. Falls back to `total_earnings_nanoerg` for pure free-play seasons.
 
 ### Open Items
 - [x] **Training cost (0.01 ERG)** — Real ERG payments via Nautilus. Treasury box registers (R4-R6) for on-chain traceability. Verified on mainnet.
@@ -56,7 +59,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | Component | Stack | Status |
 |-----------|-------|--------|
 | Frontend | Vite + React SPA | All pages + admin page |
-| Backend | Vercel Serverless Functions (`api/`) | All 14 endpoints + admin |
+| Backend | Vercel Serverless Functions (`api/`) | All 16 endpoints + admin |
 | Database | Supabase (PostgreSQL) | Schema live, Season 1 created |
 | Blockchain | Ergo (Explorer API for ownership verification) | Integrated — single-call balance fetch |
 | Wallet | Nautilus (EIP-12) + ErgoPay (EIP-20) | Desktop + mobile wallet connect |
@@ -88,6 +91,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | 12 | `GET /api/v2/img/:number` | `api/v2/img/[number].ts` | CyberPets image proxy (ergexplorer → cyberversewiki fallback, 1yr CDN edge cache) |
 | 13 | `GET /api/v2/img/token/:tokenId` | `api/v2/img/token/[tokenId].ts` | Token image proxy (IPFS → ergexplorer fallback, 1yr CDN edge cache) |
 | 14 | `GET /api/v2/races/:id/entries` | `api/v2/races/[id]/entries.ts` | Creature IDs entered by wallet in a race (`?wallet=ADDRESS`) |
+| 15 | `GET /api/v2/seasons` | `api/v2/seasons/index.ts` | All seasons (active + completed), optional `?status=` and `?collectionId=` filters |
 
 ### Public POST Endpoints (User Actions)
 
@@ -111,6 +115,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | 17 | `POST /api/v2/admin/races/resolve` | `api/v2/admin/races/resolve.ts` | Resolve race — deterministic results from Ergo block hash |
 | 18 | `POST /api/v2/admin/races/update` | `api/v2/admin/races/update.ts` | Edit open race (name, type, deadline, max entries) |
 | 19 | `POST /api/v2/admin/races/reopen` | `api/v2/admin/races/reopen.ts` | Reopen cancelled race (sets status back to open) |
+| 20 | `GET /api/v2/admin/seasons/:id/payouts` | `api/v2/admin/seasons/[seasonId]/payouts.ts` | Season payout breakdown (pools, per-creature amounts) |
 
 ### Utility Endpoints
 
@@ -169,6 +174,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 | `useRaceEntries` | `GET /api/v2/races/:id/entries` | Query |
 | `useEnterRaceBatch` | `POST /api/v2/races/:id/enter-batch` | Mutation |
 | `useTreatment` | `POST /api/v2/treatment/start` | Mutation |
+| `useAllSeasons` | `GET /api/v2/seasons` | Query |
 
 ---
 
@@ -853,6 +859,47 @@ When `REQUIRE_FEES=true`, `train.ts` and `enter.ts` return HTTP 402 if no `txId`
 
 ### Phase 2 Compatibility
 Treasury box registers (R4-R6) are already written in Phase 1. When Phase 2 scanner arrives, it reads existing boxes to index game actions. The transition from "API writes credit_ledger" to "scanner writes credit_ledger" requires zero schema changes — only the data ingestion pipeline changes.
+
+---
+
+## Season Payout Views + Public Seasons Page + Earnings Accuracy (2026-02-19)
+
+### Overview
+Three related features: admin payout breakdown views for completed seasons, a public-facing Seasons page, and an earnings accuracy fix to properly separate real from free-play shadow earnings.
+
+### New Files
+- `api/v2/seasons/index.ts` — Public `GET /api/v2/seasons` endpoint (active + completed, optional `?status=`/`?collectionId=` filters)
+- `api/v2/admin/seasons/[seasonId]/payouts.ts` — Admin endpoint returning full payout breakdown: 3 pool totals (wins 40%/places 35%/shows 25%), unique wallets, per-creature payout table with pool-level detail
+- `src/pages/Seasons.tsx` — Public Seasons page with collection filter pills, active season cards, expandable past season rows with lazy-loaded leaderboard + real ERG earnings
+- `src/api/useAllSeasons.ts` — Hook for `GET /api/v2/seasons`
+- `src/components/dashboard/SeasonEarnings.tsx` — Dashboard card showing user's confirmed season earnings with per-creature pool breakdown
+- `migrations/021_class_rarities_per_collection.sql` — Per-collection rarity class mapping in `game_config_overrides`
+- `migrations/022_season_payout_index.sql` — Partial index on `credit_ledger(season_id, tx_type)` for payout queries
+
+### Modified Files
+- `api/v2/leaderboard.ts` — Earnings now computed from real payments only: per-race prizes cross-referenced with `credit_ledger` (non-shadow entries), plus season-end payouts. Falls back to `total_earnings_nanoerg` for pure free-play seasons.
+- `api/v2/wallet/[address]/ledger.ts` — Extended with `seasonPayouts` aggregation (per-creature, per-pool breakdown)
+- `api/v2/admin/seasons/end.ts` — Season-end payout logic records pool type in memo for downstream parsing
+- `api/_lib/helpers.ts` — `totalEarnings` now uses only prestige `lifetime_earnings_nanoerg` (confirmed past-season earnings), excludes current season speculative amounts
+- `src/types/game.ts` — New `SeasonPayoutCreature`, `SeasonPayoutsSummary` interfaces; extended `WalletLedger`
+- `src/pages/Admin.tsx` — Expandable past seasons with lazy-loaded payout breakdown (pool cards + creature table)
+- `src/pages/Dashboard.tsx` — Added `SeasonEarnings` component below `InvestmentSummary`
+- `src/components/creatures/CreatureHeader.tsx` — ERG earnings display: `.toFixed(2)`, "ERG" label, hidden when zero
+- `src/components/layout/Navigation.tsx` — Added Seasons to sidebar + mobile nav (Calendar icon)
+- `src/App.tsx` — Added `/seasons` route
+- `src/api/index.ts` — Added `useAllSeasons` export
+
+### Admin Race History for Past Seasons (2026-02-20)
+Extended the past seasons expandable view to show all races that ran during each season. When expanding a completed season, a "Races (N)" table now appears above the creature payout table showing every race with its name, type, rarity class (Open vs Rookie/Contender/Champion), entry count, status (color-coded: green=resolved, red=cancelled), and deadline date. Data is included in the existing payouts endpoint response (lazy-loaded on expand, cached).
+
+**Modified Files:**
+- `api/v2/admin/seasons/[seasonId]/payouts.ts` — Added `races[]` array to response: queries `season_races` by `season_id`, counts entries per race via `season_race_entries`, returns name/raceType/status/rarityClass/entryCount/maxEntries/entryDeadline/createdAt
+- `src/pages/Admin.tsx` — Race history table in expanded past season section (between stats line and creature payout table)
+
+### Key Design Decisions
+- **Earnings accuracy**: `season_leaderboard.total_earnings_nanoerg` includes shadow (free-play) race prizes because `resolve-race.ts` distributes `entryFee × entries.length` regardless of payment type. Real earnings require cross-referencing `season_race_entries.payout_nanoerg` with `credit_ledger` to find races where at least one non-shadow `race_entry_fee` exists.
+- **Creature profile earnings**: Shows only prestige (confirmed lifetime) earnings, not current season speculative amounts. Current season earnings are unknown until season ends and payouts are computed.
+- **Season total**: Past season header shows actual total distributed ERG (computed from leaderboard entries once loaded), not the admin-set prize pool, since hybrid seasons have both a prize pool and real entry fee redistribution.
 
 ---
 

@@ -140,17 +140,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const storedFeeTokenAmount = txReq.action_payload?.feeTokenAmount;
 
       if (txReq.action_type === 'training_fee') {
-        result = await executeTraining({
-          creatureId: txReq.creature_id,
-          activity: txReq.action_payload?.activity,
-          walletAddress: txReq.wallet_address,
-          boostRewardIds: txReq.action_payload?.boostRewardIds || undefined,
-          recoveryRewardIds: txReq.action_payload?.recoveryRewardIds || undefined,
-          txId: detectedTxId,
-          paymentCurrency: storedCurrency || undefined,
-          feeTokenId: storedFeeTokenId || undefined,
-          feeTokenAmount: storedFeeTokenAmount || undefined,
-        });
+        // Batch training: action_payload.creatures[] if present
+        const batchCreatures: any[] | null = txReq.action_payload?.creatures;
+        if (Array.isArray(batchCreatures) && batchCreatures.length > 1) {
+          const results: Array<{ creatureId: string; result: any }> = [];
+          const errors: Array<{ creatureId: string; error: string }> = [];
+          for (const c of batchCreatures) {
+            try {
+              const trainResult = await executeTraining({
+                creatureId: c.creatureId,
+                activity: c.activity,
+                walletAddress: txReq.wallet_address,
+                boostRewardIds: c.boostRewardIds || undefined,
+                recoveryRewardIds: c.recoveryRewardIds || undefined,
+                txId: detectedTxId,
+                paymentCurrency: storedCurrency || undefined,
+                feeTokenId: storedFeeTokenId || undefined,
+                feeTokenAmount: storedFeeTokenAmount || undefined,
+              });
+              results.push({ creatureId: c.creatureId, result: trainResult });
+            } catch (err: any) {
+              errors.push({ creatureId: c.creatureId, error: err?.message || String(err) });
+            }
+          }
+          result = { success: true, results, ...(errors.length > 0 ? { partial: true, errors } : {}) };
+        } else {
+          result = await executeTraining({
+            creatureId: txReq.creature_id,
+            activity: txReq.action_payload?.activity,
+            walletAddress: txReq.wallet_address,
+            boostRewardIds: txReq.action_payload?.boostRewardIds || undefined,
+            recoveryRewardIds: txReq.action_payload?.recoveryRewardIds || undefined,
+            txId: detectedTxId,
+            paymentCurrency: storedCurrency || undefined,
+            feeTokenId: storedFeeTokenId || undefined,
+            feeTokenAmount: storedFeeTokenAmount || undefined,
+          });
+        }
       } else if (txReq.action_type === 'race_entry_fee') {
         // Batch support: action_payload.creatureIds[] if present
         const batchIds: string[] | null = txReq.action_payload?.creatureIds;

@@ -34,6 +34,13 @@ export interface RequestErgoPayTxParams {
   boostRewardIds?: string[];
   treatmentType?: string;
   paymentCurrency?: 'erg' | 'token';
+  /** Batch training: per-creature activity + boost/recovery config */
+  creatures?: Array<{
+    creatureId: string;
+    activity: string;
+    boostRewardIds?: string[];
+    recoveryRewardIds?: string[];
+  }>;
 }
 
 export async function requestErgoPayTx(params: RequestErgoPayTxParams): Promise<ErgoPayTxRequest> {

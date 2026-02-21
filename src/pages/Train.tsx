@@ -1,20 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle, History } from 'lucide-react';
+import { ArrowLeft, AlertCircle, History, Users } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { useCreature, useCreaturesByWallet, useTrain, useTrainingLog, useGameConfig, useCollections } from '@/api';
+import { useCreature, useCreaturesByWallet, useTrain, useTrainBatch, useTrainingLog, useGameConfig, useCollections } from '@/api';
 import { useWallet } from '@/context/WalletContext';
 import { useCollectionFilter } from '@/hooks/useCollectionFilter';
 import { CollectionFilter } from '@/components/ui/CollectionFilter';
 import { trainingActivities as defaultActivities } from '@/data/trainingActivities';
-import { TrainingActivity, TrainResponse, Activity, StatBlock, StatType, PaymentCurrency } from '@/types/game';
+import { TrainingActivity, TrainResponse, Activity, StatBlock, StatType, PaymentCurrency, BatchTrainCreatureInput, BatchTrainResponse } from '@/types/game';
 import { CreatureTrainHeader } from '@/components/training/CreatureTrainHeader';
 import { ActivityCard } from '@/components/training/ActivityCard';
 import { TrainingConfirmModal } from '@/components/training/TrainingConfirmModal';
 import { TrainingResultModal } from '@/components/training/TrainingResultModal';
+import { BatchTrainingView } from '@/components/training/BatchTrainingView';
+import { BatchTrainingResultModal } from '@/components/training/BatchTrainingResultModal';
 import { BoostBanner } from '@/components/training/BoostBanner';
 import { ActionsDisplay } from '@/components/training/ActionsDisplay';
 import { RewardBadges } from '@/components/creatures/RewardBadges';
@@ -22,6 +24,7 @@ import { PetImage } from '@/components/creatures/PetImage';
 import { TrainingLog } from '@/components/creatures/TrainingLog';
 import { ErgoPayTxModal } from '@/components/ergopay/ErgoPayTxModal';
 import { requestErgoPayTx, type ErgoPayTxRequest } from '@/lib/ergo/ergopay-tx';
+import { buildAndSubmitBatchEntryFeeTx, buildAndSubmitBatchTokenFeeTx } from '@/lib/ergo/transactions';
 
 export default function Train() {
   const { creatureId } = useParams();
@@ -45,14 +48,33 @@ export default function Train() {
   const [showErgoPayModal, setShowErgoPayModal] = useState(false);
   // Pending boost IDs for ErgoPay flow (needed after payment confirms)
   const [pendingBoostIds, setPendingBoostIds] = useState<string[]>([]);
+  // Batch training state
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchTrainResponse | null>(null);
+  const [showBatchResult, setShowBatchResult] = useState(false);
+  const [batchTxId, setBatchTxId] = useState<string | null>(null);
+  const [batchPaymentCurrency, setBatchPaymentCurrency] = useState<PaymentCurrency | undefined>(undefined);
+  const [batchFeeTokenName, setBatchFeeTokenName] = useState<string | undefined>(undefined);
+  const [batchFeeTokenAmount, setBatchFeeTokenAmount] = useState<number | undefined>(undefined);
+  const [batchFeeErg, setBatchFeeErg] = useState<number | undefined>(undefined);
+  // ErgoPay batch state (separate from single-train ergopay)
+  const [batchErgoPayTx, setBatchErgoPayTx] = useState<ErgoPayTxRequest | null>(null);
+  const [showBatchErgoPayModal, setShowBatchErgoPayModal] = useState(false);
 
   const { data: creature, loading: creatureLoading, refetch: refetchCreature } = useCreature(creatureId || null);
-  const { data: userCreatures, loading: creaturesLoading } = useCreaturesByWallet(address);
+  const { data: userCreatures, loading: creaturesLoading, refetch: refetchCreatures } = useCreaturesByWallet(address);
   const { data: collections } = useCollections();
   const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
   const { data: trainingLogs, loading: logsLoading, refetch: refetchLogs } = useTrainingLog(creatureId || null);
   const { data: gameConfig } = useGameConfig(creature?.collectionId);
+  // For batch mode, use first collection's config (batch enforces same collection on backend)
+  const { data: batchGameConfig } = useGameConfig(
+    batchMode && userCreatures && userCreatures.length > 0 ? userCreatures[0].collectionId : undefined,
+  );
   const train = useTrain();
+  const trainBatch = useTrainBatch();
 
   // Merge real gain values from game_config into activity definitions.
   // Falls back to hardcoded defaults if config hasn't loaded yet.
@@ -96,17 +118,158 @@ export default function Train() {
     setTrainError('Payment expired. Please try again.');
   }, []);
 
-  // If no creature selected, show selection view
+  // --- Batch training handlers ---
+
+  const handleBatchErgoPaySuccess = useCallback((result: any, txId: string) => {
+    setShowBatchErgoPayModal(false);
+    setBatchPaymentCurrency(batchErgoPayTx?.tokenAmount != null ? 'token' : 'erg');
+    setBatchErgoPayTx(null);
+    setBatchTxId(txId || null);
+    setBatchResult(result);
+    setShowBatchResult(true);
+  }, [batchErgoPayTx]);
+
+  const handleBatchErgoPayExpired = useCallback(() => {
+    setShowBatchErgoPayModal(false);
+    setBatchErgoPayTx(null);
+    setBatchError('Payment expired. Please try again.');
+  }, []);
+
+  const batchRequireFees = batchGameConfig?.requireFees ?? false;
+  const batchTreasuryErgoTree = batchGameConfig?.treasuryErgoTree ?? '';
+  const batchTrainingFeeNanoerg = batchGameConfig?.trainingFeeNanoerg ?? 10_000_000;
+  const batchFeeToken = batchGameConfig?.feeToken ?? null;
+  const batchTrainingFeeToken = batchFeeToken?.training_fee ?? null;
+
+  const handleBatchSubmit = useCallback(async (
+    batchCreatures: BatchTrainCreatureInput[],
+    paymentCurrency?: PaymentCurrency,
+  ) => {
+    if (!address || batchCreatures.length === 0) return;
+    setBatchError(null);
+    setBatchSubmitting(true);
+
+    // Track fee info for result modal
+    const count = batchCreatures.length;
+
+    try {
+      if (!batchRequireFees) {
+        // Alpha mode: no fees
+        setBatchTxId(null);
+        setBatchPaymentCurrency(undefined);
+        setBatchFeeTokenName(undefined);
+        setBatchFeeTokenAmount(undefined);
+        setBatchFeeErg(undefined);
+        const result = await (trainBatch.mutate as any)(batchCreatures, address);
+        setBatchResult(result);
+        setShowBatchResult(true);
+      } else if (walletType === 'nautilus') {
+        let txId: string;
+
+        if (paymentCurrency === 'token' && batchFeeToken && batchTrainingFeeToken) {
+          // Token payment via Babel box
+          const entries = batchCreatures.map((c) => ({
+            feeTokenId: batchFeeToken.token_id,
+            feeTokenAmount: BigInt(batchTrainingFeeToken) * BigInt(10 ** batchFeeToken.decimals),
+            metadata: {
+              actionType: 'train',
+              tokenId: (userCreatures || []).find((uc) => uc.id === c.creatureId)?.tokenId ?? '',
+              context: c.activity,
+            },
+          }));
+          txId = await buildAndSubmitBatchTokenFeeTx(entries, batchTreasuryErgoTree);
+          setBatchFeeTokenName(batchFeeToken.name);
+          setBatchFeeTokenAmount(batchTrainingFeeToken * count);
+          setBatchFeeErg(undefined);
+        } else {
+          // ERG payment
+          const entries = batchCreatures.map((c) => ({
+            entryFeeNanoErgs: batchTrainingFeeNanoerg,
+            metadata: {
+              actionType: 'train',
+              tokenId: (userCreatures || []).find((uc) => uc.id === c.creatureId)?.tokenId ?? '',
+              context: c.activity,
+            },
+          }));
+          txId = await buildAndSubmitBatchEntryFeeTx(entries, batchTreasuryErgoTree);
+          setBatchFeeErg((batchTrainingFeeNanoerg * count) / 1_000_000_000);
+          setBatchFeeTokenName(undefined);
+          setBatchFeeTokenAmount(undefined);
+        }
+
+        setBatchTxId(txId);
+        setBatchPaymentCurrency(paymentCurrency);
+        const result = await (trainBatch.mutate as any)(batchCreatures, address, txId, paymentCurrency);
+        setBatchResult(result);
+        setShowBatchResult(true);
+      } else if (walletType === 'ergopay') {
+        // ErgoPay: request payment, modal takes over
+        const txReq = await requestErgoPayTx({
+          actionType: 'training_fee',
+          walletAddress: address,
+          creatures: batchCreatures,
+          paymentCurrency,
+        });
+        setBatchErgoPayTx(txReq);
+        setShowBatchErgoPayModal(true);
+        setBatchSubmitting(false);
+        return; // Modal handles the rest
+      }
+    } catch (err) {
+      console.error('[Train] Batch training error:', err);
+      const msg = err instanceof Error
+        ? err.message
+        : typeof err === 'string' ? err
+        : (err && typeof err === 'object' && 'info' in err) ? String((err as any).info)
+        : 'Batch training failed';
+      setBatchError(msg);
+    } finally {
+      setBatchSubmitting(false);
+    }
+  }, [address, walletType, batchRequireFees, batchTreasuryErgoTree, batchTrainingFeeNanoerg, batchFeeToken, batchTrainingFeeToken, trainBatch, userCreatures]);
+
+  const handleBatchResultClose = useCallback(() => {
+    setShowBatchResult(false);
+    setBatchResult(null);
+    setBatchTxId(null);
+    setBatchPaymentCurrency(undefined);
+    setBatchFeeTokenName(undefined);
+    setBatchFeeTokenAmount(undefined);
+    setBatchFeeErg(undefined);
+    // Refresh creature list to show updated stats
+    if (refetchCreatures) refetchCreatures();
+  }, []);
+
+  // Filter creatures by active collection for both single + batch views
+  const filteredCreatures = (userCreatures || []).filter((c) => matchesCollection(c.collectionId));
+
+  // If no creature selected, show selection view (or batch mode)
   if (!creatureId) {
     return (
       <MainLayout>
-        <div className="max-w-4xl mx-auto">
-          <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-2">
-            Training Center
-          </h1>
-          <p className="text-muted-foreground mb-6">
-            Select a creature to begin training
-          </p>
+        <div className={batchMode ? 'max-w-6xl mx-auto' : 'max-w-4xl mx-auto'}>
+          {/* Header with batch toggle */}
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">
+              Training Center
+            </h1>
+            {!batchMode && userCreatures && userCreatures.length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBatchMode(true)}
+                className="border-primary/30 text-primary hover:bg-primary/10"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Batch Train
+              </Button>
+            )}
+          </div>
+          {!batchMode && (
+            <p className="text-muted-foreground mb-6">
+              Select a creature to begin training
+            </p>
+          )}
 
           <CollectionFilter
             collections={collections || []}
@@ -115,7 +278,52 @@ export default function Train() {
             className="mb-4"
           />
 
-          {creaturesLoading ? (
+          {batchMode ? (
+            <>
+              <BatchTrainingView
+                creatures={filteredCreatures}
+                gameConfig={batchGameConfig}
+                requireFees={batchRequireFees}
+                feeToken={batchFeeToken}
+                trainingFeeNanoerg={batchTrainingFeeNanoerg}
+                onSubmit={handleBatchSubmit}
+                submitting={batchSubmitting}
+                error={batchError}
+                onCancel={() => {
+                  setBatchMode(false);
+                  setBatchError(null);
+                }}
+              />
+
+              <BatchTrainingResultModal
+                open={showBatchResult}
+                onOpenChange={(open) => {
+                  if (!open) handleBatchResultClose();
+                }}
+                result={batchResult}
+                creatures={filteredCreatures}
+                txId={batchTxId}
+                feeTokenName={batchFeeTokenName}
+                feeTokenAmount={batchFeeTokenAmount}
+                feeErg={batchFeeErg}
+              />
+
+              {batchErgoPayTx && (
+                <ErgoPayTxModal
+                  open={showBatchErgoPayModal}
+                  onOpenChange={setShowBatchErgoPayModal}
+                  ergoPayUrl={batchErgoPayTx.ergoPayUrl}
+                  requestId={batchErgoPayTx.requestId}
+                  amount={batchErgoPayTx.amount}
+                  description="Batch training fee payment"
+                  onSuccess={handleBatchErgoPaySuccess}
+                  onExpired={handleBatchErgoPayExpired}
+                  tokenAmount={batchErgoPayTx.tokenAmount}
+                  tokenName={batchErgoPayTx.tokenName}
+                />
+              )}
+            </>
+          ) : creaturesLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[1, 2].map((i) => (
                 <Skeleton key={i} className="h-32 rounded-xl" />
@@ -130,10 +338,8 @@ export default function Train() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {userCreatures.filter((c) => matchesCollection(c.collectionId)).map((c) => {
-                // TEMPORARY: Cooldown disabled for alpha testing
-                // const isOnCooldown = c.cooldownEndsAt && new Date(c.cooldownEndsAt) > new Date();
-                const isOnCooldown = false;
+              {filteredCreatures.map((c) => {
+                const isOnCooldown = c.cooldownEndsAt && new Date(c.cooldownEndsAt) > new Date();
                 const hasRewards = c.bonusActions > 0 || c.boosts.length > 0;
                 return (
                   <button
@@ -212,9 +418,7 @@ export default function Train() {
     );
   }
 
-  // TEMPORARY: Cooldown disabled for alpha testing
-  // const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
-  const isOnCooldown = false;
+  const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
 
   const handleSelectActivity = (activity: TrainingActivity) => {
     setSelectedActivity(activity);
@@ -312,7 +516,9 @@ export default function Train() {
       console.error('[Train] Training error:', err);
       const msg = err instanceof Error
         ? err.message
-        : (typeof err === 'string' ? err : JSON.stringify(err) || 'Training failed');
+        : typeof err === 'string' ? err
+        : (err && typeof err === 'object' && 'info' in err) ? String((err as any).info)
+        : 'Training failed';
       setTrainError(msg);
       setShowConfirm(false);
     } finally {

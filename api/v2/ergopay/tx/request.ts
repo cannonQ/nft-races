@@ -63,6 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     boostRewardIds,
     treatmentType,
     paymentCurrency,
+    creatures: batchCreatures,
   } = req.body ?? {};
 
   if (!actionType || !walletAddress) {
@@ -87,43 +88,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let feeTokenIdForPayload: string | undefined;
 
     if (actionType === 'training_fee') {
-      // Validate training prerequisites (fail early before payment)
-      if (!creatureId || !activity) {
-        return res.status(400).json({ error: 'creatureId and activity are required for training' });
+      // Support both single creature and batch creatures[]
+      interface BatchCreature { creatureId: string; activity: string; boostRewardIds?: string[]; recoveryRewardIds?: string[]; }
+      const resolvedCreatures: BatchCreature[] = Array.isArray(batchCreatures) && batchCreatures.length > 0
+        ? batchCreatures
+        : creatureId && activity ? [{ creatureId, activity, boostRewardIds }] : [];
+
+      if (resolvedCreatures.length === 0) {
+        return res.status(400).json({ error: 'creatureId+activity or creatures[] array is required for training' });
       }
 
-      // Verify creature + ownership
-      const { data: creature, error: creatureErr } = await supabase
-        .from('creatures')
-        .select('id, token_id, owner_address, collection_id, collections(name)')
-        .eq('id', creatureId)
-        .single();
+      isBatch = resolvedCreatures.length > 1;
+      const txEntries: Array<{ amountNanoErg: number; metadata: TxMetadata }> = [];
+      let appName = '';
+      let collectionId: string | null = null;
+      let mergedConfig: any = null;
 
-      if (creatureErr || !creature) {
-        return res.status(400).json({ error: 'Creature not found' });
+      // Pre-validate ALL creatures atomically (reject entire batch if any fail)
+      for (const c of resolvedCreatures) {
+        if (!c.creatureId || !c.activity) {
+          return res.status(400).json({ error: 'Each creature must have creatureId and activity' });
+        }
+
+        const { data: creature, error: creatureErr } = await supabase
+          .from('creatures')
+          .select('id, token_id, owner_address, collection_id, collections(name)')
+          .eq('id', c.creatureId)
+          .single();
+
+        if (creatureErr || !creature) {
+          return res.status(400).json({ error: `Creature ${c.creatureId} not found` });
+        }
+
+        // Enforce same collection for batch
+        if (collectionId && creature.collection_id !== collectionId) {
+          return res.status(400).json({ error: 'All creatures in a batch must belong to the same collection' });
+        }
+        collectionId = creature.collection_id;
+
+        const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
+        if (!ownership.ownsToken) {
+          return res.status(403).json({ error: `You do not own creature ${c.creatureId} on-chain` });
+        }
+
+        const season = await getActiveSeason(creature.collection_id);
+        if (!season) {
+          return res.status(400).json({ error: 'No active season for this collection' });
+        }
+
+        if (!mergedConfig) {
+          mergedConfig = await getGameConfig(creature.collection_id);
+        }
+        await getOrCreateCreatureStats(c.creatureId, season.id);
+        const validation = await validateTrainingAction(c.creatureId, season.id, supabase, mergedConfig);
+        if (!validation.valid) {
+          return res.status(400).json({ error: `Creature ${c.creatureId}: ${validation.reason}` });
+        }
+
+        if (!appName) {
+          appName = getAppName((creature as any).collections?.name || 'NFT');
+        }
+
+        txEntries.push({
+          amountNanoErg: TRAINING_FEE_NANOERG,
+          metadata: { actionType: 'train', tokenId: creature.token_id, context: c.activity },
+        });
       }
 
-      const ownership = await verifyNFTOwnership(walletAddress, creature.token_id);
-      if (!ownership.ownsToken) {
-        return res.status(403).json({ error: 'You no longer own this NFT on-chain' });
-      }
-
-      const season = await getActiveSeason(creature.collection_id);
-      if (!season) {
-        return res.status(400).json({ error: 'No active season for this collection' });
-      }
-
-      const mergedConfig = await getGameConfig(creature.collection_id);
-      await getOrCreateCreatureStats(creatureId, season.id);
-      const validation = await validateTrainingAction(creatureId, season.id, supabase, mergedConfig);
-      if (!validation.valid) {
-        return res.status(400).json({ error: validation.reason });
-      }
-
-      const appName = getAppName((creature as any).collections?.name || 'NFT');
-      dbCreatureId = creatureId;
-      amountNanoerg = TRAINING_FEE_NANOERG;
-      const metadata: TxMetadata = { actionType: 'train', tokenId: creature.token_id, context: activity };
+      dbCreatureId = resolvedCreatures[0].creatureId;
+      amountNanoerg = TRAINING_FEE_NANOERG * resolvedCreatures.length;
 
       if (paymentCurrency === 'token') {
         const feeTokenConfig = mergedConfig?.fee_token;
@@ -131,25 +164,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(400).json({ error: 'Token payments not available for this collection' });
         }
         feeTokenIdForPayload = feeTokenConfig.token_id;
-        tokenAmount = feeTokenConfig.training_fee;
+        tokenAmount = feeTokenConfig.training_fee * resolvedCreatures.length;
         tokenName = feeTokenConfig.name || 'TOKEN';
         const tokenDecimals = feeTokenConfig.decimals ?? 0;
-        message = `${appName}: Training Fee (${tokenAmount} ${tokenName})`;
-        unsignedTx = await buildUnsignedTokenFeeTx({
-          senderAddress: walletAddress,
-          treasuryAddress: TREASURY_ADDRESS,
-          feeTokenId: feeTokenConfig.token_id,
-          feeTokenAmount: BigInt(tokenAmount) * BigInt(10 ** tokenDecimals),
-          metadata,
-        });
+        const rawPerEntry = BigInt(feeTokenConfig.training_fee) * BigInt(10 ** tokenDecimals);
+
+        if (isBatch) {
+          message = `${appName}: Training x${resolvedCreatures.length} (${tokenAmount} ${tokenName})`;
+          unsignedTx = await buildUnsignedBatchTokenFeeTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            feeTokenId: feeTokenConfig.token_id,
+            entries: txEntries.map(e => ({
+              feeTokenAmount: rawPerEntry,
+              metadata: e.metadata,
+            })),
+          });
+        } else {
+          message = `${appName}: Training Fee (${feeTokenConfig.training_fee} ${tokenName})`;
+          unsignedTx = await buildUnsignedTokenFeeTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            feeTokenId: feeTokenConfig.token_id,
+            feeTokenAmount: rawPerEntry,
+            metadata: txEntries[0].metadata,
+          });
+        }
       } else {
-        message = `${appName}: Training Fee (0.01 ERG)`;
-        unsignedTx = await buildUnsignedTx({
-          senderAddress: walletAddress,
-          treasuryAddress: TREASURY_ADDRESS,
-          amountNanoErg: amountNanoerg,
-          metadata,
-        });
+        const ergTotal = (amountNanoerg / 1_000_000_000).toFixed(4);
+        if (isBatch) {
+          message = `${appName}: Training x${resolvedCreatures.length} (${ergTotal} ERG)`;
+          unsignedTx = await buildUnsignedBatchTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            entries: txEntries,
+          });
+        } else {
+          message = `${appName}: Training Fee (0.01 ERG)`;
+          unsignedTx = await buildUnsignedTx({
+            senderAddress: walletAddress,
+            treasuryAddress: TREASURY_ADDRESS,
+            amountNanoErg: TRAINING_FEE_NANOERG,
+            metadata: txEntries[0].metadata,
+          });
+        }
       }
 
     } else if (actionType === 'race_entry_fee') {
@@ -393,6 +451,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? creatureIds
       : creatureId ? [creatureId] : [];
 
+    // Build action_payload — batch training stores per-creature config in `creatures` key
+    const actionPayload: Record<string, any> = {
+      activity: activity ?? null,
+      boostRewardIds: boostRewardIds ?? null,
+      treatmentType: treatmentType ?? null,
+      creatureIds: (isBatch && actionType === 'race_entry_fee') ? resolvedCreatureIds : null,
+      paymentCurrency: paymentCurrency ?? null,
+      feeTokenId: feeTokenIdForPayload ?? null,
+      feeTokenAmount: tokenAmount ?? null,
+    };
+
+    // For batch training, store per-creature activity/boost/recovery config
+    if (actionType === 'training_fee' && Array.isArray(batchCreatures) && batchCreatures.length > 1) {
+      actionPayload.creatures = batchCreatures;
+    }
+
     // Store in ergopay_tx_requests BEFORE calling the service
     const { error: insertErr } = await supabase.from('ergopay_tx_requests').insert({
       id: requestId,
@@ -401,15 +475,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       amount_nanoerg: amountNanoerg,
       creature_id: dbCreatureId,
       race_id: raceId ?? null,
-      action_payload: {
-        activity: activity ?? null,
-        boostRewardIds: boostRewardIds ?? null,
-        treatmentType: treatmentType ?? null,
-        creatureIds: isBatch ? resolvedCreatureIds : null,
-        paymentCurrency: paymentCurrency ?? null,
-        feeTokenId: feeTokenIdForPayload ?? null,
-        feeTokenAmount: tokenAmount ?? null,
-      },
+      action_payload: actionPayload,
       payment_currency: paymentCurrency === 'token' ? 'token' : 'erg',
       status: 'pending',
     });

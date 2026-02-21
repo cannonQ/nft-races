@@ -161,7 +161,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       entry.totalNanoerg += amt;
     }
 
-    // 6. Build response
+    // 6. Fetch all races for this season
+    const { data: seasonRaces } = await supabase
+      .from('season_races')
+      .select('id, name, race_type, status, rarity_class, max_entries, entry_deadline, created_at')
+      .eq('season_id', seasonId)
+      .order('created_at', { ascending: true });
+
+    // Count entries per race
+    const raceIds = (seasonRaces ?? []).map(r => r.id);
+    const entryCountMap = new Map<string, number>();
+    if (raceIds.length > 0) {
+      const { data: entryCounts } = await supabase
+        .from('season_race_entries')
+        .select('race_id')
+        .in('race_id', raceIds);
+      for (const e of (entryCounts ?? [])) {
+        entryCountMap.set(e.race_id, (entryCountMap.get(e.race_id) ?? 0) + 1);
+      }
+    }
+
+    const races = (seasonRaces ?? []).map(r => ({
+      id: r.id,
+      name: r.name,
+      raceType: r.race_type,
+      status: r.status,
+      rarityClass: r.rarity_class,
+      maxEntries: r.max_entries,
+      entryCount: entryCountMap.get(r.id) ?? 0,
+      entryDeadline: r.entry_deadline,
+      createdAt: r.created_at,
+    }));
+
+    // 7. Build response
     const creatures = [...creaturePayouts.values()]
       .sort((a, b) => b.totalNanoerg - a.totalNanoerg)
       .map(cp => {
@@ -200,6 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         shows: { totalErg: nanoErgToErg(poolShowsTotal), percentage: 25 },
       },
       creatures,
+      races,
     });
   } catch (err) {
     console.error('GET /api/v2/admin/seasons/[seasonId]/payouts error:', err);
