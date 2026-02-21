@@ -238,7 +238,7 @@ export default function Train() {
     setBatchFeeErg(undefined);
     // Refresh creature list to show updated stats
     if (refetchCreatures) refetchCreatures();
-  }, []);
+  }, [refetchCreatures]);
 
   // Filter creatures by active collection for both single + batch views
   const filteredCreatures = (userCreatures || []).filter((c) => matchesCollection(c.collectionId));
