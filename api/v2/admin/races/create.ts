@@ -56,25 +56,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Use collection's default entry fee if not specified
       if (entryFee === undefined && season.collection_id) {
-        const { data: collection } = await supabase
-          .from('collections')
-          .select('entry_fee_nanoerg')
-          .eq('id', season.collection_id)
-          .single();
-        const defaultFeeNanoerg = collection?.entry_fee_nanoerg ?? 0;
+        const config = await getGameConfig(season.collection_id);
+        const defaultFeeNanoerg = config?.default_race_entry_fee_nanoerg ?? 0;
+        const feeTokenConfig = config?.fee_token;
+        const defaultTokenFee = feeTokenConfig?.default_race_entry_fee;
 
         // Auto-calculate proportional ERG when admin sets a custom token fee
         // but doesn't explicitly set the ERG fee.
         // Rate derived from: default_race_entry_fee CYPX = defaultFeeNanoerg ERG
-        if (entryFeeToken && defaultFeeNanoerg > 0) {
-          const config = await getGameConfig(season.collection_id);
-          const feeTokenConfig = config?.fee_token;
-          const defaultTokenFee = feeTokenConfig?.default_race_entry_fee;
-          if (defaultTokenFee && defaultTokenFee > 0) {
-            entryFee = Math.round(entryFeeToken * (defaultFeeNanoerg / defaultTokenFee));
-          } else {
-            entryFee = defaultFeeNanoerg;
-          }
+        if (entryFeeToken && defaultFeeNanoerg > 0 && defaultTokenFee && defaultTokenFee > 0) {
+          entryFee = Math.round(entryFeeToken * (defaultFeeNanoerg / defaultTokenFee));
         } else {
           entryFee = defaultFeeNanoerg;
         }
