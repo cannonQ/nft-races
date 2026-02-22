@@ -275,6 +275,8 @@ export interface Season {
   startDate: string;
   endDate: string;
   prizePool: number;
+  prizePoolToken?: number | null;
+  prizePoolTokenName?: string | null;
   status: 'upcoming' | 'active' | 'completed';
 }
 

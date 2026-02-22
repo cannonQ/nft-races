@@ -19,6 +19,8 @@ export function SeasonBanner() {
   if (!seasons || seasons.length === 0) return null;
 
   const totalPrizePool = seasons.reduce((sum, s) => sum + (s.prizePool ?? 0), 0);
+  const totalPrizePoolToken = seasons.reduce((sum, s) => sum + (s.prizePoolToken ?? 0), 0);
+  const tokenName = seasons.find(s => s.prizePoolTokenName)?.prizePoolTokenName ?? null;
   // Use shortest remaining time across all seasons
   const soonestEnd = seasons.reduce((min, s) => {
     const d = formatDaysRemaining(s.endDate);
@@ -42,7 +44,12 @@ export function SeasonBanner() {
           </div>
           <div className="flex items-center gap-3 text-xs">
             <span className="text-muted-foreground">{daysRemaining}d left</span>
-            <span className="font-mono text-accent">{totalPrizePool.toLocaleString()} ERG</span>
+            <span className="font-mono text-accent">
+              {totalPrizePool.toLocaleString()} ERG
+              {totalPrizePoolToken > 0 && tokenName && (
+                <> + {totalPrizePoolToken.toLocaleString()} {tokenName}</>
+              )}
+            </span>
           </div>
         </div>
       </div>
@@ -74,6 +81,11 @@ export function SeasonBanner() {
             <span className="font-mono text-accent font-semibold">
               {totalPrizePool.toLocaleString()} ERG
             </span>
+            {totalPrizePoolToken > 0 && tokenName && (
+              <span className="font-mono text-accent font-semibold">
+                + {totalPrizePoolToken.toLocaleString()} {tokenName}
+              </span>
+            )}
             <span className="text-xs text-muted-foreground">Prize Pool</span>
           </div>
         </div>

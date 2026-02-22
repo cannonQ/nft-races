@@ -360,8 +360,13 @@ export function BatchTrainingView({
                       <td key={a.id} className="text-center px-2 py-2">
                         <button
                           onClick={() => {
-                            if (!isSelected) toggleCreature(creature.id);
-                            setCreatureActivity(creature.id, a.id);
+                            if (effectiveActivity === a.id) {
+                              // Toggle off: clear per-creature override
+                              updateCreatureState(creature.id, { activity: null });
+                            } else {
+                              if (!isSelected) toggleCreature(creature.id);
+                              setCreatureActivity(creature.id, a.id);
+                            }
                           }}
                           className={cn(
                             'w-5 h-5 rounded-full border-2 inline-flex items-center justify-center transition-all',
