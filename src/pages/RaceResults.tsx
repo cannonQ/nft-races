@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { RaceHeader } from '@/components/races/RaceHeader';
@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRaceResults } from '@/api';
 
 export default function RaceResults() {
+  const navigate = useNavigate();
   const { raceId } = useParams<{ raceId: string }>();
   const { data: results, loading, error } = useRaceResults(raceId || null);
 
@@ -46,11 +47,9 @@ export default function RaceResults() {
     <MainLayout>
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Back Button */}
-        <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-          <Link to="/leaderboard">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Leaderboard
-          </Link>
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
         </Button>
 
         {/* Race Header */}

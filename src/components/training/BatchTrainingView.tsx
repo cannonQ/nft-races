@@ -6,6 +6,7 @@ import { PetImage } from '@/components/creatures/PetImage';
 import { trainingActivities as defaultActivities } from '@/data/trainingActivities';
 import type { CreatureWithStats, TrainingActivity, PaymentCurrency, GameConfig, BatchTrainCreatureInput } from '@/types/game';
 import { cn } from '@/lib/utils';
+import { MiniStatBars } from '@/components/creatures/MiniStatBars';
 
 /** Short activity labels for grid columns */
 const ACTIVITY_SHORT: Record<string, string> = {
@@ -16,6 +17,26 @@ const ACTIVITY_SHORT: Record<string, string> = {
   cross_training: 'Cross',
   mental_prep: 'Mental',
   meditation: 'Meditate',
+};
+
+/** Readable stat names for hover tooltips */
+const STAT_LABEL: Record<string, string> = {
+  speed: 'speed',
+  stamina: 'stamina',
+  accel: 'acceleration',
+  agility: 'agility',
+  heart: 'heart',
+  focus: 'focus',
+};
+
+/** Stat color classes for dot indicators */
+const STAT_DOT_COLOR: Record<string, string> = {
+  speed: 'bg-stat-speed',
+  stamina: 'bg-stat-stamina',
+  accel: 'bg-stat-acceleration',
+  agility: 'bg-stat-agility',
+  heart: 'bg-stat-heart',
+  focus: 'bg-stat-focus',
 };
 
 interface BatchCreatureState {
@@ -286,14 +307,45 @@ export function BatchTrainingView({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border/30">
-                <th className="text-left px-4 py-2 text-muted-foreground font-medium sticky left-0 bg-card z-10 min-w-[160px]">
-                  Creature
+                <th className="text-left px-4 py-2 text-muted-foreground font-medium sticky left-0 bg-card z-10" style={{ width: '45%', minWidth: 260 }}>
+                  <div className="flex items-baseline gap-6">
+                    <span>Creature</span>
+                    <span className="text-[10px] font-normal text-muted-foreground/60">Stats</span>
+                  </div>
                 </th>
-                {activities.map((a) => (
-                  <th key={a.id} className="text-center px-2 py-2 text-muted-foreground font-medium whitespace-nowrap">
-                    {ACTIVITY_SHORT[a.id] || a.name}
-                  </th>
-                ))}
+                {activities.map((a) => {
+                  const hoverParts: string[] = [];
+                  if (a.primaryStat && a.primaryGain > 0)
+                    hoverParts.push(`+${a.primaryGain} ${STAT_LABEL[a.primaryStat] ?? a.primaryStat}`);
+                  if (a.secondaryStat && a.secondaryGain > 0)
+                    hoverParts.push(`+${a.secondaryGain} ${STAT_LABEL[a.secondaryStat] ?? a.secondaryStat}`);
+                  const hoverText = hoverParts.join(', ');
+
+                  return (
+                    <th key={a.id} className="text-center px-2 py-2 text-muted-foreground font-medium whitespace-nowrap">
+                      <div>{ACTIVITY_SHORT[a.id] || a.name}</div>
+                      {a.primaryStat && (
+                        <div className="relative group flex items-center justify-center gap-[3px] mt-1 cursor-default">
+                          <span
+                            className={cn('rounded-full', STAT_DOT_COLOR[a.primaryStat])}
+                            style={{ width: a.primaryGain >= 3 ? 8 : 6, height: a.primaryGain >= 3 ? 8 : 6 }}
+                          />
+                          {a.secondaryStat && (
+                            <span
+                              className={cn('rounded-full', STAT_DOT_COLOR[a.secondaryStat])}
+                              style={{ width: a.secondaryGain >= 2 ? 6 : 4, height: a.secondaryGain >= 2 ? 6 : 4 }}
+                            />
+                          )}
+                          {hoverText && (
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-popover border border-border text-[10px] text-foreground whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity shadow-lg z-20">
+                              {hoverText}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -317,7 +369,7 @@ export function BatchTrainingView({
                       isSelected ? 'bg-primary/5' : 'hover:bg-muted/30',
                     )}
                   >
-                    {/* Creature info cell */}
+                    {/* Creature info + stats cell */}
                     <td className="px-4 py-2 sticky left-0 bg-card z-10">
                       <div className="flex items-center gap-2">
                         <Checkbox
@@ -330,7 +382,7 @@ export function BatchTrainingView({
                           alt={creature.name}
                           className="w-8 h-8 rounded-md shrink-0"
                         />
-                        <div className="min-w-0">
+                        <div className="min-w-0 shrink-0">
                           <div className="flex items-center gap-1">
                             <span className="font-medium text-foreground truncate">{creature.name}</span>
                             {totalBoost > 0 && (
@@ -348,10 +400,16 @@ export function BatchTrainingView({
                         </div>
                         <button
                           onClick={() => toggleExpanded(creature.id)}
-                          className="ml-auto p-1 text-muted-foreground hover:text-foreground"
+                          className="shrink-0 p-1 text-muted-foreground hover:text-foreground"
                         >
                           {state.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                         </button>
+                        <div className="ml-2">
+                          <MiniStatBars
+                            baseStats={creature.baseStats}
+                            trainedStats={creature.trainedStats}
+                          />
+                        </div>
                       </div>
                     </td>
 
@@ -400,6 +458,12 @@ export function BatchTrainingView({
                         <div className="text-[10px] text-muted-foreground">
                           {creature.treatment ? 'In treatment' : 'No actions remaining'}
                         </div>
+                      </div>
+                      <div className="ml-2">
+                        <MiniStatBars
+                          baseStats={creature.baseStats}
+                          trainedStats={creature.trainedStats}
+                        />
                       </div>
                     </div>
                   </td>

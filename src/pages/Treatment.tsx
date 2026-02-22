@@ -313,13 +313,11 @@ export default function Treatment() {
         <Button
           variant="ghost"
           size="sm"
-          asChild
+          onClick={() => navigate(-1)}
           className="text-muted-foreground hover:text-foreground"
         >
-          <Link to="/treatment">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Treatment Center
-          </Link>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
         </Button>
 
         {/* Creature header */}

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Trophy, Star, Zap, Dumbbell, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,7 @@ const rarityStyles: Record<Rarity, { bg: string; text: string; border: string }>
 const defaultStyle = { bg: 'bg-muted/50', text: 'text-muted-foreground', border: 'border-muted' };
 
 export function CreatureHeader({ creature }: CreatureHeaderProps) {
+  const navigate = useNavigate();
   const style = rarityStyles[creature.rarity] ?? defaultStyle;
   const isOnCooldown = creature.cooldownEndsAt && new Date(creature.cooldownEndsAt) > new Date();
   const winRate = creature.totalRaces > 0
@@ -37,11 +38,9 @@ export function CreatureHeader({ creature }: CreatureHeaderProps) {
   return (
     <div className="space-y-4">
       {/* Back Button */}
-      <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-        <Link to="/dashboard">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Stable
-        </Link>
+      <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back
       </Button>
 
       {/* Header Card */}

@@ -542,13 +542,11 @@ export default function Train() {
         <Button
           variant="ghost"
           size="sm"
-          asChild
+          onClick={() => navigate(-1)}
           className="text-muted-foreground hover:text-foreground"
         >
-          <Link to="/dashboard">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
-          </Link>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
         </Button>
 
         <CreatureTrainHeader creature={creature} />
