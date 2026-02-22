@@ -201,16 +201,28 @@ export function BatchTrainingView({
   const totalFeeErg = totalFeeNanoerg / 1_000_000_000;
   const totalFeeToken = trainingFeeToken ? trainingFeeToken * selected.size : null;
 
+  // Check that every selected creature has an activity assigned (via default or per-creature override)
+  const allSelectedHaveActivity = useMemo(() => {
+    if (selected.size === 0) return false;
+    for (const id of selected) {
+      const state = creatureStates.get(id);
+      const effective = state?.activity ?? defaultActivity;
+      if (!effective) return false;
+    }
+    return true;
+  }, [selected, creatureStates, defaultActivity]);
+
   // Build submission payload
   const handleSubmit = useCallback(() => {
-    if (selected.size === 0 || !defaultActivity) return;
+    if (selected.size === 0 || !allSelectedHaveActivity) return;
 
     const payload: BatchTrainCreatureInput[] = [];
     for (const id of selected) {
       const state = getCreatureState(id);
       const effectiveActivity = state.activity ?? defaultActivity;
       const creature = creatures.find((c) => c.id === id);
-      if (!creature || !effectiveActivity) continue;
+      if (!creature) continue;
+      if (!effectiveActivity) continue;
 
       // Boosts: auto-apply all or use override
       let boostRewardIds: string[] | undefined;
@@ -230,9 +242,9 @@ export function BatchTrainingView({
     }
 
     onSubmit(payload, requireFees ? paymentCurrency : undefined);
-  }, [selected, defaultActivity, autoApplyBoosts, creatures, creatureStates, getCreatureState, requireFees, paymentCurrency, onSubmit]);
+  }, [selected, allSelectedHaveActivity, defaultActivity, autoApplyBoosts, creatures, creatureStates, getCreatureState, requireFees, paymentCurrency, onSubmit]);
 
-  const canSubmit = selected.size > 0 && defaultActivity !== null && !submitting;
+  const canSubmit = selected.size > 0 && allSelectedHaveActivity && !submitting;
 
   return (
     <div className="space-y-4">
