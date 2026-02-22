@@ -29,7 +29,7 @@ Full game loop is operational: wallet connect → auto-discover NFTs → train �
 - **ErgoPay mobile wallet** — QR code / deep-link connect flow for mobile users (Nautilus + ErgoPay dual support)
 - **Real ERG payments (Nautilus)** — Training (0.01 ERG) and race entry fees paid via Nautilus `sign_tx()`. Treasury box registers R4-R6 encode action type, NFT token ID, and context for on-chain verifiability. Credit ledger records `shadow=false` + `tx_id` for real payments. Both training and race entry verified on mainnet. Whale wallet support: change tokens split across multiple boxes for wallets with 100+ token types.
 - **Single-TX batch race entry** — Entering N creatures into a race uses one TX with N treasury output boxes (each with its own R4-R6 registers). One wallet signature, one miner fee. Works for Nautilus, ErgoPay, and alpha (no-fee) modes. Verified on mainnet: 2 creatures × 0.05 ERG = 2 output boxes at treasury, single txId.
-- **Single-TX batch training** — Train up to 20 creatures in one TX. Grid matrix UI with per-creature activity radio buttons, default activity pills, auto-apply boosts/recovery packs, expandable detail rows. Same N-output TX structure as batch race entry (R4=train, R5=tokenId, R6=activity per output). Same-collection enforced. Nautilus ERG + CYPX verified on mainnet. ErgoPay verified on live preview. Endpoint: `POST /api/v2/train-batch`.
+- **Single-TX batch training** — Train up to 20 creatures in one TX. Grid matrix UI with per-creature activity radio buttons, default activity pills, auto-apply boosts/recovery packs, expandable detail rows, inline MiniStatBars per creature (colored vertical bars with per-bar hover), and activity column stat dot indicators with hover tooltips showing gain details. Same N-output TX structure as batch race entry (R4=train, R5=tokenId, R6=activity per output). Same-collection enforced. Nautilus ERG + CYPX verified on mainnet. ErgoPay verified on live preview. Endpoint: `POST /api/v2/train-batch`.
 - **ErgoPay TX flow** — Full reduced TX pipeline with R4-R6 registers. Server-side TX builder fetches UTXOs from Explorer API, builds unsigned TX with sigma-serialized registers, POSTs to `ergopay.duckdns.org/api/v1/reducedTx`. Wallet callback (`replyTo`) + blockchain fallback for payment detection. Verified on mainnet — registers decode correctly on ergexplorer (R4: train, R5: token ID, R6: mental_prep).
 - **TX UX polish** — Confirm modals stay open with "Signing..." spinner while Nautilus is signing (no page flash). Result modals show animated success state + "Payment Confirmed" banner with truncated txId linking to ergexplorer.com. Data refetch deferred to modal close to prevent background flicker. Training result: stat gain animations + progress bars. Race entry result: entry count gauge (X/Y) with animated fill bar. Wallet Ledger entries show explorer link icons for on-chain transactions.
 - **Credit ledger** — Tracks training fees, race entry fees, and season payouts per wallet. Supports both shadow (alpha) and real payments (`shadow` flag + `tx_id` column)
@@ -1334,6 +1334,40 @@ Batch entry is **better** in Phase 2:
 
 ---
 
+## UI Polish & Bug Fixes (2026-02-21)
+
+### Race Entry Fee Fix (Critical)
+Admin race creation endpoints (`create.ts`, `batch-create.ts`, `generate-schedule.ts`) were querying a non-existent `collections.entry_fee_nanoerg` column, causing all races to be created with 0 ERG entry fee. Fixed to read from `getGameConfig(collectionId).default_race_entry_fee_nanoerg`. Migration 024 adds `default_race_entry_fee_nanoerg: 50000000` (0.05 ERG) to `game_config_overrides` for both collections and patches existing open races.
+
+### Dynamic Prize Pool
+`seasons.prize_pool_nanoerg` was a static column never updated after season creation. Prize pool is now computed dynamically from `credit_ledger` by summing all fee types (`training_fee`, `race_entry_fee`, `treatment_fee`). `SeasonBanner` shows both ERG and CYPX totals. Added `prizePoolToken` and `prizePoolTokenName` to `Season` type.
+
+### Batch Training UX
+- **MiniStatBars** — New `MiniStatBars.tsx` component: 6 colored vertical bars per creature showing current stat levels. Per-bar hover dims other bars and shows stat label + value.
+- **Activity stat dots** — Colored dots under each activity column header (bigger = primary stat, smaller = secondary). CSS `group-hover` tooltip shows "+3 speed, +1 acceleration" etc.
+- **Radio toggle-off** — Clicking an already-selected activity radio deselects it.
+- **Stats header** — "Stats" label in creature column header aligned near stat bars.
+
+### History-Based Back Navigation
+All internal "Back" buttons now use `navigate(-1)` (browser history) instead of hardcoded routes. Affected files: `Train.tsx`, `Treatment.tsx`, `RaceResults.tsx`, `CreatureHeader.tsx`.
+
+### Files Changed
+- `migrations/024_default_race_entry_fee_nanoerg.sql` — **NEW**
+- `api/v2/admin/races/create.ts` — Fee from game config
+- `api/v2/admin/races/batch-create.ts` — Fee from game config
+- `api/v2/admin/races/generate-schedule.ts` — Fee from game config
+- `api/v2/seasons/current.ts` — Dynamic prize pool from credit_ledger
+- `src/components/layout/SeasonBanner.tsx` — ERG + CYPX display
+- `src/types/game.ts` — `prizePoolToken`, `prizePoolTokenName` on Season
+- `src/components/creatures/MiniStatBars.tsx` — **NEW**: Inline stat bars
+- `src/components/training/BatchTrainingView.tsx` — Stat bars, stat dots, radio toggle, stat header
+- `src/pages/Train.tsx` — `navigate(-1)` back button
+- `src/pages/Treatment.tsx` — `navigate(-1)` back button
+- `src/pages/RaceResults.tsx` — `navigate(-1)` back button
+- `src/components/creatures/CreatureHeader.tsx` — `navigate(-1)` back button
+
+---
+
 ## Single-TX Batch Training (2026-02-21)
 
 ### Overview
@@ -1355,7 +1389,9 @@ Per-creature activities — each creature can have a different activity (unlike 
 ### Frontend UI — Grid Matrix
 `BatchTrainingView` component with:
 - **Default activity pills** — pre-select a column for all creatures (per-creature radio overrides)
-- **Grid radio matrix** — one row per creature, one radio per activity column (Sprint/Dist/Agility/Gate/Cross/Mental/Meditate)
+- **Grid radio matrix** — one row per creature, one radio per activity column (Sprint/Dist/Agility/Gate/Cross/Mental/Meditate). Radio buttons toggle off when clicking already-selected activity.
+- **Inline MiniStatBars** — colored vertical bars (SPD/STA/ACC/AGI/HRT/FOC) per creature row, with per-bar hover that dims other bars and shows stat label + current value
+- **Activity stat dot indicators** — colored dots under each activity column header. Larger dot = primary stat, smaller = secondary. CSS hover tooltip shows gain details (e.g. "+3 speed, +1 acceleration")
 - **Auto-apply all boosts** — global toggle, boost `▲` indicator per creature shows total multiplier
 - **Expandable detail rows** — click creature to see/override individual boost toggles, recovery packs, stat preview
 - **Disabled rows** — creatures in treatment, on cooldown, or with no actions remaining shown greyed out
