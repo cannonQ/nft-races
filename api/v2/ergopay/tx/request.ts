@@ -507,9 +507,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!reducedTxResp.ok) {
       const body = await reducedTxResp.text();
       console.error('ergopay.duckdns.org reducedTx failed:', reducedTxResp.status, body);
+      console.error('reducedTx payload that failed:', JSON.stringify(reducedTxPayload, null, 2));
       // Clean up
       await supabase.from('ergopay_tx_requests').delete().eq('id', requestId);
-      return res.status(502).json({ error: 'Failed to create payment request with the ErgoPay service' });
+      return res.status(502).json({
+        error: 'Failed to create payment request with the ErgoPay service',
+        relayStatus: reducedTxResp.status,
+        relayBody: body,
+      });
     }
 
     const reducedData = await reducedTxResp.json();
@@ -535,6 +540,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: msg });
     }
     console.error('POST /api/v2/ergopay/tx/request error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', detail: msg });
   }
 }

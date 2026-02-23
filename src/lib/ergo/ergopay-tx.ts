@@ -52,6 +52,12 @@ export async function requestErgoPayTx(params: RequestErgoPayTxParams): Promise<
 
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
+    if (body.relayBody || body.relayStatus) {
+      console.error('[ErgoPay] Relay rejection:', body.relayStatus, body.relayBody);
+    }
+    if (body.detail) {
+      console.error('[ErgoPay] Server error detail:', body.detail);
+    }
     throw new Error(body.error || `Failed to create payment request (HTTP ${resp.status})`);
   }
 
