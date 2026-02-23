@@ -507,6 +507,28 @@ The ErgoPay relay (`ergopay.duckdns.org`) must support:
 
 1. **Input context extensions** — Parse `input.extension`, attach as `ContextExtension` on each `UnsignedInput`
 2. **ErgoTree-based outputs** — If `output.ergoTree` is present, use it directly instead of deriving from `output.address`
+3. **Exact box-ID input selection** — Fetch inputs by their specific `boxId` using `ctx.getBoxesById()`, NOT address-based selection (see Pitfall 8 below)
+
+### Relay Troubleshooting
+
+The relay is a Spring Boot app maintained separately (contact: @Arohbe). When Babel TXs fail at the relay level:
+
+1. **Get the Java stack trace** from the relay server logs (Spring Boot console output)
+2. **Check our server logs** — `request.ts` now logs the full relay error body + the payload that failed
+3. **Check the browser console** — `ergopay-tx.ts` logs `[ErgoPay] Relay rejection:` with status and body
+4. **Common relay errors**:
+   - `AssertionError: unexpected selected boxes` → Relay's `DefaultBoxSelector` dropped the Babel input (see Pitfall 8)
+   - `NotEnoughTokensError` → Relay doing address-based UTXO selection, not finding Babel box tokens
+   - Generic 500 with no detail → Check relay node sync status (`/info` endpoint, compare `fullHeight` to network)
+
+### Relay Architecture Notes
+
+The relay uses the Ergo Appkit SDK (Java/Scala). Key classes:
+
+- `BoxOperations.createForSender(address, ctx)` — **Address-based** box loading. Only finds boxes owned by the sender. **Cannot find Babel boxes** (they're owned by the Babel contract).
+- `ctx.getBoxesById(boxId1, boxId2)` — **Box-ID-based** lookup. Finds any box regardless of owner. **Required for Babel TXs.**
+- `UnsignedTransactionBuilder.build()` — Internally runs `DefaultBoxSelector` which can drop inputs. See Pitfall 8.
+- `ReducedTransaction` / `prover.reduce()` — Converts unsigned TX to reduced form for wallet signing.
 
 ---
 
@@ -627,6 +649,36 @@ OutputBuilder.from(input)  // preserves ergoTree from input
 **Cause**: Explorer does exact string matching on ErgoTree. If your boxes were created with the `0x18c101` header but you only search for `0x10`, you'll find nothing.
 
 **Fix**: Search for both header variants. Stop after the first format finds boxes. See `findBabelBoxes()` in Section 2.
+
+### Pitfall 8: Relay DefaultBoxSelector Drops Babel Inputs
+
+**Symptom**: Relay returns `500` with `AssertionError: unexpected selected boxes, expected: Vector(senderBox, babelBox), got ArrayBuffer(senderBox)`. The Babel box is silently dropped.
+
+**Cause**: The Ergo Appkit's `DefaultBoxSelector` (used internally by `UnsignedTransactionBuilder.build()`) does **greedy selection with early stopping**. It iterates input boxes and stops as soon as it has enough ERG + tokens to cover all outputs. If the sender's UTXO alone covers everything (common when the sender has a large balance), the selector never reaches the Babel box input and drops it. The assertion then fails because the selected boxes don't match the expected inputs.
+
+**Why it's intermittent**: The same relay code may work for one sender (small UTXOs, selector needs multiple boxes) and fail for another (one large UTXO covers everything). The bug depends on the sender's wallet UTXO set, not the relay code itself.
+
+**Fix (relay-side)**: The relay must NOT use `UnsignedTransactionBuilder.build()` for Babel TXs, because `build()` always runs the box selector. Instead:
+
+```java
+// Option A: Construct the TX at a lower level (bypass selector)
+InputBox[] boxes = ctx.getBoxesById(allBoxIds);  // fetch ALL by exact ID
+UnsignedErgoLikeTransaction tx = new UnsignedErgoLikeTransaction(
+    unsignedInputs,      // ALL inputs preserved, including Babel w/ extension
+    dataInputs,
+    outputCandidates
+);
+ReducedErgoLikeTransaction reduced = prover.reduce(ctx, tx, boxes, ...);
+
+// Option B: Upgrade ergo-appkit to a version using InputBoxesValidator
+// (pass-through selector that accepts ALL provided boxes without filtering)
+```
+
+**Diagnosis checklist**:
+1. Check our server logs for `reducedTx payload that failed:` — shows the exact JSON sent to the relay
+2. Check the relay's Java stack trace for `unexpected selected boxes`
+3. Compare `expected:` (should have 2+ boxes) vs `got:` (will be missing the Babel box)
+4. Confirm the sender's UTXO has enough ERG + tokens to cover outputs solo (triggers the early-stop)
 
 ---
 
