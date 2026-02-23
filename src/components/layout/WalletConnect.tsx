@@ -106,7 +106,7 @@ export function WalletConnect() {
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
-              className="text-sm border-primary/50 hover:border-primary bg-primary/10 text-primary glow-cyan transition-all duration-300 max-w-[200px]"
+              className="text-sm border-primary/50 hover:border-primary bg-primary/10 text-primary glow-cyan transition-all duration-300 w-full sm:w-auto max-w-[200px]"
               title={`${address}\n${walletType === 'ergopay' ? 'ErgoPay' : 'Nautilus'}`}
             >
               {walletType === 'ergopay' ? (

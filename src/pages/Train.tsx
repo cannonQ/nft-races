@@ -258,7 +258,7 @@ export default function Train() {
                 variant="outline"
                 size="sm"
                 onClick={() => setBatchMode(true)}
-                className="border-primary/30 text-primary hover:bg-primary/10"
+                className="hidden md:inline-flex border-primary/30 text-primary hover:bg-primary/10"
               >
                 <Users className="w-4 h-4 mr-2" />
                 Batch Train

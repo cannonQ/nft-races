@@ -231,14 +231,14 @@ export function RaceEntryModal({ open, onOpenChange, race, onConfirm, requireFee
                       onClick={() => toggleCreature(creature.id)}
                       disabled={isDisabled}
                       className={cn(
-                        'w-full cyber-card rounded-lg p-3 text-left transition-all duration-200',
+                        'w-full cyber-card rounded-lg p-2 sm:p-3 text-left transition-all duration-200',
                         isDisabled && 'opacity-50 cursor-not-allowed',
                         isSelected && !isDisabled && 'border-primary glow-cyan',
                         !isSelected && !isDisabled && 'hover:border-primary/50'
                       )}
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-start justify-between gap-y-1 mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           {isDisabled ? (
                             <div className="w-5 h-5 rounded border-2 border-muted-foreground/20 shrink-0" />
                           ) : (

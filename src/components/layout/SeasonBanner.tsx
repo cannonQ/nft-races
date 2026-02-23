@@ -37,20 +37,18 @@ export function SeasonBanner() {
   if (isMobile) {
     return (
       <div className="cyber-card rounded-lg p-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
+            <Sparkles className="w-4 h-4 text-primary shrink-0" />
             <span className="font-display text-sm text-primary">{displayName}</span>
           </div>
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-muted-foreground">{daysRemaining}d left</span>
-            <span className="font-mono text-accent">
-              {totalPrizePool.toLocaleString()} ERG
-              {totalPrizePoolToken > 0 && tokenName && (
-                <> + {totalPrizePoolToken.toLocaleString()} {tokenName}</>
-              )}
-            </span>
-          </div>
+          <span className="text-xs text-muted-foreground">{daysRemaining}d left</span>
+          <span className="font-mono text-xs text-accent">
+            {totalPrizePool.toLocaleString()} ERG
+            {totalPrizePoolToken > 0 && tokenName && (
+              <> + {totalPrizePoolToken.toLocaleString()} {tokenName}</>
+            )}
+          </span>
         </div>
       </div>
     );

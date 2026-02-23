@@ -50,7 +50,7 @@ export function CreatureTrainHeader({ creature }: CreatureTrainHeaderProps) {
               className="w-16 h-16 rounded-xl shrink-0"
             />
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
                 <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">
                   {creature.name}
                 </h1>
@@ -61,8 +61,8 @@ export function CreatureTrainHeader({ creature }: CreatureTrainHeaderProps) {
                   </div>
                 )}
               </div>
-              
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-sm text-muted-foreground">
                 <span>
                   <span className="font-mono text-foreground">{creature.totalRaces}</span> Races
                 </span>

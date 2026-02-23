@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Trophy, AlertCircle } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { RaceCard } from '@/components/races/RaceCard';
@@ -32,6 +32,16 @@ export default function Races() {
   const enterRaceBatch = useEnterRaceBatch();
   const { data: creatures } = useCreaturesByWallet(address);
   const { active: activeCollections, toggle: toggleCollection, matches: matchesCollection } = useCollectionFilter();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const raceView = (searchParams.get('view') as 'all' | 'open' | 'completed') || 'all';
+  const setRaceView = (view: 'all' | 'open' | 'completed') => {
+    if (view === 'all') {
+      searchParams.delete('view');
+    } else {
+      searchParams.set('view', view);
+    }
+    setSearchParams(searchParams, { replace: true });
+  };
   // Entry result modal state
   const [showResultModal, setShowResultModal] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
@@ -177,11 +187,30 @@ export default function Races() {
           </p>
         </div>
 
-        <CollectionFilter
-          collections={collections || []}
-          active={activeCollections}
-          onToggle={toggleCollection}
-        />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <CollectionFilter
+            collections={collections || []}
+            active={activeCollections}
+            onToggle={toggleCollection}
+          />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mr-1">Status:</span>
+            {(['all', 'open', 'completed'] as const).map((view) => (
+              <button
+                key={view}
+                onClick={() => setRaceView(view)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-semibold transition-all duration-200 border capitalize',
+                  raceView === view
+                    ? 'bg-primary/20 text-primary border-primary/50'
+                    : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30'
+                )}
+              >
+                {view}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {entryError && (
           <div className="cyber-card rounded-lg p-4 border-destructive/30 bg-destructive/5">
@@ -201,7 +230,7 @@ export default function Races() {
         ) : (
           <>
             {/* Running Races */}
-            {runningRaces.length > 0 && (
+            {raceView !== 'completed' && runningRaces.length > 0 && (
               <section>
                 <h2 className="font-display text-lg font-semibold text-secondary mb-4 flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
@@ -222,7 +251,7 @@ export default function Races() {
             )}
 
             {/* Open Races */}
-            <section>
+            {raceView !== 'completed' && <section>
               <h2 className="font-display text-lg font-semibold text-foreground mb-4">
                 Open for Entry
               </h2>
@@ -243,12 +272,17 @@ export default function Races() {
                   <p className="text-muted-foreground">No races currently open for entry.</p>
                 </div>
               )}
-            </section>
+            </section>}
           </>
         )}
 
         {/* Recent Results */}
-        {resolvedRaces.length > 0 && (
+        {raceView === 'completed' && resolvedRaces.length === 0 && !loading && (
+          <div className="cyber-card rounded-xl p-8 text-center">
+            <p className="text-muted-foreground">No completed races yet.</p>
+          </div>
+        )}
+        {raceView !== 'open' && resolvedRaces.length > 0 && (
           <section>
             <h2 className="font-display text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
               <Trophy className="w-5 h-5 text-race-sprint" />

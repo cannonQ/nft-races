@@ -73,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select('*, season_race_entries(count)')
         .in('season_id', seasonIds)
         .in('status', ['resolved', 'locked'])
-        .order('created_at', { ascending: false })
+        .order('entry_deadline', { ascending: false })
         .limit(100),
       supabase
         .from('season_races')

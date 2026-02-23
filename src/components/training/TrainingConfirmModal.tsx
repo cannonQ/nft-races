@@ -226,31 +226,31 @@ export function TrainingConfirmModal({
                 Projected Gains
               </h4>
 
-              <div className="cyber-card rounded-lg p-3 space-y-2">
+              <div className="cyber-card rounded-lg p-2 sm:p-3 space-y-2">
                 {/* Primary Stat */}
-                <div className="flex items-center justify-between">
-                  <span className={cn('font-mono text-sm', statColors[activity.primaryStat])}>
+                <div className="flex flex-wrap items-center justify-between gap-y-0.5">
+                  <span className={cn('font-mono text-xs sm:text-sm', statColors[activity.primaryStat])}>
                     {statLabels[activity.primaryStat]}
                   </span>
-                  <div className="flex items-center gap-2 font-mono text-sm">
+                  <div className="flex items-center gap-1 sm:gap-2 font-mono text-xs sm:text-sm">
                     <span className="text-muted-foreground">{currentPrimary}</span>
                     <TrendingUp className="w-3 h-3 text-accent" />
                     <span className={statColors[activity.primaryStat]}>{newPrimary}</span>
-                    <span className="text-accent text-xs">(+{primaryGain})</span>
+                    <span className="text-accent text-[10px] sm:text-xs">(+{primaryGain})</span>
                   </div>
                 </div>
 
                 {/* Secondary Stat */}
                 {activity.secondaryStat && (
-                  <div className="flex items-center justify-between">
-                    <span className={cn('font-mono text-sm', statColors[activity.secondaryStat])}>
+                  <div className="flex flex-wrap items-center justify-between gap-y-0.5">
+                    <span className={cn('font-mono text-xs sm:text-sm', statColors[activity.secondaryStat])}>
                       {statLabels[activity.secondaryStat]}
                     </span>
-                    <div className="flex items-center gap-2 font-mono text-sm">
+                    <div className="flex items-center gap-1 sm:gap-2 font-mono text-xs sm:text-sm">
                       <span className="text-muted-foreground">{currentSecondary}</span>
                       <TrendingUp className="w-3 h-3 text-accent" />
                       <span className={statColors[activity.secondaryStat]}>{newSecondary}</span>
-                      <span className="text-accent text-xs">(+{secondaryGain})</span>
+                      <span className="text-accent text-[10px] sm:text-xs">(+{secondaryGain})</span>
                     </div>
                   </div>
                 )}
@@ -265,18 +265,18 @@ export function TrainingConfirmModal({
                 Recovery Effects
               </h4>
 
-              <div className="cyber-card rounded-lg p-3 space-y-3">
+              <div className="cyber-card rounded-lg p-2 sm:p-3 space-y-3">
                 {/* Fatigue reduction */}
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-sm text-muted-foreground flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-y-0.5">
+                  <span className="font-mono text-xs sm:text-sm text-muted-foreground flex items-center gap-1.5">
                     <ArrowDown className="w-3.5 h-3.5 text-accent" />
                     Fatigue
                   </span>
-                  <div className="flex items-center gap-2 font-mono text-sm">
+                  <div className="flex items-center gap-1 sm:gap-2 font-mono text-xs sm:text-sm">
                     <span className="text-muted-foreground">{Math.round(creature.fatigue)}%</span>
                     <span className="text-muted-foreground">&rarr;</span>
                     <span className="text-accent font-bold">{Math.round(newFatigue)}%</span>
-                    <span className="text-accent text-xs">({activity.fatigueCost}%)</span>
+                    <span className="text-accent text-[10px] sm:text-xs">({activity.fatigueCost}%)</span>
                   </div>
                 </div>
 
@@ -295,16 +295,16 @@ export function TrainingConfirmModal({
 
                 {/* Sharpness gain */}
                 {sharpnessChange > 0 && (
-                  <div className="flex items-center justify-between pt-2 border-t border-border">
-                    <span className="font-mono text-sm text-muted-foreground flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-y-0.5 pt-2 border-t border-border">
+                    <span className="font-mono text-xs sm:text-sm text-muted-foreground flex items-center gap-1.5">
                       <ArrowUp className="w-3.5 h-3.5 text-accent" />
                       Sharpness
                     </span>
-                    <div className="flex items-center gap-2 font-mono text-sm">
+                    <div className="flex items-center gap-1 sm:gap-2 font-mono text-xs sm:text-sm">
                       <span className="text-muted-foreground">{Math.round(creature.sharpness)}%</span>
                       <span className="text-muted-foreground">&rarr;</span>
                       <span className="text-accent font-bold">{Math.round(newSharpness)}%</span>
-                      <span className="text-accent text-xs">(+{sharpnessChange})</span>
+                      <span className="text-accent text-[10px] sm:text-xs">(+{sharpnessChange})</span>
                     </div>
                   </div>
                 )}
@@ -324,12 +324,12 @@ export function TrainingConfirmModal({
               </h4>
 
               <div className={cn(
-                'cyber-card rounded-lg p-3',
+                'cyber-card rounded-lg p-2 sm:p-3',
                 isHighFatigue && 'border-destructive/50'
               )}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono text-sm text-muted-foreground">Fatigue Level</span>
-                  <div className="flex items-center gap-2 font-mono text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-y-0.5 mb-2">
+                  <span className="font-mono text-xs sm:text-sm text-muted-foreground">Fatigue Level</span>
+                  <div className="flex items-center gap-1 sm:gap-2 font-mono text-xs sm:text-sm">
                     <span className="text-muted-foreground">{Math.round(creature.fatigue)}%</span>
                     <span className="text-muted-foreground">&rarr;</span>
                     <span className={cn(
@@ -372,10 +372,10 @@ export function TrainingConfirmModal({
                 Sharpness Impact
               </h4>
 
-              <div className="cyber-card rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono text-sm text-muted-foreground">Sharpness</span>
-                  <div className="flex items-center gap-2 font-mono text-sm">
+              <div className="cyber-card rounded-lg p-2 sm:p-3">
+                <div className="flex flex-wrap items-center justify-between gap-y-0.5 mb-2">
+                  <span className="font-mono text-xs sm:text-sm text-muted-foreground">Sharpness</span>
+                  <div className="flex items-center gap-1 sm:gap-2 font-mono text-xs sm:text-sm">
                     <span className="text-muted-foreground">{Math.round(creature.sharpness)}%</span>
                     <span className="text-muted-foreground">&rarr;</span>
                     <span className={cn(
@@ -384,7 +384,7 @@ export function TrainingConfirmModal({
                       {Math.round(newSharpness)}%
                     </span>
                     <span className={cn(
-                      'text-xs flex items-center gap-0.5',
+                      'text-[10px] sm:text-xs flex items-center gap-0.5',
                       sharpnessChange > 0 ? 'text-accent' : 'text-destructive'
                     )}>
                       {sharpnessChange > 0 ? (
