@@ -92,8 +92,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
 
-      const feeNanoerg = race.entryFeeNanoerg ?? defaultFeeNanoerg;
       const feeToken = race.entryFeeToken ?? defaultFeeToken;
+      let feeNanoerg = race.entryFeeNanoerg;
+      if (feeNanoerg === undefined) {
+        // Auto-calculate proportional ERG when a custom token fee is set
+        // Rate derived from: defaultFeeToken CYPX = defaultFeeNanoerg ERG
+        if (feeToken && defaultFeeNanoerg > 0 && defaultFeeToken && defaultFeeToken > 0) {
+          feeNanoerg = Math.round(feeToken * (defaultFeeNanoerg / defaultFeeToken));
+        } else {
+          feeNanoerg = defaultFeeNanoerg;
+        }
+      }
 
       insertRows.push({
         name: race.name.trim(),
