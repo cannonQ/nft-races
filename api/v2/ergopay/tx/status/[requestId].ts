@@ -143,6 +143,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Batch training: action_payload.creatures[] if present
         const batchCreatures: any[] | null = txReq.action_payload?.creatures;
         if (Array.isArray(batchCreatures) && batchCreatures.length > 1) {
+          // storedFeeTokenAmount is the TOTAL for the batch — divide by count for per-creature ledger entries
+          const perCreatureTokenAmount = storedFeeTokenAmount ? storedFeeTokenAmount / batchCreatures.length : undefined;
           const results: Array<{ creatureId: string; result: any }> = [];
           const errors: Array<{ creatureId: string; error: string }> = [];
           for (const c of batchCreatures) {
@@ -156,7 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 txId: detectedTxId,
                 paymentCurrency: storedCurrency || undefined,
                 feeTokenId: storedFeeTokenId || undefined,
-                feeTokenAmount: storedFeeTokenAmount || undefined,
+                feeTokenAmount: perCreatureTokenAmount || undefined,
               });
               results.push({ creatureId: c.creatureId, result: trainResult });
             } catch (err: any) {
@@ -181,6 +183,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Batch support: action_payload.creatureIds[] if present
         const batchIds: string[] | null = txReq.action_payload?.creatureIds;
         if (Array.isArray(batchIds) && batchIds.length > 1) {
+          // storedFeeTokenAmount is the TOTAL for the batch — divide by count for per-creature ledger entries
+          const perCreatureTokenAmount = storedFeeTokenAmount ? storedFeeTokenAmount / batchIds.length : undefined;
           const entries: Array<{ creatureId: string; entryId: string }> = [];
           for (const cId of batchIds) {
             const entryResult = await executeRaceEntry({
@@ -190,7 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               txId: detectedTxId,
               paymentCurrency: storedCurrency || undefined,
               feeTokenId: storedFeeTokenId || undefined,
-              feeTokenAmount: storedFeeTokenAmount || undefined,
+              feeTokenAmount: perCreatureTokenAmount || undefined,
             });
             entries.push({ creatureId: cId, entryId: entryResult.entryId });
           }

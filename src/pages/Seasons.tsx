@@ -54,7 +54,12 @@ function ActiveSeasonCard({ season }: { season: Season }) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Prize Pool</p>
-          <p className="font-mono text-xl font-bold text-accent">{season.prizePool.toFixed(2)} ERG</p>
+          <p className="font-mono text-xl font-bold text-accent">
+            {season.prizePool.toFixed(2)} ERG
+            {(season as any).prizePoolToken > 0 && (season as any).prizePoolTokenName && (
+              <span className="ml-2">+ {(season as any).prizePoolToken.toLocaleString()} {(season as any).prizePoolTokenName}</span>
+            )}
+          </p>
         </div>
         <Link
           to="/leaderboard"
