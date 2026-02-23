@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  ============================================================================
+  EIP-0031 Babel Fee Box Creator
+  ============================================================================
+
+  Purpose:
+    Creates a Babel fee box on the Ergo blockchain per the EIP-0031 standard.
+    A Babel fee box holds ERG locked in a smart contract, allowing other users
+    to pay their transaction fees in tokens (e.g., CYPX) instead of ERG.
+
+  How Babel Fees Work:
+    1. A "supporter" (you) creates a UTxO at a special P2S address containing
+       ERG and a price attribute (nanoERG per token unit).
+    2. A user who wants to pay fees in tokens finds your Babel box on-chain.
+    3. The user spends your box in their transaction, extracting ERG for the
+       miner fee and depositing tokens at your specified exchange rate.
+    4. The user must recreate the Babel box as an output with the same contract,
+       same R4 (your pubkey), same R5 (price), plus R6 (spent box ID).
+    5. You profit from the spread between your price and market rate.
+    6. You can withdraw your ERG at any time since R4 holds your SigmaProp.
+
+  EIP-0031 Specification:
+    https://github.com/ergoplatform/eips/blob/master/eip-0031.md
+
+  Transaction Structure (what this tool builds):
+    INPUTS:  Wallet UTxOs (enough ERG to cover funding + miner fee)
+    OUTPUTS:
+      [0] Babel fee box  — locked at the EIP-0031 contract address
+      [1] Miner fee box  — pays the transaction fee to miners
+      [2] Change box     — returns leftover ERG + any tokens to wallet
+
+  Requirements:
+    - Nautilus wallet browser extension (nautilus.io)
+    - Sufficient ERG balance for funding amount + miner fee
+
+  License: Public domain
+  ============================================================================
+-->
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Babel Fee Box — EIP-0031</title>
+  <style>
+    /* ── Base styles ─────────────────────────────────────────────────────── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 40px 20px;
+    }
+    .container { max-width: 620px; width: 100%; }
+    h1 { font-size: 1.5rem; color: #fff; margin-bottom: 8px; }
+    .subtitle { color: #888; font-size: 0.9rem; margin-bottom: 28px; }
+
+    /* ── Card layout ────────────────────────────────────────────────────── */
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+    }
+
+    /* ── Form fields ────────────────────────────────────────────────────── */
+    .field { margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+    label { display: block; font-size: 0.8rem; color: #777; margin-bottom: 4px; }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      background: #12141c;
+      border: 1px solid #2a2d3a;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 0.95rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #5865f2; }
+    input:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: flex; gap: 12px; }
+    .row .field { flex: 1; }
+
+    /* ── Summary display ────────────────────────────────────────────────── */
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #222538;
+      font-size: 0.9rem;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-row .label { color: #777; }
+    .info-row .value {
+      color: #e0e0e0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      text-align: right;
+      max-width: 60%;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #connectBtn { background: #5865f2; color: #fff; margin-bottom: 10px; }
+    #connectBtn:hover { background: #4752c4; }
+    #connectBtn.connected { background: #2d8544; cursor: default; }
+    #createBtn { background: #5865f2; color: #fff; }
+    #createBtn:hover:not(:disabled) { background: #4752c4; }
+    #createBtn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    /* ── Activity log ───────────────────────────────────────────────────── */
+    .log {
+      background: #12141c;
+      border: 1px solid #2a2d3a;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 16px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      display: none;
+    }
+    .log.visible { display: block; }
+    .log-entry { padding: 2px 0; }
+    .log-entry.error { color: #f04747; }
+    .log-entry.success { color: #43b581; }
+    .log-entry.info { color: #888; }
+    .log-entry.warn { color: #faa61a; }
+    a { color: #5865f2; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .ergo-tree-preview {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.7rem;
+      color: #555;
+      word-break: break-all;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Create Babel Fee Box</h1>
+    <p class="subtitle">EIP-0031 — Pay transaction fees in tokens instead of ERG</p>
+
+    <!-- ── Configuration form ─────────────────────────────────────────── -->
+    <div class="card">
+      <h2>Configuration</h2>
+      <div class="field">
+        <label>Token ID</label>
+        <input type="text" id="tokenId"
+               value="01dce8a5632d19799950ff90bca3b5d0ca3ebfa8aaafd06f0cc6dd1e97150e7f" />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Price (nanoERG per token unit)</label>
+          <input type="number" id="price" value="270270" min="1" />
+        </div>
+        <div class="field">
+          <label>Funding (ERG)</label>
+          <input type="number" id="funding" value="0.25" min="0.001" step="0.001" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Miner Fee (ERG)</label>
+        <input type="number" id="minerFee" value="0.0011" min="0.001" step="0.0001" />
+      </div>
+    </div>
+
+    <!-- ── Summary card (shown after wallet connection) ────────────────── -->
+    <div class="card" id="summaryCard" style="display:none;">
+      <h2>Summary</h2>
+      <div id="summaryContent"></div>
+      <div class="ergo-tree-preview" id="ergoTreePreview"></div>
+    </div>
+
+    <!-- ── Action buttons ─────────────────────────────────────────────── -->
+    <button id="connectBtn" onclick="connectWallet()">Connect Nautilus</button>
+    <button id="createBtn" onclick="createBabelBox()" disabled>Create Babel Box</button>
+
+    <!-- ── Activity log (auto-shown on first entry) ───────────────────── -->
+    <div class="log" id="log"></div>
+  </div>
+
+<script>
+// ============================================================================
+// EIP-0031 Babel Fee Box Creator — Core Logic
+// ============================================================================
+//
+// Overview:
+//   This script connects to the Nautilus browser wallet via the Ergo dApp
+//   Connector API (EIP-12), builds an unsigned transaction that creates an
+//   EIP-0031 Babel fee box, signs it via Nautilus, and submits it to the
+//   Ergo network.
+//
+// Key Concepts:
+//   - ErgoTree:   The compiled script bytes that lock a box (like a Bitcoin
+//                 scriptPubKey). The Babel fee contract ErgoTree is built by
+//                 sandwiching a token ID between a fixed prefix and suffix.
+//   - Registers:  Ergo boxes have 10 registers (R0–R9). R0–R3 are mandatory
+//                 (value, script, tokens, creation info). R4–R9 are optional
+//                 but MUST be densely packed (no gaps — can't set R5 without R4).
+//   - SigmaProp:  A cryptographic proposition (e.g., ProveDlog of a public
+//                 key). Used in R4 so the box creator can always withdraw.
+//   - SLong:      A Sigma-serialized 64-bit signed integer. Used in R5 for
+//                 the price in nanoERG per token unit.
+//   - Size Bit:   Modern Ergo nodes (v5+) require ErgoTree header bit 3
+//                 (0x08) to be set, with a VLQ-encoded body size after the
+//                 header byte. Trees without this are rejected on submission
+//                 with: "ErgoTree serialized without size bit."
+//   - EIP-12:     The dApp connector transaction format. Nautilus sign_tx()
+//                 requires FULL box objects as inputs (not just boxId).
+//
+// ============================================================================
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── EIP-0031 Babel Fee Contract Template ────────────────────────────────
+//
+// The Babel fee contract ErgoTree is deterministic per token. It is built by
+// inserting the 32-byte token ID (hex) between a fixed prefix and suffix.
+// This avoids recompiling ErgoScript for each token — all Babel boxes for
+// the same token share the same P2S address, improving discoverability.
+//
+// Template:  PREFIX + {tokenId} + SUFFIX
+// Source:    https://github.com/ergoplatform/eips/blob/master/eip-0031.md
+//
+// The ErgoScript contract logic:
+//   - If context variable 0 (recreated box index) is defined → SWAP PATH:
+//       Verify the recreated output box has:
+//         • Same propositionBytes (same contract)
+//         • Same R4 (same creator SigmaProp)
+//         • Same R5 (same price)
+//         • R6 == SELF.id (links to the spent box)
+//         • tokens(0)._1 == tokenId (correct babel token)
+//         • tokensDifference * price >= nanoErgsDifference >= 0
+//   - Else → WITHDRAWAL PATH:
+//       Only the creator's SigmaProp (R4) can spend the box.
+//
+const BABEL_PREFIX = '100604000e20';
+const BABEL_SUFFIX = '0400040005000500d803d601e30004d602e4c6a70408d603e4c6a7050595e67201d804d604b2a5e4720100d605b2db63087204730000d606db6308a7d60799c1a7c17204d1968302019683050193c27204c2a7938c720501730193e4c672040408720293e4c672040505720393e4c67204060ec5a796830201929c998c7205029591b1720673028cb272067303000273047203720792720773057202';
+
+// ── Miner Fee Contract ErgoTree ─────────────────────────────────────────
+//
+// The standard Ergo mainnet miner fee proposition (delta=720 blocks).
+// Outputs sent to this ErgoTree are recognized by the node as transaction fees.
+//
+// CRITICAL: The node matches fee outputs by EXACT byte comparison against its
+// internal feeProposition. Any modification — even adding/changing a size bit —
+// will cause the node to NOT recognize the output as a fee, resulting in:
+//   "Min fee not met: 0.001 ergs required, 0.0 ergs given"
+//
+// This value was verified by querying actual on-chain fee output boxes from
+// the Ergo mainnet via: /blockchain/transaction/byIndex/<index>
+//
+// Corresponding P2S address:
+//   2iHkR7CWvD1R4j1yZg5bkeDRQavjAaVPeTDFGGLZduHyfWMuYpmhHocX8GJoaieTx78Fntz...
+//
+// DO NOT apply ensureSizeBit() to this value. DO NOT modify it in any way.
+//
+const FEE_ERGO_TREE = '1005040004000e36100204a00b08cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ea02d192a39a8cc7a701730073011001020402d19683030193a38cc7b2a57300000193c2b2a57301007473027303830108cdeeac93b1a57304';
+
+// ── Box Value Minimums ──────────────────────────────────────────────────
+//
+// Every Ergo box must contain a minimum ERG value based on its serialized
+// size (currently 360 nanoERG/byte, adjustable by miner voting). For a
+// typical box, 0.001 ERG (1,000,000 nanoERG) is a safe minimum. If a change
+// output would be below this, the transaction is rejected by the node.
+//
+const MIN_BOX_VALUE = 1000000; // 0.001 ERG
+
+// ── Explorer API (fallback for block height) ────────────────────────────
+const EXPLORER_API = 'https://api.ergoplatform.com';
+
+// ── Wallet connection state ─────────────────────────────────────────────
+let connected = false;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ERGOTREE UTILITIES
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── ensureSizeBit ───────────────────────────────────────────────────────
+//
+// Modern Ergo nodes (v5+) require ErgoTree header bit 3 (0x08) to be set.
+// When set, a VLQ-encoded body length follows the header before the tree body.
+//
+// If the tree already has the size bit, return unchanged.
+// Otherwise:
+//   1. Set bit 3 (0x08) in the header byte
+//   2. Calculate the body length in bytes (everything after the header)
+//   3. VLQ-encode that length (7 data bits per byte, MSB = continuation flag)
+//   4. Return: newHeader + vlqLength + body
+//
+// Applied to:  Babel fee ErgoTree, change output ErgoTree
+// NOT applied: Miner fee ErgoTree (must remain exact bytes — see FEE_ERGO_TREE)
+//
+// Example transformation:
+//   Before: 10 0604000e20...          (header=0x10, no size bit)
+//   After:  18 c101 0604000e20...     (header=0x18, size=193 bytes VLQ, body)
+//
+function ensureSizeBit(ergoTreeHex) {
+  const headerByte = parseInt(ergoTreeHex.slice(0, 2), 16);
+
+  // Already has size bit? Return as-is.
+  if (headerByte & 0x08) return ergoTreeHex;
+
+  // Set bit 3 in the header
+  const newHeader = ((headerByte | 0x08) & 0xff).toString(16).padStart(2, '0');
+
+  // Body = everything after the 1-byte header
+  const bodyHex = ergoTreeHex.slice(2);
+  const bodyLength = bodyHex.length / 2; // convert hex chars to byte count
+
+  // VLQ (Variable-Length Quantity) encode the body length
+  //   Each byte: 7 data bits (bits 0–6) + 1 continuation bit (bit 7)
+  //   If bit 7 is set, more bytes follow. Final byte has bit 7 = 0.
+  const vlq = [];
+  let v = bodyLength;
+  while (v >= 128) {
+    vlq.push((v & 0x7f) | 0x80); // low 7 bits + continuation flag
+    v = Math.floor(v / 128);
+  }
+  vlq.push(v); // final byte (continuation bit = 0)
+  const vlqHex = vlq.map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return newHeader + vlqHex + bodyHex;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SIGMA SERIALIZATION
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── sigmaSerializeSLong ─────────────────────────────────────────────────
+//
+// Serializes a JavaScript number as a Sigma protocol SLong value, suitable
+// for storing in an Ergo box register (used for R5: price per token).
+//
+// Serialization format:
+//   Byte 0:     0x05 (SLong type tag)
+//   Bytes 1–N:  ZigZag + VLQ encoded value
+//
+// ZigZag encoding maps signed integers to unsigned integers:
+//   Positive n → 2n       (e.g., 1 → 2, 2 → 4, 270270 → 540540)
+//   Negative n → 2|n|-1   (e.g., -1 → 1, -2 → 3)
+//   This keeps small magnitudes small regardless of sign.
+//
+// The ZigZag result is then VLQ encoded (same as ensureSizeBit above):
+//   7 data bits per byte, MSB = continuation flag.
+//
+// Note: Uses Math.floor(v/128) instead of v>>>7 to avoid JavaScript's
+// 32-bit truncation on the unsigned right shift operator. This keeps
+// values above 2^31 correct (nanoERG prices can exceed this).
+//
+// Example: sigmaSerializeSLong(270270)
+//   ZigZag(270270) = 540540
+//   VLQ(540540) = [0xFC, 0xFE, 0x20]  →  hex "fcfe20"
+//   Result: "05" + "fcfe20" = "05fcfe20"
+//
+function sigmaSerializeSLong(value) {
+  // Step 1: ZigZag encode
+  const zigzag = value >= 0 ? value * 2 : (-value) * 2 - 1;
+
+  // Step 2: Type tag + VLQ encode
+  const bytes = [0x05]; // SLong type byte
+  let v = zigzag;
+  while (v >= 128) {
+    bytes.push((v & 0x7f) | 0x80); // 7 data bits + continuation
+    v = Math.floor(v / 128);       // safe division (no 32-bit truncation)
+  }
+  bytes.push(v); // final byte (no continuation flag)
+
+  // Step 3: Convert to hex string
+  return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ERGOTREE CONSTRUCTION
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── buildBabelErgoTree ──────────────────────────────────────────────────
+//
+// Constructs the EIP-0031 Babel fee contract ErgoTree for a given token ID.
+//
+// The 32-byte token ID is embedded directly into the compiled contract as a
+// constant (the `_tokenId` variable in the ErgoScript source). This means
+// each token gets its own unique P2S address, so all Babel boxes for a given
+// token live at the same address and are easily found by scanning it.
+//
+// The resulting tree does NOT yet have the size bit set — call
+// ensureSizeBit() on the result before using it in a transaction output.
+//
+// @param  {string} tokenId  64-character lowercase hex token ID
+// @return {string}          ErgoTree hex (without size bit)
+//
+function buildBabelErgoTree(tokenId) {
+  return BABEL_PREFIX + tokenId + BABEL_SUFFIX;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// UI HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── log ─────────────────────────────────────────────────────────────────
+//
+// Appends a timestamped message to the on-page activity log and scrolls to
+// the bottom. The log panel auto-shows on first message.
+//
+// @param {string} msg    The message to display
+// @param {string} level  'info' (gray), 'warn' (yellow), 'success' (green),
+//                        'error' (red)
+//
+function log(msg, level = 'info') {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${level}`;
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(entry);
+  el.scrollTop = el.scrollHeight;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// WALLET CONNECTION
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── connectWallet ───────────────────────────────────────────────────────
+//
+// Connects to the Nautilus browser extension via the Ergo dApp Connector
+// API (EIP-12). After connection, the global `ergo` object provides:
+//
+//   ergo.get_utxos()            → Array of wallet's unspent boxes
+//   ergo.get_change_address()   → Wallet's change address (Base58)
+//   ergo.get_current_height()   → Current blockchain height
+//   ergo.sign_tx(unsignedTx)    → Prompt user to sign, returns signed TX
+//   ergo.submit_tx(signedTx)    → Submit to network, returns TX ID string
+//
+async function connectWallet() {
+  if (connected) return;
+  try {
+    // Check if the Nautilus extension injected the connector
+    if (typeof ergoConnector === 'undefined' || !ergoConnector.nautilus) {
+      log('Nautilus wallet not detected. Install it from nautilus.io', 'error');
+      return;
+    }
+
+    log('Requesting Nautilus connection…');
+    const granted = await ergoConnector.nautilus.connect();
+    if (!granted) {
+      log('Connection denied by user.', 'error');
+      return;
+    }
+
+    connected = true;
+    const addr = await ergo.get_change_address();
+    log(`Connected: ${addr.slice(0, 12)}…${addr.slice(-8)}`, 'success');
+
+    // Update UI state
+    const btn = document.getElementById('connectBtn');
+    btn.textContent = '✓ Connected';
+    btn.classList.add('connected');
+    document.getElementById('createBtn').disabled = false;
+
+    // Show the summary card with computed values
+    updateSummary();
+  } catch (e) {
+    log(`Connection error: ${e.message}`, 'error');
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SUMMARY DISPLAY
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── updateSummary ───────────────────────────────────────────────────────
+//
+// Recalculates and displays the summary card whenever form inputs change.
+// Shows funding amount, price, R5 hex value, approximate serviceable
+// transactions, and the full ErgoTree hex for verification.
+//
+function updateSummary() {
+  const tokenId = document.getElementById('tokenId').value.trim();
+  const price = parseInt(document.getElementById('price').value, 10);
+  const fundingErg = parseFloat(document.getElementById('funding').value);
+  const fundingNano = Math.round(fundingErg * 1e9);
+  const ergoTree = buildBabelErgoTree(tokenId);
+  const r5Hex = sigmaSerializeSLong(price);
+
+  // Rough estimate: each Babel fee usage costs ~1.1M nanoERG (standard tx fee)
+  const approxTxs = Math.floor(fundingNano / 1100000);
+
+  const card = document.getElementById('summaryCard');
+  card.style.display = '';
+  document.getElementById('summaryContent').innerHTML = `
+    <div class="info-row"><span class="label">Funding</span><span class="value">${fundingErg} ERG (${fundingNano.toLocaleString()} nanoERG)</span></div>
+    <div class="info-row"><span class="label">Price</span><span class="value">${price.toLocaleString()} nanoERG / token unit</span></div>
+    <div class="info-row"><span class="label">R5 (hex)</span><span class="value">${r5Hex}</span></div>
+    <div class="info-row"><span class="label">≈ Serviceable TXs</span><span class="value">~${approxTxs}</span></div>
+  `;
+  document.getElementById('ergoTreePreview').textContent = `ErgoTree: ${ergoTree}`;
+}
+
+// Live-update summary when any input field changes
+document.querySelectorAll('input').forEach(el => el.addEventListener('input', () => {
+  if (connected) updateSummary();
+}));
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOCKCHAIN HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── getCurrentHeight ────────────────────────────────────────────────────
+//
+// Gets the current blockchain height for the creationHeight field in output
+// boxes. Tries the Nautilus dApp connector first (faster, local), then
+// falls back to the public Ergo Explorer API.
+//
+async function getCurrentHeight() {
+  try {
+    if (typeof ergo !== 'undefined' && ergo.get_current_height) {
+      return await ergo.get_current_height();
+    }
+  } catch (_) {}
+  // Fallback: query the Explorer API for the latest block
+  const res = await fetch(`${EXPLORER_API}/api/v1/blocks?limit=1&sortBy=height&sortDirection=desc`);
+  const data = await res.json();
+  return data.items[0].height;
+}
+
+// ── ergoTreeFromUtxos ───────────────────────────────────────────────────
+//
+// Extracts the ErgoTree hex from one of the wallet's own UTxOs for use as
+// the change output script. This approach is more reliable than manually
+// reconstructing a P2PK ErgoTree from the Base58 address because:
+//
+//   1. The UTxO's ErgoTree already has the correct serialization format
+//      (including size bit if required by the node version)
+//   2. No Base58 decoding or tree reconstruction needed
+//   3. Guaranteed to match what the node expects for this address
+//
+// @param  {Array} utxos  Array of wallet UTxO objects from ergo.get_utxos()
+// @return {string}       ErgoTree hex string from the first UTxO
+//
+function ergoTreeFromUtxos(utxos) {
+  for (const box of utxos) {
+    if (box.ergoTree) return box.ergoTree;
+  }
+  throw new Error('No UTxOs with ErgoTree found for change output.');
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// INPUT SELECTION
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── selectInputs ────────────────────────────────────────────────────────
+//
+// Simple greedy UTxO accumulator. Selects wallet boxes until total ERG
+// covers the target amount plus minimum change box value.
+//
+// Strategy:
+//   - Sort boxes by token count (ascending) to prefer "clean" ERG-only boxes.
+//     This minimizes the number of tokens that must be forwarded to the
+//     change output, reducing transaction complexity.
+//   - Accumulate until total >= target + MIN_BOX_VALUE (room for change),
+//     or until total == target exactly (no change output needed).
+//
+// @param  {Array}  utxos       Wallet UTxOs from ergo.get_utxos()
+// @param  {number} targetNano  Total nanoERG needed (funding + miner fee)
+// @return {Object|null}        { selected: Box[], total: BigInt } or null
+//
+function selectInputs(utxos, targetNano) {
+  let selected = [];
+  let total = BigInt(0);
+  const target = BigInt(targetNano);
+
+  // Sort: fewer tokens first → cleaner inputs preferred
+  const sorted = [...utxos].sort((a, b) => {
+    return (a.assets || []).length - (b.assets || []).length;
+  });
+
+  for (const box of sorted) {
+    selected.push(box);
+    total += BigInt(box.value);
+    if (total >= target + BigInt(MIN_BOX_VALUE)) break; // enough + change room
+    if (total === target) break;                         // exact match
+  }
+
+  if (total < target) return null; // insufficient funds
+  return { selected, total };
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// MAIN: CREATE BABEL FEE BOX
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── createBabelBox ──────────────────────────────────────────────────────
+//
+// Builds, signs, and submits a transaction that creates an EIP-0031 Babel
+// fee box. This is the main workflow, broken into numbered steps.
+//
+// Transaction structure:
+//
+//   INPUTS:
+//     Selected wallet UTxOs (enough ERG for funding + miner fee)
+//
+//   OUTPUTS:
+//     [0] Babel Fee Box:
+//         - value:     User-specified funding amount (nanoERG)
+//         - ergoTree:  EIP-0031 contract with embedded token ID (+ size bit)
+//         - assets:    [] (empty — users deposit tokens when spending the box)
+//         - R4:        SigmaProp — creator's compressed public key
+//                      (enables unconditional withdrawal at any time)
+//         - R5:        SLong — price in nanoERG per token unit
+//                      (the exchange rate for token ↔ ERG swaps)
+//         - R6:        NOT SET on initial creation
+//                      (only required on recreated boxes; holds spent box's ID
+//                       to prevent replay attacks per the EIP-0031 contract)
+//
+//     [1] Miner Fee Box:
+//         - value:     Miner fee amount (nanoERG)
+//         - ergoTree:  Standard fee proposition (exact bytes, unmodified)
+//
+//     [2] Change Box (if leftover ERG exists):
+//         - value:     Remaining nanoERG from inputs
+//         - ergoTree:  Wallet's own P2PK tree (extracted from existing UTxOs)
+//         - assets:    All tokens from consumed inputs (tokens can't be
+//                      destroyed in Ergo — they must go somewhere)
+//
+async function createBabelBox() {
+  const btn = document.getElementById('createBtn');
+  btn.disabled = true;
+  btn.textContent = 'Building TX…';
+
+  try {
+    // ── Step 1: Read and validate user parameters ─────────────────────
+    const tokenId = document.getElementById('tokenId').value.trim();
+    const price = parseInt(document.getElementById('price').value, 10);
+    const fundingNano = Math.round(parseFloat(document.getElementById('funding').value) * 1e9);
+    const feeNano = Math.round(parseFloat(document.getElementById('minerFee').value) * 1e9);
+
+    // Token IDs are 32-byte Blake2b hashes, represented as 64 hex characters
+    if (!/^[0-9a-f]{64}$/.test(tokenId)) {
+      throw new Error('Invalid token ID — must be 64 lowercase hex characters.');
+    }
+
+    // ── Step 2: Build the Babel fee ErgoTree ──────────────────────────
+    //
+    // Construct from the EIP-0031 template (prefix + tokenId + suffix),
+    // then ensure the size bit is set for modern node compatibility.
+    //
+    const ergoTree = ensureSizeBit(buildBabelErgoTree(tokenId));
+
+    // ── Step 3: Serialize the price as Sigma SLong for R5 ─────────────
+    const r5Hex = sigmaSerializeSLong(price);
+    log(`ErgoTree: ${ergoTree.slice(0, 30)}…`);
+    log(`R5 (SLong ${price}): ${r5Hex}`);
+
+    // ── Step 4: Fetch wallet state from Nautilus ──────────────────────
+    log('Fetching UTxOs…');
+    const utxos = await ergo.get_utxos();
+    const changeAddress = await ergo.get_change_address();
+    log(`Found ${utxos.length} UTxOs, change → ${changeAddress.slice(0, 12)}…`);
+
+    // ── Step 5: Select input boxes ────────────────────────────────────
+    //
+    // We need enough ERG to cover: babel box funding + miner fee + change
+    //
+    const totalNeeded = fundingNano + feeNano;
+    const result = selectInputs(utxos, totalNeeded);
+    if (!result) {
+      throw new Error(`Insufficient ERG. Need ${(totalNeeded / 1e9).toFixed(4)} ERG.`);
+    }
+    const { selected, total: inputTotal } = result;
+    log(`Selected ${selected.length} input(s) totaling ${Number(inputTotal) / 1e9} ERG`);
+
+    // ── Step 6: Get current block height ──────────────────────────────
+    //
+    // Required for the creationHeight field in all output boxes.
+    //
+    const height = await getCurrentHeight();
+    log(`Current height: ${height}`);
+
+    // ── Step 7: Extract creator's public key for R4 (SigmaProp) ───────
+    //
+    // Per EIP-0031, R4 holds the creator's SigmaProp. This allows the
+    // creator to withdraw the Babel box unconditionally (the "else" branch
+    // of the contract: `babelFeeBoxCreator`).
+    //
+    // We extract the 33-byte compressed EC public key from the wallet's
+    // P2PK ErgoTree. A P2PK tree contains the ProveDlog marker '08cd'
+    // followed by the 33-byte compressed point (66 hex chars).
+    //
+    // The Sigma serialization of SigmaProp(ProveDlog(pubkey)) is simply:
+    //   '08cd' + pubkeyHex (35 bytes total = 70 hex chars)
+    //
+    // This '08cd' prefix means:
+    //   0x08 = SigmaProp type tag
+    //   0xcd = ProveDlog opcode (205 decimal)
+    //
+    const changeErgoTree = ergoTreeFromUtxos(utxos);
+    const dlogMarker = '08cd';
+    const dlogIdx = changeErgoTree.indexOf(dlogMarker);
+    if (dlogIdx === -1) {
+      throw new Error('Cannot extract public key — wallet ErgoTree is not P2PK.');
+    }
+    const pubkeyHex = changeErgoTree.slice(dlogIdx + 4, dlogIdx + 4 + 66);
+    const r4SigmaProp = '08cd' + pubkeyHex;
+    log(`R4 (SigmaProp): 08cd${pubkeyHex.slice(0, 12)}…`);
+
+    // ── Step 8: Build transaction outputs ─────────────────────────────
+    const outputs = [];
+
+    // Output [0]: Babel fee box
+    outputs.push({
+      value: fundingNano.toString(),
+      ergoTree: ergoTree,
+      assets: [],
+      additionalRegisters: {
+        R4: r4SigmaProp,  // Creator's SigmaProp (withdrawal authority)
+        R5: r5Hex          // Price: nanoERG per token unit
+        // R6: intentionally omitted on initial creation
+        //     (only set when RECREATING a spent babel box, per EIP-0031)
+      },
+      creationHeight: height
+    });
+
+    // Output [1]: Miner fee
+    //   The node identifies fee outputs by exact ErgoTree byte match.
+    //   Using any other bytes (or modifying these) → "Min fee not met: 0.0"
+    outputs.push({
+      value: feeNano.toString(),
+      ergoTree: FEE_ERGO_TREE,
+      assets: [],
+      additionalRegisters: {},
+      creationHeight: height
+    });
+
+    // Output [2]: Change box (only if there's leftover ERG after funding + fee)
+    const changeNano = Number(inputTotal) - fundingNano - feeNano;
+    if (changeNano > 0) {
+      // Ergo enforces a minimum box value — reject if change is dust
+      if (changeNano < MIN_BOX_VALUE) {
+        throw new Error(
+          `Change amount (${changeNano} nanoERG) below minimum box value. ` +
+          `Adjust funding or fee.`
+        );
+      }
+
+      // Tokens in Ergo cannot be destroyed — all tokens from consumed inputs
+      // must appear in some output. Aggregate them all for the change box.
+      const tokenMap = {};
+      for (const box of selected) {
+        for (const asset of (box.assets || [])) {
+          if (!tokenMap[asset.tokenId]) tokenMap[asset.tokenId] = BigInt(0);
+          tokenMap[asset.tokenId] += BigInt(asset.amount);
+        }
+      }
+      const changeAssets = Object.entries(tokenMap).map(([tid, amt]) => ({
+        tokenId: tid,
+        amount: amt.toString()
+      }));
+
+      // Use the wallet's own ErgoTree for the change output.
+      // Apply ensureSizeBit() for node compatibility.
+      const changeErgoTreeOut = ensureSizeBit(ergoTreeFromUtxos(utxos));
+      outputs.push({
+        value: changeNano.toString(),
+        ergoTree: changeErgoTreeOut,
+        assets: changeAssets,
+        additionalRegisters: {},
+        creationHeight: height
+      });
+    }
+
+    // ── Step 9: Assemble unsigned transaction (EIP-12 format) ─────────
+    //
+    // EIP-12 / Nautilus requires FULL box objects in the inputs array —
+    // not just { boxId, extension }. We spread the original UTxO data
+    // returned by ergo.get_utxos() and add an empty extension object.
+    //
+    // The extension field is where context variables go (e.g., the
+    // recreated box index for babel fee spending). Empty for creation.
+    //
+    const unsignedTx = {
+      inputs: selected.map(box => ({
+        ...box,          // Full box: boxId, value, ergoTree, assets, etc.
+        extension: {}    // No context variables needed for this TX
+      })),
+      dataInputs: [],    // No data inputs needed
+      outputs: outputs
+    };
+
+    log(`TX: ${selected.length} inputs → ${outputs.length} outputs (fee: ${feeNano} nanoERG)`);
+    console.log('Unsigned TX:', JSON.stringify(unsignedTx, null, 2));
+
+    // ── Step 10: Sign via Nautilus ────────────────────────────────────
+    //
+    // This triggers the Nautilus popup asking the user to confirm and sign.
+    // Nautilus validates the transaction structure before signing.
+    //
+    log('Requesting signature from Nautilus…', 'warn');
+    let signedTx;
+    try {
+      signedTx = await ergo.sign_tx(unsignedTx);
+    } catch (signErr) {
+      log(`Sign error detail: ${JSON.stringify(signErr)}`, 'error');
+      throw new Error(
+        `Nautilus refused to sign: ${signErr?.info || signErr?.message || signErr}`
+      );
+    }
+
+    // ── Step 11: Submit to the Ergo network ──────────────────────────
+    //
+    // Nautilus relays the signed transaction to a connected Ergo node.
+    // On success, returns the transaction ID (hex string).
+    //
+    log('Submitting transaction…', 'warn');
+    console.log('Signed TX:', JSON.stringify(signedTx, null, 2));
+    let txId;
+    try {
+      txId = await ergo.submit_tx(signedTx);
+    } catch (submitErr) {
+      const detail = typeof submitErr === 'object' ? JSON.stringify(submitErr) : submitErr;
+      log(`Submit error detail: ${detail}`, 'error');
+      throw new Error(
+        `Submit failed: ${submitErr?.info || submitErr?.message || detail}`
+      );
+    }
+
+    // ── Step 12: Success! ─────────────────────────────────────────────
+    log(`✓ Transaction submitted!`, 'success');
+    log(`TX ID: ${txId}`, 'success');
+    log(`Explorer: https://explorer.ergoplatform.com/en/transactions/${txId}`, 'success');
+
+    btn.textContent = '✓ Babel Box Created';
+    btn.style.background = '#2d8544';
+
+  } catch (e) {
+    // Surface errors to the user via the log panel
+    log(`Error: ${e.message || (typeof e === 'object' ? JSON.stringify(e) : e)}`, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Create Babel Box';
+  }
+}
+</script>
+</body>
+</html>
