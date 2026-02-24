@@ -165,7 +165,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const creatureIds = ownedCreatures.map((c: any) => c.id);
     const allSeasonIds = seasons.map((s: any) => s.id);
 
-    const [statsResult, prestigeResult, logsResult, boostsResult, leaderboardResult, recoveriesResult] = await Promise.all([
+    // Cooldown window: fetch regular actions from the last 7 hours (covers 6hr cooldown)
+    const cooldownWindowStart = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString();
+
+    const [statsResult, prestigeResult, logsResult, cooldownLogsResult, boostsResult, leaderboardResult, recoveriesResult] = await Promise.all([
       allSeasonIds.length > 0
         ? supabase
             .from('creature_stats')
@@ -177,6 +180,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from('prestige')
         .select('*')
         .in('creature_id', creatureIds),
+      // Daily action count: today's logs only
       allSeasonIds.length > 0
         ? supabase
             .from('training_log')
@@ -185,6 +189,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .in('season_id', allSeasonIds)
             .eq('bonus_action', false)
             .gte('created_at', getUtcMidnightToday())
+        : { data: [] },
+      // Cooldown calculation: last 7 hours (covers 6hr cooldown window across UTC midnight)
+      allSeasonIds.length > 0
+        ? supabase
+            .from('training_log')
+            .select('creature_id, created_at')
+            .in('creature_id', creatureIds)
+            .in('season_id', allSeasonIds)
+            .eq('bonus_action', false)
+            .gte('created_at', cooldownWindowStart)
         : { data: [] },
       allSeasonIds.length > 0
         ? supabase
@@ -223,12 +237,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       prestigeMap.set(p.creature_id, p);
     }
 
+    // Daily action count from today's logs
     const actionCountMap = new Map<string, number>();
-    const lastRegularActionMap = new Map<string, string>();
     for (const log of (logsResult.data ?? [])) {
       const current = actionCountMap.get(log.creature_id) ?? 0;
       actionCountMap.set(log.creature_id, current + 1);
-      // Track most recent regular action (logs are not ordered, so compare)
+    }
+
+    // Most recent regular action from cooldown window (for cooldown calculation)
+    const lastRegularActionMap = new Map<string, string>();
+    for (const log of (cooldownLogsResult.data ?? [])) {
       const prev = lastRegularActionMap.get(log.creature_id);
       if (!prev || log.created_at > prev) {
         lastRegularActionMap.set(log.creature_id, log.created_at);

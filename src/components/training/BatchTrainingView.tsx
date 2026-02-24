@@ -1,11 +1,11 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Check, Flame, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check, Clock, Flame, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PetImage } from '@/components/creatures/PetImage';
 import { trainingActivities as defaultActivities } from '@/data/trainingActivities';
-import type { CreatureWithStats, TrainingActivity, PaymentCurrency, GameConfig, BatchTrainCreatureInput } from '@/types/game';
-import { cn } from '@/lib/utils';
+import type { CreatureWithStats, TrainingActivity, PaymentCurrency, BatchTrainCreatureInput } from '@/types/game';
+import { cn, formatCountdown } from '@/lib/utils';
 import { MiniStatBars } from '@/components/creatures/MiniStatBars';
 
 /** Short activity labels for grid columns */
@@ -39,6 +39,43 @@ const STAT_DOT_COLOR: Record<string, string> = {
   focus: 'bg-stat-focus',
 };
 
+/** Compact cooldown indicator for batch grid rows */
+function CompactCooldown({ endsAt }: { endsAt: string | null }) {
+  const [timeLeft, setTimeLeft] = useState('');
+  const [isReady, setIsReady] = useState(!endsAt || new Date(endsAt) <= new Date());
+
+  useEffect(() => {
+    if (!endsAt) {
+      setIsReady(true);
+      return;
+    }
+    const update = () => {
+      const ready = new Date(endsAt) <= new Date();
+      setIsReady(ready);
+      if (!ready) setTimeLeft(formatCountdown(endsAt));
+    };
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, [endsAt]);
+
+  if (isReady) {
+    return (
+      <div className="flex items-center gap-1">
+        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+        <span className="font-mono text-[10px] text-accent font-medium">Ready</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Clock className="w-3 h-3 text-muted-foreground" />
+      <span className="font-mono text-[10px] text-muted-foreground">{timeLeft}</span>
+    </div>
+  );
+}
+
 interface BatchCreatureState {
   activity: string | null; // null = inherit default
   boostOverride: string[] | null; // null = auto-apply all
@@ -48,7 +85,7 @@ interface BatchCreatureState {
 
 interface BatchTrainingViewProps {
   creatures: CreatureWithStats[];
-  gameConfig: GameConfig | null;
+  gameConfig: Record<string, any> | null;
   requireFees: boolean;
   feeToken: any;
   trainingFeeNanoerg: number;
@@ -94,17 +131,21 @@ export function BatchTrainingView({
   }, [gameConfig]);
 
   // Filter eligible creatures
+  const isOnCooldown = useCallback((c: CreatureWithStats) => {
+    return c.cooldownEndsAt != null && new Date(c.cooldownEndsAt) > new Date();
+  }, []);
+
   const eligible = useMemo(() => {
     return creatures.filter((c) => {
       if (c.treatment) return false;
-      // Creatures with 0 actions remaining are ineligible
       if (c.actionsRemaining !== undefined && c.actionsRemaining <= 0) return false;
+      if (isOnCooldown(c)) return false;
       return true;
     });
-  }, [creatures]);
+  }, [creatures, isOnCooldown]);
 
   const ineligible = useMemo(() => {
-    return creatures.filter((c) => c.treatment || (c.actionsRemaining !== undefined && c.actionsRemaining <= 0));
+    return creatures.filter((c) => c.treatment || (c.actionsRemaining !== undefined && c.actionsRemaining <= 0) || isOnCooldown(c));
   }, [creatures]);
 
   // Prune selection when creatures change
@@ -319,10 +360,13 @@ export function BatchTrainingView({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border/30">
-                <th className="text-left px-4 py-2 text-muted-foreground font-medium sticky left-0 bg-card z-10" style={{ width: '45%', minWidth: 260 }}>
-                  <div className="flex items-baseline gap-6">
+                <th className="text-left px-4 py-2 text-muted-foreground font-medium sticky left-0 bg-card z-10" style={{ width: '45%', minWidth: 340 }}>
+                  <div className="flex items-baseline">
                     <span>Creature</span>
-                    <span className="text-[10px] font-normal text-muted-foreground/60">Stats</span>
+                    <div className="flex items-baseline gap-5 ml-auto">
+                      <span className="text-[10px] font-normal text-muted-foreground/60">Stats</span>
+                      <span className="text-[10px] font-normal text-muted-foreground/60">Cooldown</span>
+                    </div>
                   </div>
                 </th>
                 {activities.map((a) => {
@@ -394,7 +438,7 @@ export function BatchTrainingView({
                           alt={creature.name}
                           className="w-8 h-8 rounded-md shrink-0"
                         />
-                        <div className="min-w-0 shrink-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1">
                             <span className="font-medium text-foreground truncate">{creature.name}</span>
                             {totalBoost > 0 && (
@@ -416,11 +460,12 @@ export function BatchTrainingView({
                         >
                           {state.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                         </button>
-                        <div className="ml-2">
+                        <div className="ml-auto flex items-center gap-3 shrink-0">
                           <MiniStatBars
                             baseStats={creature.baseStats}
                             trainedStats={creature.trainedStats}
                           />
+                          <CompactCooldown endsAt={creature.cooldownEndsAt} />
                         </div>
                       </div>
                     </td>
@@ -465,17 +510,18 @@ export function BatchTrainingView({
                         alt={creature.name}
                         className="w-8 h-8 rounded-md shrink-0 grayscale"
                       />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <span className="font-medium text-foreground truncate">{creature.name}</span>
                         <div className="text-[10px] text-muted-foreground">
-                          {creature.treatment ? 'In treatment' : 'No actions remaining'}
+                          {creature.treatment ? 'In treatment' : isOnCooldown(creature) ? 'On cooldown' : 'No actions remaining'}
                         </div>
                       </div>
-                      <div className="ml-2">
+                      <div className="ml-auto flex items-center gap-3 shrink-0">
                         <MiniStatBars
                           baseStats={creature.baseStats}
                           trainedStats={creature.trainedStats}
                         />
+                        <CompactCooldown endsAt={creature.cooldownEndsAt} />
                       </div>
                     </div>
                   </td>
