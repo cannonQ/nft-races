@@ -113,7 +113,12 @@ export function BatchTrainingView({
   const [creatureStates, setCreatureStates] = useState<Map<string, BatchCreatureState>>(new Map());
   const [defaultActivity, setDefaultActivity] = useState<string | null>(null);
   const [autoApplyBoosts, setAutoApplyBoosts] = useState(true);
-  const [paymentCurrency, setPaymentCurrency] = useState<PaymentCurrency>('erg');
+  const [paymentCurrency, setPaymentCurrency] = useState<PaymentCurrency>(feeToken ? 'token' : 'erg');
+
+  // Default to token payment when feeToken loads async
+  useEffect(() => {
+    if (feeToken) setPaymentCurrency('token');
+  }, [feeToken]);
 
   // Merge server activity config
   const activities = useMemo(() => {
